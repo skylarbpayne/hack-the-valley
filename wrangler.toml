@@ -1,0 +1,5 @@
+name = "bc-hackathon"
+compatibility_date = "2026-02-17"
+
+[assets]
+directory = "./public"

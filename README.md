@@ -1,12 +1,15 @@
 # Hack the Valley 2026 - Website
 
-Professional landing page for Hack the Valley 2026, a 300-student innovation event in Bakersfield, CA.
+Professional landing page for Hack the Valley 2026, a self-funded, 1-day innovation event in Bakersfield, CA.
 
 ## Event Details
 
-- **Date:** April 12, 2026
+- **Date:** April 12, 2026 (1-day event: 9 AM - 5 PM)
 - **Location:** Bakersfield, California
 - **Students:** 300 participants
+- **Format:** 8-hour sprint with mentorship and workshops
+- **Grand Prize:** $500
+- **Funding:** Self-funded (no sponsors)
 - **Focus:** Build, Create, Innovate
 
 ## Development

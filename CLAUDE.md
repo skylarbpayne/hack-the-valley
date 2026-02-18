@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-BC Hackathon 2026 is a static landing page for a 300-student hackathon event in Bakersfield, California (April 12-14, 2026). The site is deployed to Cloudflare Pages using Wrangler.
+Hack the Valley 2026 is a static landing page for a 300-student hackathon event in Bakersfield, California (April 12-14, 2026). The site is deployed to Cloudflare Pages using Wrangler.
 
 ## Development
 

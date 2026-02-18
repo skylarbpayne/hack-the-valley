@@ -1,6 +1,6 @@
-# BC Hackathon 2026 - Website
+# Hack the Valley 2026 - Website
 
-Professional landing page for BC Hackathon 2026, a 300-student innovation event in Bakersfield, CA.
+Professional landing page for Hack the Valley 2026, a 300-student innovation event in Bakersfield, CA.
 
 ## Event Details
 

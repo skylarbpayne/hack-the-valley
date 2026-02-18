@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BC Hackathon 2026 | April 12-14 | Bakersfield, CA</title>
+  <meta name="description" content="Join 300 students for BC Hackathon 2026 in Bakersfield, CA. Build, create, and innovate over 48 hours with $25K+ in prizes.">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            "bc-blue": "#2563eb",
+            "bc-navy": "#1e293b",
+            "bc-cyan": "#06b6d4",
+            "bc-orange": "#f59e0b",
+            "bc-purple": "#7c3aed",
+            "bc-dark": "#0f172a"
+          },
+          fontFamily: {
+            sans: ["Inter", "sans-serif"]
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    body {
+      font-family: "Inter", sans-serif;
+    }
+
+    .gradient-text {
+      background: linear-gradient(135deg, #06b6d4 0%, #2563eb 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .card-hover {
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .card-hover:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 24px rgba(0, 0, 0, 0.3);
+    }
+  </style>
+</head>
+<body class="bg-bc-dark text-slate-100">
+  <nav class="sticky top-0 z-50 bg-bc-dark/90 backdrop-blur-sm border-b border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="h-16 flex items-center justify-between">
+        <a href="#hero" class="flex items-center gap-2">
+          <span class="w-8 h-8 rounded bg-gradient-to-br from-bc-cyan to-bc-blue"></span>
+          <span class="font-bold text-lg sm:text-xl">BC Hackathon 2026</span>
+        </a>
+        <div class="hidden md:flex items-center gap-6 text-sm font-medium">
+          <a href="#about" class="text-slate-300 hover:text-white transition">Overview</a>
+          <a href="#tracks" class="text-slate-300 hover:text-white transition">Tracks</a>
+          <a href="#sponsors" class="text-slate-300 hover:text-white transition">Sponsors</a>
+          <a href="#schedule" class="text-slate-300 hover:text-white transition">Schedule</a>
+          <a href="#signup" class="bg-bc-cyan text-bc-dark px-4 py-2 rounded-lg font-semibold hover:bg-cyan-400 transition">Sign Up</a>
+        </div>
+      </div>
+      <div class="pb-3 md:hidden flex gap-4 overflow-x-auto text-sm whitespace-nowrap">
+        <a href="#about" class="text-slate-300">Overview</a>
+        <a href="#tracks" class="text-slate-300">Tracks</a>
+        <a href="#sponsors" class="text-slate-300">Sponsors</a>
+        <a href="#schedule" class="text-slate-300">Schedule</a>
+        <a href="#signup" class="text-bc-cyan font-semibold">Sign Up</a>
+      </div>
+    </div>
+  </nav>
+
+  <section id="hero" class="relative min-h-screen flex items-center justify-center">
+    <div class="absolute inset-0 overflow-hidden">
+      <img src="/images/hero-bg.png" alt="Students coding during BC Hackathon" class="w-full h-full object-cover opacity-35">
+      <div class="absolute inset-0 bg-gradient-to-b from-bc-dark/50 via-bc-dark/70 to-bc-dark"></div>
+    </div>
+    <div class="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <p class="uppercase tracking-widest text-sm text-bc-cyan font-semibold mb-4">April 12-14, 2026 • Bakersfield, California</p>
+      <h1 class="text-5xl sm:text-6xl lg:text-7xl font-black leading-tight mb-6">Build. Create. <span class="gradient-text">Innovate.</span></h1>
+      <p class="text-lg sm:text-2xl text-slate-300 mb-8 max-w-3xl mx-auto">Join 300 students for 48 hours of hacking, mentorship, and breakthrough projects in the Central Valley's flagship student tech event.</p>
+      <div class="flex flex-col sm:flex-row gap-4 justify-center">
+        <a href="#signup" class="bg-bc-cyan text-bc-dark px-8 py-4 rounded-lg text-lg font-bold hover:bg-cyan-400 transition">Register Now</a>
+        <a href="#about" class="border-2 border-bc-cyan text-bc-cyan px-8 py-4 rounded-lg text-lg font-bold hover:bg-bc-cyan/10 transition">Explore Event</a>
+      </div>
+      <div class="mt-12 grid grid-cols-3 gap-6 max-w-2xl mx-auto">
+        <div>
+          <div class="text-3xl sm:text-4xl font-black gradient-text">300+</div>
+          <div class="text-slate-400 mt-1">Students</div>
+        </div>
+        <div>
+          <div class="text-3xl sm:text-4xl font-black gradient-text">48</div>
+          <div class="text-slate-400 mt-1">Hours</div>
+        </div>
+        <div>
+          <div class="text-3xl sm:text-4xl font-black gradient-text">$25K+</div>
+          <div class="text-slate-400 mt-1">Prizes</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="about" class="py-20 bg-bc-dark">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Event Overview</span></h2>
+      <p class="text-center text-slate-400 mb-12 max-w-3xl mx-auto">BC Hackathon 2026 is a free, high-energy innovation weekend where students team up to solve real problems with mentorship from industry leaders.</p>
+      <div class="grid lg:grid-cols-2 gap-10 items-center">
+        <div>
+          <img src="/images/event-overview.png" alt="Students collaborating at BC Hackathon" class="w-full rounded-2xl border border-slate-700 object-cover">
+        </div>
+        <div class="space-y-6">
+          <div class="bg-bc-navy p-6 rounded-xl border border-slate-700">
+            <h3 class="text-2xl font-bold mb-4">What to Expect</h3>
+            <ul class="space-y-3 text-slate-300">
+              <li>• Full weekend access to mentors, workshops, and sponsor office hours</li>
+              <li>• Free meals, snacks, swag, and collaborative hacking spaces</li>
+              <li>• Career and recruiting conversations with sponsor teams</li>
+              <li>• Project expo, judging, and awards on Sunday</li>
+            </ul>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div class="bg-bc-navy p-4 rounded-xl border border-slate-700">
+              <div class="text-xs uppercase tracking-wider text-slate-400">Date</div>
+              <div class="font-semibold text-lg">April 12-14, 2026</div>
+            </div>
+            <div class="bg-bc-navy p-4 rounded-xl border border-slate-700">
+              <div class="text-xs uppercase tracking-wider text-slate-400">Location</div>
+              <div class="font-semibold text-lg">Bakersfield, CA</div>
+            </div>
+            <div class="bg-bc-navy p-4 rounded-xl border border-slate-700">
+              <div class="text-xs uppercase tracking-wider text-slate-400">Format</div>
+              <div class="font-semibold text-lg">48-Hour Sprint</div>
+            </div>
+            <div class="bg-bc-navy p-4 rounded-xl border border-slate-700">
+              <div class="text-xs uppercase tracking-wider text-slate-400">Admission</div>
+              <div class="font-semibold text-lg text-bc-cyan">100% Free</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="benefits" class="py-20 bg-bc-navy">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Why Attend</span></h2>
+      <p class="text-center text-slate-400 mb-12">Built for beginners and experienced hackers alike.</p>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="bg-bc-dark p-6 rounded-xl border border-slate-700 card-hover"><h3 class="font-bold text-lg mb-2">Build Real Projects</h3><p class="text-slate-400">Ship something meaningful in a focused weekend sprint.</p></div>
+        <div class="bg-bc-dark p-6 rounded-xl border border-slate-700 card-hover"><h3 class="font-bold text-lg mb-2">Learn From Experts</h3><p class="text-slate-400">Join technical workshops and mentor sessions throughout the event.</p></div>
+        <div class="bg-bc-dark p-6 rounded-xl border border-slate-700 card-hover"><h3 class="font-bold text-lg mb-2">Network With Companies</h3><p class="text-slate-400">Connect directly with sponsor engineers and recruiting teams.</p></div>
+        <div class="bg-bc-dark p-6 rounded-xl border border-slate-700 card-hover"><h3 class="font-bold text-lg mb-2">Compete for Prizes</h3><p class="text-slate-400">Win major prizes across core challenge tracks and sponsor categories.</p></div>
+        <div class="bg-bc-dark p-6 rounded-xl border border-slate-700 card-hover"><h3 class="font-bold text-lg mb-2">Food and Swag Included</h3><p class="text-slate-400">Meals, snacks, and event merch are included for all participants.</p></div>
+        <div class="bg-bc-dark p-6 rounded-xl border border-slate-700 card-hover"><h3 class="font-bold text-lg mb-2">Boost Your Resume</h3><p class="text-slate-400">Showcase your work and stand out in internship and job applications.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tracks" class="py-20 bg-bc-dark">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Tracks and Prizes</span></h2>
+      <p class="text-center text-slate-400 mb-12 max-w-3xl mx-auto">Compete for $25,000+ in total prizes. Track winners receive $2,500 each, with additional sponsor prizes available.</p>
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <article class="bg-bc-navy p-6 rounded-xl border border-slate-700 card-hover">
+          <img src="/images/track-ai.png" alt="AI and machine learning track" class="w-full h-44 object-cover rounded-lg mb-4">
+          <h3 class="text-xl font-bold mb-2">AI and Machine Learning</h3>
+          <p class="text-slate-400 mb-3">Create intelligent products using models, data pipelines, and automation.</p>
+          <p class="text-bc-cyan font-semibold">Track Prize: $2,500</p>
+        </article>
+        <article class="bg-bc-navy p-6 rounded-xl border border-slate-700 card-hover">
+          <img src="/images/track-health.png" alt="Healthcare technology track" class="w-full h-44 object-cover rounded-lg mb-4">
+          <h3 class="text-xl font-bold mb-2">Healthcare Tech</h3>
+          <p class="text-slate-400 mb-3">Build tools that improve patient outcomes, access, and care delivery.</p>
+          <p class="text-bc-cyan font-semibold">Track Prize: $2,500</p>
+        </article>
+        <article class="bg-bc-navy p-6 rounded-xl border border-slate-700 card-hover">
+          <img src="/images/track-fintech.png" alt="Financial technology track" class="w-full h-44 object-cover rounded-lg mb-4">
+          <h3 class="text-xl font-bold mb-2">FinTech</h3>
+          <p class="text-slate-400 mb-3">Reimagine payments, budgeting, lending, and financial literacy products.</p>
+          <p class="text-bc-cyan font-semibold">Track Prize: $2,500</p>
+        </article>
+        <article class="bg-bc-navy p-6 rounded-xl border border-slate-700 card-hover">
+          <img src="/images/track-social.png" alt="Social impact track" class="w-full h-44 object-cover rounded-lg mb-4">
+          <h3 class="text-xl font-bold mb-2">Social Impact</h3>
+          <p class="text-slate-400 mb-3">Develop solutions that support communities and improve quality of life.</p>
+          <p class="text-bc-cyan font-semibold">Track Prize: $2,500</p>
+        </article>
+        <article class="bg-bc-navy p-6 rounded-xl border border-slate-700 card-hover md:col-span-2 lg:col-span-1">
+          <img src="/images/track-open.png" alt="Open innovation track" class="w-full h-44 object-cover rounded-lg mb-4">
+          <h3 class="text-xl font-bold mb-2">Open Innovation</h3>
+          <p class="text-slate-400 mb-3">Bring your boldest idea and ship a product with real-world potential.</p>
+          <p class="text-bc-cyan font-semibold">Track Prize: $2,500</p>
+        </article>
+        <article class="bg-gradient-to-br from-bc-blue/20 to-bc-orange/20 p-6 rounded-xl border border-bc-blue/40 md:col-span-2 lg:col-span-2">
+          <h3 class="text-2xl font-extrabold mb-2">Grand Prize</h3>
+          <p class="text-slate-300 mb-3">Best overall project wins the top honor based on impact, execution, and innovation.</p>
+          <p class="text-3xl font-black text-bc-orange">$10,000 Overall Winner</p>
+          <p class="text-sm text-slate-400 mt-2">Additional sponsor challenge prizes announced during opening ceremony.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="sponsors" class="py-20 bg-bc-navy">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Sponsors</span></h2>
+      <p class="text-center text-slate-400 mb-12">Sponsor roster from BC Hackathon sponsorship tracking and outreach materials.</p>
+
+      <div class="space-y-10">
+        <div class="text-center">
+          <p class="text-xs uppercase tracking-[0.2em] text-bc-orange mb-3">Presenting</p>
+          <div class="max-w-md mx-auto bg-bc-dark rounded-xl border border-slate-700 p-6">
+            <p class="text-2xl font-bold">KLA</p>
+            <p class="text-slate-400 mt-1">Confirmed Presenting Partner</p>
+          </div>
+        </div>
+
+        <div class="text-center">
+          <p class="text-xs uppercase tracking-[0.2em] text-bc-cyan mb-4">Gold Prospects</p>
+          <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl mx-auto">
+            <div class="bg-bc-dark rounded-xl border border-slate-700 p-5">Kern Health Systems</div>
+            <div class="bg-bc-dark rounded-xl border border-slate-700 p-5">Kern Venture Group</div>
+            <div class="bg-bc-dark rounded-xl border border-slate-700 p-5">Grimmway</div>
+          </div>
+        </div>
+
+        <div class="text-center">
+          <p class="text-xs uppercase tracking-[0.2em] text-bc-purple mb-4">Community Sponsors</p>
+          <div class="grid sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
+            <div class="bg-bc-dark rounded-xl border border-slate-700 p-5">Wonderful</div>
+            <div class="bg-bc-dark rounded-xl border border-slate-700 p-5">Additional Local Partners</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-12 text-center">
+        <a href="mailto:sponsors@bchackathon.ca" class="inline-block bg-bc-orange text-white px-8 py-3 rounded-lg font-semibold hover:bg-orange-500 transition">Become a Sponsor</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="schedule" class="py-20 bg-bc-dark">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Schedule</span></h2>
+      <p class="text-center text-slate-400 mb-12">April 12-14, 2026 timeline highlights.</p>
+
+      <div class="space-y-10">
+        <div class="bg-bc-navy border border-slate-700 rounded-xl p-6">
+          <h3 class="text-2xl font-bold text-bc-cyan mb-5">Friday, April 12</h3>
+          <div class="space-y-3 text-sm sm:text-base">
+            <div class="flex gap-4"><span class="w-24 text-slate-400">6:00 PM</span><span>Check-in and swag pickup</span></div>
+            <div class="flex gap-4"><span class="w-24 text-slate-400">7:00 PM</span><span>Opening ceremony and sponsor intro</span></div>
+            <div class="flex gap-4"><span class="w-24 text-slate-400">8:00 PM</span><span class="font-semibold text-bc-cyan">Hacking begins</span></div>
+            <div class="flex gap-4"><span class="w-24 text-slate-400">9:00 PM</span><span>Team formation and ideation session</span></div>
+          </div>
+        </div>
+
+        <div class="bg-bc-navy border border-slate-700 rounded-xl p-6">
+          <h3 class="text-2xl font-bold text-bc-cyan mb-5">Saturday, April 13</h3>
+          <div class="space-y-3 text-sm sm:text-base">
+            <div class="flex gap-4"><span class="w-24 text-slate-400">9:00 AM</span><span>Breakfast</span></div>
+            <div class="flex gap-4"><span class="w-24 text-slate-400">10:00 AM</span><span>Workshops and mentor office hours</span></div>
+            <div class="flex gap-4"><span class="w-24 text-slate-400">12:00 PM</span><span>Lunch</span></div>
+            <div class="flex gap-4"><span class="w-24 text-slate-400">2:00 PM</span><span>Track check-ins and sponsor challenges</span></div>
+            <div class="flex gap-4"><span class="w-24 text-slate-400">6:00 PM</span><span>Dinner</span></div>
+            <div class="flex gap-4"><span class="w-24 text-slate-400">12:00 AM</span><span>Midnight snacks</span></div>
+          </div>
+        </div>
+
+        <div class="bg-bc-navy border border-slate-700 rounded-xl p-6">
+          <h3 class="text-2xl font-bold text-bc-cyan mb-5">Sunday, April 14</h3>
+          <div class="space-y-3 text-sm sm:text-base">
+            <div class="flex gap-4"><span class="w-24 text-slate-400">9:00 AM</span><span>Breakfast</span></div>
+            <div class="flex gap-4"><span class="w-24 text-slate-400">12:00 PM</span><span>Lunch</span></div>
+            <div class="flex gap-4"><span class="w-24 text-slate-400">2:00 PM</span><span class="font-semibold text-bc-cyan">Project submissions close</span></div>
+            <div class="flex gap-4"><span class="w-24 text-slate-400">2:30 PM</span><span>Project expo and judging</span></div>
+            <div class="flex gap-4"><span class="w-24 text-slate-400">4:00 PM</span><span>Awards and closing ceremony</span></div>
+            <div class="flex gap-4"><span class="w-24 text-slate-400">5:00 PM</span><span>Event ends</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="signup" class="py-20 bg-bc-navy">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Register for BC Hackathon 2026</span></h2>
+      <p class="text-center text-slate-400 mb-10">Spots are limited. Registration is free for accepted participants.</p>
+
+      <form id="signup-form" class="bg-bc-dark p-6 sm:p-8 rounded-2xl border border-slate-700" novalidate>
+        <div class="mb-5">
+          <label for="name" class="block text-sm font-semibold mb-2">Full Name *</label>
+          <input id="name" name="name" type="text" required class="w-full px-4 py-3 bg-bc-navy border border-slate-700 rounded-lg focus:outline-none focus:border-bc-cyan" placeholder="Your full name">
+          <p class="text-red-400 text-sm mt-1 hidden" data-error-for="name">Please enter your full name.</p>
+        </div>
+
+        <div class="mb-5">
+          <label for="email" class="block text-sm font-semibold mb-2">Email *</label>
+          <input id="email" name="email" type="email" required class="w-full px-4 py-3 bg-bc-navy border border-slate-700 rounded-lg focus:outline-none focus:border-bc-cyan" placeholder="you@school.edu">
+          <p class="text-red-400 text-sm mt-1 hidden" data-error-for="email">Please enter a valid email address.</p>
+        </div>
+
+        <div class="mb-5">
+          <label for="university" class="block text-sm font-semibold mb-2">University/School *</label>
+          <input id="university" name="university" type="text" required class="w-full px-4 py-3 bg-bc-navy border border-slate-700 rounded-lg focus:outline-none focus:border-bc-cyan" placeholder="California State University, Bakersfield">
+          <p class="text-red-400 text-sm mt-1 hidden" data-error-for="university">Please enter your university or school.</p>
+        </div>
+
+        <div class="mb-5">
+          <label for="year" class="block text-sm font-semibold mb-2">Year in School *</label>
+          <select id="year" name="year" required class="w-full px-4 py-3 bg-bc-navy border border-slate-700 rounded-lg focus:outline-none focus:border-bc-cyan">
+            <option value="">Select...</option>
+            <option value="freshman">Freshman</option>
+            <option value="sophomore">Sophomore</option>
+            <option value="junior">Junior</option>
+            <option value="senior">Senior</option>
+            <option value="graduate">Graduate</option>
+            <option value="other">Other</option>
+          </select>
+          <p class="text-red-400 text-sm mt-1 hidden" data-error-for="year">Please select your year in school.</p>
+        </div>
+
+        <div class="mb-5">
+          <label for="major" class="block text-sm font-semibold mb-2">Major/Field of Study</label>
+          <input id="major" name="major" type="text" class="w-full px-4 py-3 bg-bc-navy border border-slate-700 rounded-lg focus:outline-none focus:border-bc-cyan" placeholder="Computer Science">
+        </div>
+
+        <div class="mb-5">
+          <label for="dietary" class="block text-sm font-semibold mb-2">Dietary Restrictions</label>
+          <textarea id="dietary" name="dietary" rows="3" class="w-full px-4 py-3 bg-bc-navy border border-slate-700 rounded-lg focus:outline-none focus:border-bc-cyan" placeholder="Vegetarian, nut allergy, etc."></textarea>
+        </div>
+
+        <div class="mb-5">
+          <label for="tshirt" class="block text-sm font-semibold mb-2">T-Shirt Size *</label>
+          <select id="tshirt" name="tshirt" required class="w-full px-4 py-3 bg-bc-navy border border-slate-700 rounded-lg focus:outline-none focus:border-bc-cyan">
+            <option value="">Select...</option>
+            <option value="xs">XS</option>
+            <option value="s">S</option>
+            <option value="m">M</option>
+            <option value="l">L</option>
+            <option value="xl">XL</option>
+            <option value="xxl">XXL</option>
+          </select>
+          <p class="text-red-400 text-sm mt-1 hidden" data-error-for="tshirt">Please select a t-shirt size.</p>
+        </div>
+
+        <div class="mb-6">
+          <label class="flex items-start gap-3">
+            <input id="coc" name="coc" type="checkbox" required class="mt-1 w-5 h-5 rounded border-slate-700 bg-bc-navy text-bc-cyan">
+            <span class="text-sm text-slate-300">I agree to the <a href="#" class="text-bc-cyan hover:underline">Code of Conduct</a> and event terms. *</span>
+          </label>
+          <p class="text-red-400 text-sm mt-1 hidden" data-error-for="coc">You must agree to continue.</p>
+        </div>
+
+        <button type="submit" class="w-full bg-gradient-to-r from-bc-cyan to-bc-blue text-white px-8 py-4 rounded-lg font-bold text-lg hover:opacity-90 transition disabled:opacity-60 disabled:cursor-not-allowed">Register for BC Hackathon</button>
+
+        <div id="form-message" class="mt-4 hidden">
+          <div id="success-message" class="hidden bg-green-500/10 border border-green-500 text-green-300 px-4 py-3 rounded-lg">Registration successful. Check your email for updates.</div>
+          <div id="error-message" class="hidden bg-red-500/10 border border-red-500 text-red-300 px-4 py-3 rounded-lg">Submission failed. Please try again.</div>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <footer class="border-t border-slate-800 bg-bc-dark py-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between">
+      <div>
+        <div class="font-bold text-lg">BC Hackathon 2026</div>
+        <div class="text-sm text-slate-400">Bakersfield, California • April 12-14, 2026</div>
+      </div>
+      <div class="text-sm text-slate-400">Contact: <a class="text-bc-cyan hover:underline" href="mailto:hello@bchackathon.ca">hello@bchackathon.ca</a> • Sponsors: <a class="text-bc-cyan hover:underline" href="mailto:sponsors@bchackathon.ca">sponsors@bchackathon.ca</a></div>
+    </div>
+  </footer>
+
+  <script>
+    const form = document.getElementById("signup-form");
+    const messageWrap = document.getElementById("form-message");
+    const successMessage = document.getElementById("success-message");
+    const errorMessage = document.getElementById("error-message");
+
+    function showFieldError(field, show) {
+      const el = document.querySelector(`[data-error-for="${field}"]`);
+      if (!el) return;
+      el.classList.toggle("hidden", !show);
+    }
+
+    function validateForm() {
+      let valid = true;
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      const requiredTextFields = ["name", "university", "year", "tshirt"];
+      for (const field of requiredTextFields) {
+        const value = form[field].value.trim();
+        const isValid = value.length > 0;
+        showFieldError(field, !isValid);
+        if (!isValid) valid = false;
+      }
+
+      const emailValid = emailPattern.test(form.email.value.trim());
+      showFieldError("email", !emailValid);
+      if (!emailValid) valid = false;
+
+      const cocValid = form.coc.checked;
+      showFieldError("coc", !cocValid);
+      if (!cocValid) valid = false;
+
+      return valid;
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      successMessage.classList.add("hidden");
+      errorMessage.classList.add("hidden");
+      messageWrap.classList.add("hidden");
+
+      if (!validateForm()) {
+        messageWrap.classList.remove("hidden");
+        errorMessage.textContent = "Please fix the highlighted fields and try again.";
+        errorMessage.classList.remove("hidden");
+        return;
+      }
+
+      const button = form.querySelector('button[type="submit"]');
+      button.disabled = true;
+      const originalLabel = button.textContent;
+      button.textContent = "Submitting...";
+
+      const payload = {
+        name: form.name.value.trim(),
+        email: form.email.value.trim(),
+        university: form.university.value.trim(),
+        year: form.year.value,
+        major: form.major.value.trim(),
+        dietary: form.dietary.value.trim(),
+        tshirt: form.tshirt.value,
+        coc: form.coc.checked,
+        timestamp: new Date().toISOString()
+      };
+
+      try {
+        const response = await fetch("/api/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          throw new Error("Request failed");
+        }
+
+        form.reset();
+        messageWrap.classList.remove("hidden");
+        successMessage.classList.remove("hidden");
+      } catch (error) {
+        console.error("Registration error:", error);
+        messageWrap.classList.remove("hidden");
+        errorMessage.textContent = "Something went wrong while submitting your registration.";
+        errorMessage.classList.remove("hidden");
+      } finally {
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }
+    });
+  </script>
+</body>
+</html>

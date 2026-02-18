@@ -4,7 +4,7 @@ Professional landing page for Hack the Valley 2026, a 300-student innovation eve
 
 ## Event Details
 
-- **Date:** April 12-14, 2026
+- **Date:** April 12, 2026
 - **Location:** Bakersfield, California
 - **Students:** 300 participants
 - **Focus:** Build, Create, Innovate

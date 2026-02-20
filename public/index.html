@@ -164,28 +164,32 @@
   <section id="sponsorship" class="py-20 bg-bc-dark">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Sponsorship Opportunities</span></h2>
-      <p class="text-center text-slate-400 mb-12 max-w-3xl mx-auto">Partner with Hack the Valley to support the next generation of innovators and connect with talented students in the Central Valley.</p>
+      <p class="text-center text-slate-400 mb-12 max-w-3xl mx-auto">Partner with Hack the Valley to support the next generation of innovators and connect with 200+ talented developers in the Central Valley.</p>
       
       <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
         <div class="bg-bc-navy p-6 rounded-xl border border-amber-700/50 card-hover">
           <div class="text-amber-600 font-black text-2xl mb-2">Bronze</div>
           <div class="text-3xl font-bold mb-4">$500</div>
+          <div class="text-xs text-slate-500 mb-3">Limited to 8 sponsors</div>
           <ul class="space-y-2 text-sm text-slate-300">
-            <li>• Logo on website</li>
+            <li>• Small logo on website (200px)</li>
             <li>• Social media recognition</li>
             <li>• Event day signage</li>
             <li>• Swag table presence</li>
+            <li>• Resume access post-event</li>
           </ul>
         </div>
         
         <div class="bg-bc-navy p-6 rounded-xl border border-slate-400/50 card-hover">
           <div class="text-slate-300 font-black text-2xl mb-2">Silver</div>
           <div class="text-3xl font-bold mb-4">$1,000</div>
+          <div class="text-xs text-slate-500 mb-3">Limited to 5 sponsors</div>
           <ul class="space-y-2 text-sm text-slate-300">
             <li>• All Bronze benefits</li>
-            <li>• Prominent logo placement</li>
+            <li>• Medium logo placement (300px)</li>
             <li>• Recruiting table access</li>
-            <li>• 5-minute speaking slot</li>
+            <li>• Workshop or lightning talk slot</li>
+            <li>• Dedicated social media post</li>
             <li>• Judge participation</li>
           </ul>
         </div>
@@ -193,23 +197,27 @@
         <div class="bg-bc-navy p-6 rounded-xl border border-yellow-500/50 card-hover">
           <div class="text-yellow-500 font-black text-2xl mb-2">Gold</div>
           <div class="text-3xl font-bold mb-4">$2,000</div>
+          <div class="text-xs text-slate-500 mb-3">Limited to 3 sponsors</div>
           <ul class="space-y-2 text-sm text-slate-300">
             <li>• All Silver benefits</li>
-            <li>• Premium logo placement</li>
+            <li>• Large logo placement (400px)</li>
             <li>• Workshop hosting opportunity</li>
             <li>• Early resume access</li>
+            <li>• Branded meal or snack</li>
             <li>• Branded swag distribution</li>
           </ul>
         </div>
         
         <div class="bg-gradient-to-br from-bc-blue/30 to-bc-cyan/30 p-6 rounded-xl border border-bc-cyan card-hover">
-          <div class="text-bc-cyan font-black text-2xl mb-2">Community Partner</div>
+          <div class="text-bc-cyan font-black text-2xl mb-2">Title Sponsor</div>
           <div class="text-3xl font-bold mb-4">$3,000</div>
+          <div class="text-xs text-slate-500 mb-3">Exclusive opportunity</div>
           <ul class="space-y-2 text-sm text-slate-300">
             <li>• All Gold benefits</li>
-            <li>• Title sponsor recognition</li>
+            <li>• Exclusive title sponsor recognition</li>
+            <li>• Premium logo placement (500px)</li>
             <li>• Opening ceremony feature</li>
-            <li>• Custom sponsored track</li>
+            <li>• Custom sponsored track with category exclusivity</li>
             <li>• VIP judge panel seat</li>
             <li>• Post-event highlights reel</li>
           </ul>
@@ -219,7 +227,7 @@
       <div class="bg-bc-navy p-8 rounded-2xl border border-slate-700 text-center">
         <h3 class="text-2xl font-bold mb-3">Interested in Sponsoring?</h3>
         <p class="text-slate-300 mb-6 max-w-2xl mx-auto">Help us create an unforgettable experience for student innovators while connecting with top talent from universities across the Central Valley.</p>
-        <a href="https://paynepathway.com" target="_blank" rel="noopener noreferrer" class="inline-block bg-bc-cyan text-bc-dark px-8 py-3 rounded-lg font-bold hover:bg-cyan-400 transition">Learn More About Sponsorship</a>
+        <a href="tel:+16613044733" class="inline-block bg-bc-cyan text-bc-dark px-8 py-3 rounded-lg font-bold hover:bg-cyan-400 transition">Call (661) 304-4733</a>
       </div>
     </div>
   </section>
@@ -334,6 +342,17 @@
         </div>
 
         <div class="mb-5">
+          <label for="experience" class="block text-sm font-semibold mb-2">Coding Experience Level *</label>
+          <select id="experience" name="experience" required class="w-full px-4 py-3 bg-bc-navy border border-slate-700 rounded-lg focus:outline-none focus:border-bc-cyan">
+            <option value="">Select...</option>
+            <option value="beginner">Beginner (Just getting started)</option>
+            <option value="intermediate">Intermediate (Built some projects)</option>
+            <option value="advanced">Advanced (Experienced developer)</option>
+          </select>
+          <p class="text-red-400 text-sm mt-1 hidden" data-error-for="experience">Please select your experience level.</p>
+        </div>
+
+        <div class="mb-5">
           <label for="dietary" class="block text-sm font-semibold mb-2">Dietary Restrictions</label>
           <textarea id="dietary" name="dietary" rows="3" class="w-full px-4 py-3 bg-bc-navy border border-slate-700 rounded-lg focus:outline-none focus:border-bc-cyan" placeholder="Vegetarian, nut allergy, etc."></textarea>
         </div>
@@ -405,7 +424,7 @@
       let valid = true;
       const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-      const requiredTextFields = ["name", "university", "year", "tshirt"];
+      const requiredTextFields = ["name", "university", "year", "experience", "tshirt"];
       for (const field of requiredTextFields) {
         const value = form[field].value.trim();
         const isValid = value.length > 0;
@@ -449,6 +468,7 @@
         university: form.university.value.trim(),
         year: form.year.value,
         major: form.major.value.trim(),
+        experience: form.experience.value,
         dietary: form.dietary.value.trim(),
         tshirt: form.tshirt.value,
         coc: form.coc.checked,

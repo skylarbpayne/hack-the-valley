@@ -2,7 +2,7 @@ export async function onRequestPost(context) {
   try {
     const data = await context.request.json();
 
-    const required = ["name", "email", "university", "year", "tshirt", "coc"];
+    const required = ["name", "email", "university", "year", "experience", "tshirt", "coc"];
     const missing = required.some((field) => !data[field]);
     if (missing) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
@@ -40,6 +40,7 @@ export async function onRequestPost(context) {
       <p><strong>University:</strong> ${safe(data.university)}</p>
       <p><strong>Year:</strong> ${safe(data.year)}</p>
       <p><strong>Major:</strong> ${safe(data.major)}</p>
+      <p><strong>Experience Level:</strong> ${safe(data.experience)}</p>
       <p><strong>Dietary:</strong> ${safe(data.dietary)}</p>
       <p><strong>T-Shirt:</strong> ${safe(data.tshirt)}</p>
       <p><strong>Agreed to CoC:</strong> ${data.coc ? "Yes" : "No"}</p>

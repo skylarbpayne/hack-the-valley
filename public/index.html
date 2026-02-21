@@ -365,43 +365,48 @@
   <section id="tracks" class="py-20 bg-bc-navy">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Challenge Tracks</span></h2>
-      <p class="text-center text-slate-400 mb-12 max-w-3xl mx-auto">Build in any track and pitch your best project for the $500 grand prize.</p>
-      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-        <article class="bg-bc-navy p-6 rounded-xl border border-slate-700 card-hover">
+      <p class="text-center text-slate-400 mb-12 max-w-3xl mx-auto">Build in any track and pitch your best project for the grand prize.</p>
+      
+      <!-- Grand Prize Hero Card -->
+      <div class="mb-16 relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-br from-bc-orange/30 via-bc-purple/20 to-bc-blue/30 blur-3xl"></div>
+        <div class="relative bg-gradient-to-br from-bc-blue/40 via-bc-purple/30 to-bc-orange/40 p-10 sm:p-16 rounded-3xl border-4 border-bc-orange shadow-2xl shadow-bc-orange/30">
+          <div class="absolute top-0 right-0 w-64 h-64 bg-bc-orange/10 rounded-full blur-3xl"></div>
+          <div class="absolute bottom-0 left-0 w-64 h-64 bg-bc-blue/10 rounded-full blur-3xl"></div>
+          <div class="relative text-center">
+            <div class="inline-block bg-bc-orange/20 text-bc-orange text-sm font-bold px-6 py-2 rounded-full mb-6 border-2 border-bc-orange/40">
+              🏆 GRAND PRIZE
+            </div>
+            <h3 class="text-5xl sm:text-6xl lg:text-7xl font-black mb-6 bg-gradient-to-r from-bc-orange via-yellow-400 to-bc-orange bg-clip-text text-transparent">
+              $500
+            </h3>
+            <p class="text-2xl sm:text-3xl font-bold text-white mb-4">Overall Winner</p>
+            <p class="text-lg sm:text-xl text-slate-200 max-w-2xl mx-auto">
+              Best overall project wins the top honor based on <span class="font-bold text-white">impact</span>, <span class="font-bold text-white">execution</span>, and <span class="font-bold text-white">innovation</span>.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Track Cards -->
+      <div class="grid md:grid-cols-3 gap-8">
+        <article class="bg-bc-dark p-6 rounded-xl border-2 border-slate-700 card-hover">
           <img src="/images/track-ai.png" alt="AI and machine learning track" class="w-full h-44 object-cover rounded-lg mb-4">
           <h3 class="text-xl font-bold mb-2">AI and Machine Learning</h3>
           <p class="text-slate-400 mb-3">Create intelligent products using models, data pipelines, and automation.</p>
           <p class="text-bc-cyan font-semibold">Open to all teams</p>
         </article>
-        <article class="bg-bc-navy p-6 rounded-xl border border-slate-700 card-hover">
-          <img src="/images/track-health.png" alt="Healthcare technology track" class="w-full h-44 object-cover rounded-lg mb-4">
-          <h3 class="text-xl font-bold mb-2">Healthcare Tech</h3>
-          <p class="text-slate-400 mb-3">Build tools that improve patient outcomes, access, and care delivery.</p>
-          <p class="text-bc-cyan font-semibold">Open to all teams</p>
-        </article>
-        <article class="bg-bc-navy p-6 rounded-xl border border-slate-700 card-hover">
-          <img src="/images/track-fintech.png" alt="Financial technology track" class="w-full h-44 object-cover rounded-lg mb-4">
-          <h3 class="text-xl font-bold mb-2">FinTech</h3>
-          <p class="text-slate-400 mb-3">Reimagine payments, budgeting, lending, and financial literacy products.</p>
-          <p class="text-bc-cyan font-semibold">Open to all teams</p>
-        </article>
-        <article class="bg-bc-navy p-6 rounded-xl border border-slate-700 card-hover">
+        <article class="bg-bc-dark p-6 rounded-xl border-2 border-slate-700 card-hover">
           <img src="/images/track-social.png" alt="Social impact track" class="w-full h-44 object-cover rounded-lg mb-4">
           <h3 class="text-xl font-bold mb-2">Social Impact</h3>
           <p class="text-slate-400 mb-3">Develop solutions that support communities and improve quality of life.</p>
           <p class="text-bc-cyan font-semibold">Open to all teams</p>
         </article>
-        <article class="bg-bc-navy p-6 rounded-xl border border-slate-700 card-hover md:col-span-2 lg:col-span-1">
-          <img src="/images/track-open.png" alt="Open innovation track" class="w-full h-44 object-cover rounded-lg mb-4">
-          <h3 class="text-xl font-bold mb-2">Open Innovation</h3>
-          <p class="text-slate-400 mb-3">Bring your boldest idea and ship a product with real-world potential.</p>
+        <article class="bg-bc-dark p-6 rounded-xl border-2 border-slate-700 card-hover">
+          <img src="/images/track-open.png" alt="Education track" class="w-full h-44 object-cover rounded-lg mb-4">
+          <h3 class="text-xl font-bold mb-2">Education</h3>
+          <p class="text-slate-400 mb-3">Build tools that enhance learning, accessibility, and educational outcomes.</p>
           <p class="text-bc-cyan font-semibold">Open to all teams</p>
-        </article>
-        <article class="bg-gradient-to-br from-bc-blue/20 to-bc-orange/20 p-6 rounded-xl border border-bc-blue/40 md:col-span-2 lg:col-span-2">
-          <h3 class="text-2xl font-extrabold mb-2">Grand Prize</h3>
-          <p class="text-slate-300 mb-3">Best overall project wins the top honor based on impact, execution, and innovation.</p>
-          <p class="text-3xl font-black text-bc-orange">$500 Overall Winner</p>
-          <p class="text-sm text-slate-400 mt-2">Winner selected based on impact, execution, and innovation.</p>
         </article>
       </div>
     </div>

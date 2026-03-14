@@ -1,0 +1,60 @@
+{
+  "stories": [
+    {
+      "name": "Vrban",
+      "year": 2014,
+      "event": "TechCrunch Disrupt",
+      "team": "Angel Say (Columbia)",
+      "outcome": "YC Company",
+      "outcomeIcon": "🚀",
+      "description": "Built at TechCrunch Disrupt, later became YC-backed Resolve",
+      "links": []
+    },
+    {
+      "name": "Tred",
+      "year": 2014,
+      "event": "LA Hacks",
+      "team": "UMD Students",
+      "outcome": "Job Offers",
+      "outcomeIcon": "💼",
+      "description": "Team received job offers from project exposure",
+      "links": []
+    },
+    {
+      "name": "AI Commentator",
+      "year": 2024,
+      "event": "LA Tech Week",
+      "team": "USC/Professional Team",
+      "outcome": "Considering Incorporation",
+      "outcomeIcon": "🏢",
+      "description": "AI-powered sports commentary tool",
+      "links": []
+    },
+    {
+      "name": "Talk To Sign",
+      "year": 2024,
+      "event": "LA Tech Week",
+      "team": "USC Students",
+      "outcome": "LA28 Olympics Track Winner",
+      "outcomeIcon": "🏆",
+      "description": "Sign language translation tool, considering incorporation",
+      "links": []
+    },
+    {
+      "name": "Our Green City",
+      "year": 2025,
+      "event": "Jewel City Hacks",
+      "team": "Glendale CC Students",
+      "outcome": "Internship Offers",
+      "outcomeIcon": "🎓",
+      "description": "Sustainability project that led to internship opportunities",
+      "links": []
+    }
+  ],
+  "pastEvents": [
+    "Hackathon by the Sea",
+    "Recyclathon (City of LA)",
+    "Vision Hack",
+    "Compton Tech Week"
+  ]
+}

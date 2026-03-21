@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Hack the Valley 2026 - Sponsorship</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    @page { size: letter; margin: 0; }
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: #ffffff;
+      color: #1e293b;
+      width: 8.5in;
+      height: 11in;
+      padding: 0.5in;
+      overflow: hidden;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 3px solid #06b6d4;
+    }
+    
+    .badge {
+      display: inline-block;
+      background: #06b6d4;
+      color: white;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      padding: 5px 14px;
+      border-radius: 100px;
+      margin-bottom: 10px;
+    }
+    
+    h1 {
+      font-size: 32px;
+      font-weight: 900;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+    
+    .subtitle {
+      color: #64748b;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    .tiers {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    
+    .tier {
+      background: #f8fafc;
+      border-radius: 12px;
+      padding: 16px;
+      border: 2px solid #e2e8f0;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .tier.gold {
+      border-color: #eab308;
+      background: #fefce8;
+    }
+    
+    .tier-header {
+      text-align: center;
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    
+    .tier.gold .tier-header { border-color: #fde047; }
+    
+    .tier-icon {
+      font-size: 24px;
+      margin-bottom: 4px;
+    }
+    
+    .tier-name {
+      font-size: 15px;
+      font-weight: 800;
+    }
+    
+    .tier-name.community { color: #16a34a; }
+    .tier-name.bronze { color: #b45309; }
+    .tier-name.silver { color: #475569; }
+    .tier-name.gold { color: #ca8a04; }
+    
+    .tier-price {
+      font-size: 24px;
+      font-weight: 900;
+      color: #0f172a;
+      margin: 4px 0;
+    }
+    
+    .tier-spots {
+      font-size: 9px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    
+    .tier-impact {
+      background: linear-gradient(135deg, #06b6d4 0%, #2563eb 100%);
+      color: white;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 8px 10px;
+      border-radius: 8px;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    
+    .tier-benefits {
+      list-style: none;
+      font-size: 11px;
+      color: #334155;
+      flex-grow: 1;
+    }
+    
+    .tier-benefits li {
+      padding: 5px 0;
+      display: flex;
+      align-items: flex-start;
+      gap: 5px;
+      line-height: 1.3;
+    }
+    
+    .tier-benefits .check {
+      color: #06b6d4;
+      font-weight: bold;
+      flex-shrink: 0;
+    }
+    
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    
+    .stat-box {
+      background: #f1f5f9;
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+    }
+    
+    .stat-number {
+      font-size: 28px;
+      font-weight: 900;
+      color: #0891b2;
+    }
+    
+    .stat-label {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+    
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 16px;
+      border-top: 2px solid #e2e8f0;
+    }
+    
+    .contact h3 {
+      font-size: 12px;
+      color: #0891b2;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    
+    .contact p {
+      font-size: 12px;
+      color: #475569;
+    }
+    
+    .logos {
+      font-size: 10px;
+      color: #94a3b8;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="badge">Bakersfield, CA · 2026</div>
+    <h1>Hack the Valley</h1>
+    <p class="subtitle">50 students · 1 day · $500 grand prize</p>
+  </div>
+  
+  <div class="tiers">
+    <div class="tier">
+      <div class="tier-header">
+        <div class="tier-icon">💚</div>
+        <div class="tier-name community">Community</div>
+        <div class="tier-price">$100</div>
+        <div class="tier-spots">Unlimited</div>
+      </div>
+      <div class="tier-impact">Covers one student's full day</div>
+      <ul class="tier-benefits">
+        <li><span class="check">✓</span> Name on supporters wall</li>
+        <li><span class="check">✓</span> Social media shoutout</li>
+        <li><span class="check">✓</span> VIP event access</li>
+      </ul>
+    </div>
+    
+    <div class="tier">
+      <div class="tier-header">
+        <div class="tier-icon">🥉</div>
+        <div class="tier-name bronze">Bronze</div>
+        <div class="tier-price">$250</div>
+        <div class="tier-spots">10 spots</div>
+      </div>
+      <div class="tier-impact">Funds a hands-on workshop</div>
+      <ul class="tier-benefits">
+        <li><span class="check">✓</span> Logo on website</li>
+        <li><span class="check">✓</span> Social media feature</li>
+        <li><span class="check">✓</span> Event signage</li>
+        <li><span class="check">✓</span> Swag table</li>
+      </ul>
+    </div>
+    
+    <div class="tier">
+      <div class="tier-header">
+        <div class="tier-icon">🥈</div>
+        <div class="tier-name silver">Silver</div>
+        <div class="tier-price">$500</div>
+        <div class="tier-spots">5 spots</div>
+      </div>
+      <div class="tier-impact">Feeds 15 students lunch</div>
+      <ul class="tier-benefits">
+        <li><span class="check">✓</span> All Bronze benefits</li>
+        <li><span class="check">✓</span> Recruiting table</li>
+        <li><span class="check">✓</span> Dedicated social post</li>
+        <li><span class="check">✓</span> Judge seat</li>
+      </ul>
+    </div>
+    
+    <div class="tier gold">
+      <div class="tier-header">
+        <div class="tier-icon">🥇</div>
+        <div class="tier-name gold">Gold</div>
+        <div class="tier-price">$1,000</div>
+        <div class="tier-spots">Only 3 spots</div>
+      </div>
+      <div class="tier-impact">Funds the $500 grand prize</div>
+      <ul class="tier-benefits">
+        <li><span class="check">✓</span> All Silver benefits</li>
+        <li><span class="check">✓</span> Host a workshop</li>
+        <li><span class="check">✓</span> Opening remarks</li>
+        <li><span class="check">✓</span> Branded meal</li>
+        <li><span class="check">✓</span> Swag in every bag</li>
+      </ul>
+    </div>
+  </div>
+  
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="stat-number">50+</div>
+      <div class="stat-label">Students</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-number">8 hrs</div>
+      <div class="stat-label">With your brand</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-number">10+</div>
+      <div class="stat-label">Ways to connect</div>
+    </div>
+  </div>
+  
+  <div class="footer">
+    <div class="contact">
+      <h3>Want to sponsor?</h3>
+      <p>contact@hackthevalley.org</p>
+    </div>
+    <div class="logos">
+      hackthevalley.org
+    </div>
+  </div>
+</body>
+</html>

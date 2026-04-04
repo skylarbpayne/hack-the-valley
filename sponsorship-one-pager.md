@@ -1,6 +1,6 @@
 # Hack the Valley 2026 — Sponsorship One-Pager
 
-**50 students • 1 day • Bakersfield, CA**
+**50+ students • CSUB Student Union MPR • May 30, 2026**
 
 ---
 
@@ -69,9 +69,10 @@ Every dollar goes directly to student experience: food, prizes, supplies, and sp
 
 ## The Event
 
-- **When:** TBD (1-day, 9 AM – 5 PM)
-- **Where:** Bakersfield, CA
-- **Format:** 8-hour sprint hackathon
+- **When:** Friday, May 30, 2026 (7 AM – 7 PM)
+- **Where:** CSUB Student Union Multipurpose Room (80 capacity)
+- **AV:** Podium, microphones, projector included
+- **Format:** 12-hour hackathon
 - **Prize:** $500 grand prize
 - **Tracks:** AI/ML, Social Impact, Education
 

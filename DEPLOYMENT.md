@@ -6,7 +6,7 @@
 1. ✅ Removed all sponsor sections and references
 2. ✅ Deleted sponsors.html page  
 3. ✅ Updated navigation (removed sponsor links)
-4. ✅ Confirmed 1-day event format (9 AM - 5 PM, April 12, 2026)
+4. ✅ Confirmed 1-day event format (May 30, 2026; 7:30 AM check-in; 8:30 AM - 6:00 PM program)
 5. ✅ Confirmed $500 grand prize (appropriate for self-funded event)
 6. ✅ Form backend verified working (Cloudflare Workers + MailChannels)
 
@@ -24,7 +24,7 @@
 
 1. **Push to GitHub:**
    ```bash
-   cd ~/palmer/workspace/hack-the-valley
+   cd /Users/skylarpayne/chiefs/palmer-workspace/tmp/hack-the-valley
    git push origin main
    ```
 
@@ -33,7 +33,7 @@
 ### Option 2: Direct Deploy (wrangler CLI)
 
 ```bash
-cd ~/palmer/workspace/hack-the-valley
+cd /Users/skylarpayne/chiefs/palmer-workspace/tmp/hack-the-valley
 npx wrangler pages deploy ./public --project-name hack-the-valley
 ```
 

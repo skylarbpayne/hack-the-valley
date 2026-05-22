@@ -1,15 +1,15 @@
 # Hack the Valley 2026 - Website
 
-Professional landing page for Hack the Valley 2026, a self-funded, 1-day innovation event in Bakersfield, CA.
+Professional landing page for Hack the Valley 2026, a 1-day student innovation event in Bakersfield, CA.
 
 ## Event Details
 
-- **Date:** April 12, 2026 (1-day event: 9 AM - 5 PM)
+- **Date:** May 30, 2026
 - **Location:** Bakersfield, California
-- **Students:** 300 participants
-- **Format:** 8-hour sprint with mentorship and workshops
+- **Students:** 50+ participants
+- **Format:** 7:30 AM check-in; 8:30 AM - 6:00 PM program with mentorship and workshops
 - **Grand Prize:** $500
-- **Funding:** Self-funded (no sponsors)
+- **Funding:** Sponsor-supported / community-supported
 - **Focus:** Build, Create, Innovate
 
 ## Development
@@ -32,9 +32,7 @@ npx wrangler pages deploy ./public
 
 ## Content Sources
 
-Event details and sponsorship information sourced from:
-- `~/palmer/workspace/BC-Hackathon-Sponsorship-Package.md`
-- `~/palmer/workspace/BC-Hackathon-COMPLETE-PACKAGE-INDEX.md`
+Event details and sponsorship information are tracked in Skyvault under `1_Projects/Hack the Valley.md` and the current run-of-show Google Doc.
 
 ## Architecture
 

@@ -1,12 +1,18 @@
 import {
+  corsHeaders,
   errorResponse,
   insertSubmission,
   isAuthorized,
   jsonResponse,
   listSubmissions,
+  optionsResponse,
   submissionsToCsv,
   validateSubmission,
 } from '../_shared/submissions.js';
+
+export function onRequestOptions() {
+  return optionsResponse();
+}
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -55,6 +61,7 @@ export async function onRequestGet(context) {
     if (wantsCsv) {
       return new Response(submissionsToCsv(submissions), {
         headers: {
+          ...corsHeaders(),
           'content-type': 'text/csv; charset=utf-8',
           'content-disposition': 'attachment; filename="hack-the-valley-submissions.csv"',
           'cache-control': 'no-store',

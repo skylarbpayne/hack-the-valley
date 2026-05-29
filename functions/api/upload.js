@@ -2,8 +2,13 @@ import {
   buildObjectKey,
   errorResponse,
   jsonResponse,
+  optionsResponse,
   validateUploadRequest,
 } from '../_shared/submissions.js';
+
+export function onRequestOptions() {
+  return optionsResponse();
+}
 
 export async function onRequestPost(context) {
   const { request, env } = context;

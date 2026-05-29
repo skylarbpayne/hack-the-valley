@@ -4,6 +4,11 @@ const submitButton = document.getElementById('submit-button');
 const uploadList = document.getElementById('upload-list');
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+const API_ORIGIN = 'https://hack-the-valley.pages.dev';
+
+function apiUrl(path) {
+  return window.location.hostname.endsWith('.pages.dev') ? path : `${API_ORIGIN}${path}`;
+}
 
 function value(id) {
   return document.getElementById(id).value.trim();
@@ -70,7 +75,7 @@ async function uploadFile(file, kind) {
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `/api/upload?${params.toString()}`);
+    xhr.open('POST', apiUrl(`/api/upload?${params.toString()}`));
     xhr.setRequestHeader('content-type', file.type || 'application/octet-stream');
     xhr.upload.addEventListener('progress', (event) => {
       if (event.lengthComputable) setProgress(row, (event.loaded / event.total) * 100, 'Uploading');
@@ -128,7 +133,7 @@ form.addEventListener('submit', async (event) => {
       uploads,
     };
 
-    const response = await fetch('/api/submissions', {
+    const response = await fetch(apiUrl('/api/submissions'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),

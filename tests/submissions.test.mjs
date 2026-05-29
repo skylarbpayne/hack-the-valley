@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import {
   SUBMISSION_TRACKS,
+  corsHeaders,
   csvEscape,
   isAuthorized,
   jsonResponse,
@@ -98,6 +99,29 @@ test('public surfaces use extensionless canonical submit path', () => {
   assert.match(adminHtml, /href="\/submit"/);
   assert.doesNotMatch(indexHtml, /href="\/submit\.html"/);
   assert.doesNotMatch(adminHtml, /href="\/submit\.html"/);
+});
+
+test('custom-domain scripts send APIs to the Pages functions origin', () => {
+  const submitJs = readFileSync(new URL('../public/submissions.js', import.meta.url), 'utf8');
+  const adminJs = readFileSync(new URL('../public/admin-submissions.js', import.meta.url), 'utf8');
+  for (const js of [submitJs, adminJs]) {
+    assert.match(js, /API_ORIGIN\s*=\s*'https:\/\/hack-the-valley\.pages\.dev'/);
+  }
+  assert.match(submitJs, /apiUrl\(`\/api\/upload/);
+  assert.match(submitJs, /apiUrl\('\/api\/submissions'\)/);
+  assert.match(adminJs, /apiUrl\('\/api\/submissions'\)/);
+  assert.match(adminJs, /apiUrl\(`\/api\/media/);
+  assert.doesNotMatch(submitJs, /xhr\.open\('POST', `\/api\/upload/);
+  assert.doesNotMatch(submitJs, /fetch\('\/api\/submissions'/);
+  assert.doesNotMatch(adminJs, /fetch\('\/api\/submissions'/);
+});
+
+test('CORS headers allow the custom domain to call Pages functions', () => {
+  const headers = corsHeaders();
+  assert.equal(headers['access-control-allow-origin'], '*');
+  assert.match(headers['access-control-allow-methods'], /POST/);
+  assert.match(headers['access-control-allow-methods'], /OPTIONS/);
+  assert.match(headers['access-control-allow-headers'], /content-type/);
 });
 
 test('csvEscape safely quotes commas, quotes, and newlines', () => {

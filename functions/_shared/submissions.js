@@ -11,8 +11,21 @@ const REQUIRED_FIELDS = [
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
+export function corsHeaders() {
+  return {
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'GET, POST, OPTIONS',
+    'access-control-allow-headers': 'authorization, content-type, x-admin-token, x-filename, x-project-title, x-team-name, x-upload-kind',
+    'access-control-max-age': '86400',
+  };
+}
+
+export function optionsResponse() {
+  return new Response(null, { status: 204, headers: corsHeaders() });
+}
+
 export function jsonResponse(body, init = {}) {
-  const headers = new Headers(init.headers || {});
+  const headers = new Headers({ ...corsHeaders(), ...(init.headers || {}) });
   headers.set('content-type', 'application/json; charset=utf-8');
   headers.set('cache-control', 'no-store');
   return new Response(JSON.stringify(body), { ...init, headers });

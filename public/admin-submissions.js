@@ -5,6 +5,11 @@ const statusEl = document.getElementById('status');
 const submissionsEl = document.getElementById('submissions');
 
 tokenInput.value = localStorage.getItem('htvSubmissionAdminToken') || '';
+const API_ORIGIN = 'https://hack-the-valley.pages.dev';
+
+function apiUrl(path) {
+  return window.location.hostname.endsWith('.pages.dev') ? path : `${API_ORIGIN}${path}`;
+}
 
 function escapeHtml(text) {
   return String(text ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -15,7 +20,7 @@ function token() {
 }
 
 function mediaUrl(key) {
-  return `/api/media?key=${encodeURIComponent(key)}&token=${encodeURIComponent(token())}`;
+  return apiUrl(`/api/media?key=${encodeURIComponent(key)}&token=${encodeURIComponent(token())}`);
 }
 
 function render(submissions) {
@@ -74,11 +79,11 @@ async function load() {
   loadButton.textContent = 'Loading...';
   statusEl.textContent = '';
   try {
-    const response = await fetch('/api/submissions', { headers: { 'x-admin-token': token() } });
+    const response = await fetch(apiUrl('/api/submissions'), { headers: { 'x-admin-token': token() } });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
     render(data.submissions || []);
-    csvLink.href = `/api/submissions?format=csv&token=${encodeURIComponent(token())}`;
+    csvLink.href = apiUrl(`/api/submissions?format=csv&token=${encodeURIComponent(token())}`);
     csvLink.classList.remove('hidden');
     statusEl.textContent = `${data.submissions.length} submission(s) loaded.`;
   } catch (error) {

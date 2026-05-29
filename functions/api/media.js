@@ -1,4 +1,8 @@
-import { errorResponse, isAuthorized } from '../_shared/submissions.js';
+import { corsHeaders, errorResponse, isAuthorized, optionsResponse } from '../_shared/submissions.js';
+
+export function onRequestOptions() {
+  return optionsResponse();
+}
 
 export async function onRequestGet(context) {
   const { request, env } = context;
@@ -20,7 +24,7 @@ export async function onRequestGet(context) {
     return errorResponse('Media file not found.', 404);
   }
 
-  const headers = new Headers();
+  const headers = new Headers(corsHeaders());
   object.writeHttpMetadata(headers);
   headers.set('etag', object.httpEtag);
   headers.set('cache-control', 'private, no-store');

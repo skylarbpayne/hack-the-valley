@@ -2,6 +2,9 @@ name = "hack-the-valley"
 compatibility_date = "2026-02-17"
 pages_build_output_dir = "./public"
 
+[assets]
+directory = "./public"
+
 [vars]
 MAX_UPLOAD_MB = "100"
 

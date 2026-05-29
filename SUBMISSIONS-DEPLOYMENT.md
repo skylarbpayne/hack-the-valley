@@ -76,13 +76,16 @@ npm install
 The setup script will:
 
 1. verify Cloudflare auth
-2. create/ensure the R2 bucket `hack-the-valley-submission-media`
-3. create a D1 database `hack-the-valley-submissions`
-4. write the D1/R2 bindings into `wrangler.toml`
-5. apply `schema.sql`
-6. generate and set `SUBMISSIONS_ADMIN_TOKEN`
-7. deploy the Pages site
-8. print the participant/admin URLs and token
+2. create/ensure the Pages project `hack-the-valley`
+3. create/ensure the R2 bucket `hack-the-valley-submission-media`
+4. create or reuse the D1 database `hack-the-valley-submissions`
+5. write the D1/R2 bindings into `wrangler.toml`
+6. apply `schema.sql`
+7. generate and set `SUBMISSIONS_ADMIN_TOKEN`
+8. deploy the Pages site to `main` by default
+9. print the participant/admin URLs and token
+
+If you want a preview-only deploy, run `DEPLOY_BRANCH=<branch-name> ./scripts/setup-submissions-cloudflare.sh`.
 
 If the D1 database already exists and Wrangler does not print its ID, rerun with:
 
@@ -134,7 +137,7 @@ npx wrangler pages secret put SUBMISSIONS_ADMIN_TOKEN --project-name hack-the-va
 Deploy:
 
 ```bash
-npx wrangler pages deploy ./public --project-name hack-the-valley
+npx wrangler pages deploy --project-name hack-the-valley --branch main
 ```
 
 ## Admin usage

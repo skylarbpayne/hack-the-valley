@@ -49,7 +49,9 @@ Setup/deploy instructions live in [`SUBMISSIONS-DEPLOYMENT.md`](SUBMISSIONS-DEPL
 
 ```bash
 npm install
-npx wrangler login
+cp .cloudflare.env.example .cloudflare.env
+# fill CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN locally; do not commit it
+./scripts/check-cloudflare-auth.sh
 ./scripts/setup-submissions-cloudflare.sh
 ```
 

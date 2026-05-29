@@ -9,6 +9,10 @@ function value(id) {
   return document.getElementById(id).value.trim();
 }
 
+function selectedTracks() {
+  return [...document.querySelectorAll('input[name="tracks"]:checked')].map((input) => input.value);
+}
+
 function showStatus(type, message) {
   statusBox.className = `mb-6 rounded-xl border p-4 ${type === 'error' ? 'bg-red-950/60 border-red-700 text-red-100' : 'bg-green-950/60 border-green-700 text-green-100'}`;
   statusBox.innerHTML = message;
@@ -107,11 +111,13 @@ form.addEventListener('submit', async (event) => {
     for (const image of images) uploads.push(await uploadFile(image, 'image'));
 
     submitButton.textContent = 'Saving submission...';
+    const tracks = selectedTracks();
     const payload = {
       teamName: value('teamName'),
       projectTitle: value('projectTitle'),
       contactEmail: value('contactEmail'),
-      track: value('track'),
+      tracks,
+      track: tracks.join(' | '),
       members: value('members'),
       description: value('description'),
       repoLink: value('repoLink'),

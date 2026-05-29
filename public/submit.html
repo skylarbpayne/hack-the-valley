@@ -50,7 +50,15 @@
           <label><span class="label">Team name *</span><input class="field" id="teamName" required placeholder="Central Valley Builders"></label>
           <label><span class="label">Project title *</span><input class="field" id="projectTitle" required placeholder="Farm Help AI"></label>
           <label><span class="label">Contact email *</span><input class="field" id="contactEmail" type="email" required placeholder="student@example.edu"></label>
-          <label><span class="label">Track *</span><select class="field" id="track" required><option value="">Choose a track</option><option>AI for Good</option><option>Health</option><option>FinTech</option><option>Social Impact</option><option>Open Track</option></select></label>
+          <div class="md:col-span-2">
+            <span class="label">Track(s)</span>
+            <div class="grid sm:grid-cols-3 gap-3" role="group" aria-label="Project tracks">
+              <label class="flex items-center gap-3 rounded-xl border border-slate-700 bg-bc-dark px-4 py-3 text-slate-100"><input class="h-5 w-5 accent-bc-cyan" type="checkbox" name="tracks" value="Education">Education</label>
+              <label class="flex items-center gap-3 rounded-xl border border-slate-700 bg-bc-dark px-4 py-3 text-slate-100"><input class="h-5 w-5 accent-bc-cyan" type="checkbox" name="tracks" value="Social Impact">Social Impact</label>
+              <label class="flex items-center gap-3 rounded-xl border border-slate-700 bg-bc-dark px-4 py-3 text-slate-100"><input class="h-5 w-5 accent-bc-cyan" type="checkbox" name="tracks" value="AI">AI</label>
+            </div>
+            <span class="hint">Optional. Select all that apply, or leave blank if the project does not fit a track.</span>
+          </div>
         </div>
         <label class="block mt-5"><span class="label">Team members *</span><textarea class="field" id="members" required rows="3" placeholder="Names + emails if possible"></textarea></label>
         <label class="block mt-5"><span class="label">Short description *</span><textarea class="field" id="description" required rows="4" maxlength="1600" placeholder="What did you build, who is it for, and what problem does it solve?"></textarea></label>

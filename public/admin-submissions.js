@@ -40,13 +40,15 @@ function render(submissions) {
       ['Media fallback', payload.mediaLink],
     ].filter(([, href]) => href).map(([label, href]) => `<a class="text-cyan-300 hover:text-cyan-200" target="_blank" rel="noopener" href="${escapeHtml(href)}">${label}</a>`).join(' · ');
 
+    const trackText = submission.track || (submission.tracks || []).join(' | ') || 'No track selected';
+
     return `
       <article class="rounded-2xl bg-slate-900 border border-slate-800 p-6">
         <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <div>
             <div class="text-sm text-slate-500">${escapeHtml(submission.createdAt)} · ${escapeHtml(submission.id)}</div>
             <h2 class="text-2xl font-black mt-1">${escapeHtml(submission.projectTitle)}</h2>
-            <p class="text-slate-300 mt-1"><strong>${escapeHtml(submission.teamName)}</strong> · ${escapeHtml(submission.track)} · ${escapeHtml(submission.contactEmail)}</p>
+            <p class="text-slate-300 mt-1"><strong>${escapeHtml(submission.teamName)}</strong> · ${escapeHtml(trackText)} · ${escapeHtml(submission.contactEmail)}</p>
           </div>
           <span class="self-start rounded-full bg-cyan-950 text-cyan-200 border border-cyan-800 px-3 py-1 text-sm font-bold">${escapeHtml(submission.status)}</span>
         </div>

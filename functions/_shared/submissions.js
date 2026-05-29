@@ -1,9 +1,10 @@
+export const SUBMISSION_TRACKS = ['Education', 'Social Impact', 'AI'];
+
 const REQUIRED_FIELDS = [
   ['teamName', 'team name'],
   ['projectTitle', 'project title'],
   ['contactEmail', 'valid contact email'],
   ['members', 'team members'],
-  ['track', 'track'],
   ['description', 'short project description'],
 ];
 
@@ -91,6 +92,27 @@ export function buildObjectKey({ teamName, projectTitle, filename, kind }) {
   return `submissions/${teamSlug}/${kind || 'file'}-${now}-${randomId('file')}-${safeFilename}`;
 }
 
+export function normalizeSubmissionTracks(value) {
+  const rawTracks = Array.isArray(value)
+    ? value
+    : String(value || '')
+      .split(/[|,]/);
+  const allowed = new Set(SUBMISSION_TRACKS);
+  const seen = new Set();
+  const tracks = [];
+  for (const rawTrack of rawTracks) {
+    const track = String(rawTrack || '').trim();
+    if (!track || !allowed.has(track) || seen.has(track)) continue;
+    seen.add(track);
+    tracks.push(track);
+  }
+  return tracks;
+}
+
+export function trackLabel(payload = {}) {
+  return normalizeSubmissionTracks(payload.tracks ?? payload.track).join(' | ');
+}
+
 export function validateSubmission(payload = {}) {
   const errors = [];
   const get = (key) => String(payload[key] || '').trim();
@@ -159,8 +181,8 @@ export async function insertSubmission(env, payload, uploads) {
     String(payload.teamName || '').trim(),
     String(payload.projectTitle || '').trim(),
     String(payload.contactEmail || '').trim().toLowerCase(),
-    String(payload.track || '').trim(),
-    JSON.stringify(payload),
+    trackLabel(payload),
+    JSON.stringify({ ...payload, tracks: normalizeSubmissionTracks(payload.tracks ?? payload.track), track: trackLabel(payload) }),
     JSON.stringify(uploads),
     'submitted'
   ).run();
@@ -175,17 +197,22 @@ export async function listSubmissions(env) {
     ORDER BY created_at DESC
   `).all();
 
-  return (result.results || []).map((row) => ({
-    id: row.id,
-    createdAt: row.created_at,
-    teamName: row.team_name,
-    projectTitle: row.project_title,
-    contactEmail: row.contact_email,
-    track: row.track,
-    status: row.status,
-    payload: safeJson(row.payload_json, {}),
-    uploads: safeJson(row.uploads_json, []),
-  }));
+  return (result.results || []).map((row) => {
+    const payload = safeJson(row.payload_json, {});
+    const tracks = normalizeSubmissionTracks(payload.tracks ?? row.track);
+    return {
+      id: row.id,
+      createdAt: row.created_at,
+      teamName: row.team_name,
+      projectTitle: row.project_title,
+      contactEmail: row.contact_email,
+      track: tracks.length ? tracks.join(' | ') : String(row.track || '').trim(),
+      tracks,
+      status: row.status,
+      payload,
+      uploads: safeJson(row.uploads_json, []),
+    };
+  });
 }
 
 export function safeJson(value, fallback) {

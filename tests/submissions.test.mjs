@@ -116,6 +116,14 @@ test('custom-domain scripts send APIs to the Pages functions origin', () => {
   assert.doesNotMatch(adminJs, /fetch\('\/api\/submissions'/);
 });
 
+test('admin page renders uploaded images and videos inline with download links', () => {
+  const adminJs = readFileSync(new URL('../public/admin-submissions.js', import.meta.url), 'utf8');
+  assert.match(adminJs, /function renderUpload\(upload\)/);
+  assert.match(adminJs, /<img[\s\S]+src="\$\{url\}"[\s\S]+loading="lazy"/);
+  assert.match(adminJs, /<video[\s\S]+controls[\s\S]+src="\$\{url\}"/);
+  assert.match(adminJs, /Open\/download/);
+});
+
 test('CORS headers allow the custom domain to call Pages functions', () => {
   const headers = corsHeaders();
   assert.equal(headers['access-control-allow-origin'], '*');

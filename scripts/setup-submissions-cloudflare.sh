@@ -6,6 +6,16 @@ D1_NAME="${D1_NAME:-hack-the-valley-submissions}"
 R2_BUCKET="${R2_BUCKET:-hack-the-valley-submission-media}"
 ADMIN_TOKEN="${SUBMISSIONS_ADMIN_TOKEN:-}"
 
+# Prefer a local API-token env file over Wrangler browser OAuth. Browser OAuth is
+# painful from agents/remote shells because Cloudflare redirects to localhost on
+# the human's machine, not necessarily the machine running Wrangler.
+if [[ -f .cloudflare.env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .cloudflare.env
+  set +a
+fi
+
 if ! command -v npx >/dev/null 2>&1; then
   echo "npx is required. Install Node.js/npm first." >&2
   exit 1
@@ -24,6 +34,12 @@ PY
 fi
 
 echo "==> Checking Cloudflare auth"
+if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+  echo "Using CLOUDFLARE_API_TOKEN from environment/.cloudflare.env; no browser OAuth needed."
+elif [[ -z "${CI:-}" ]]; then
+  echo "No CLOUDFLARE_API_TOKEN found. If this is a remote/agent shell, do not use browser OAuth over chat." >&2
+  echo "Create .cloudflare.env from .cloudflare.env.example, then rerun this script." >&2
+fi
 npx wrangler whoami >/dev/null
 
 echo "==> Creating/ensuring R2 bucket: ${R2_BUCKET}"

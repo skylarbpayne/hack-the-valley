@@ -39,13 +39,37 @@ The upload endpoint is intentionally capped at **100MB per file** by default bec
 
 You can change this with `MAX_UPLOAD_MB`, but do not raise it without checking the Cloudflare plan request-body limit first.
 
-## One-command Cloudflare setup
+## Cloudflare setup without the stupid localhost OAuth dance
+
+Preferred path for remote/agent work: use a Cloudflare API token in a local ignored file. Wrangler browser OAuth redirects to `localhost` on the human's browser machine, which is exactly why Discord back-and-forth is miserable here.
+
+1. In Cloudflare Dashboard, create a **custom API token** scoped to the account that owns `hack-the-valley`.
+2. Give it account permissions for:
+   - `Cloudflare Pages:Edit` / `Pages Write`
+   - `D1:Edit` / `D1 Write`
+   - `Workers R2 Storage:Edit` / `R2 Storage Write`
+   - `Workers Scripts:Edit` / `Workers Scripts Write`
+3. Copy `.cloudflare.env.example` to `.cloudflare.env` and fill in `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` locally. Do **not** commit it or paste it into chat.
+4. Lock it down and verify:
+
+```bash
+cp .cloudflare.env.example .cloudflare.env
+chmod 600 .cloudflare.env
+# edit .cloudflare.env locally
+./scripts/check-cloudflare-auth.sh
+./scripts/setup-submissions-cloudflare.sh
+```
+
+The setup script auto-loads `.cloudflare.env`, so no `wrangler login` is needed.
+
+## One-command Cloudflare setup with existing Wrangler auth
+
+If Wrangler is already authenticated on the same machine running the command, this also works:
 
 From the repo root:
 
 ```bash
 npm install
-npx wrangler login
 ./scripts/setup-submissions-cloudflare.sh
 ```
 

@@ -40,8 +40,8 @@ npm run deploy
 
 This repo includes a Cloudflare Pages/D1/R2 submission portal:
 
-- Participant page: `/submit.html`
-- Admin page: `/admin-submissions.html`
+- Participant page: `/submit`
+- Admin page: `/admin-submissions`
 - Media uploads: R2 via `/api/upload`
 - Metadata/export: D1 via `/api/submissions`
 

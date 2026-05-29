@@ -26,7 +26,7 @@ npm run deploy
 
 ## Submissions portal
 
-The project submission flow lives on `/submit.html` with a private admin review page at `/admin-submissions.html`.
+The project submission flow lives on `/submit` with a private admin review page at `/admin-submissions`.
 
 - Uploads go to R2 through `/api/upload`.
 - Submission metadata goes to D1 through `/api/submissions`.

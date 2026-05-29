@@ -192,7 +192,6 @@ echo
 echo "Done. Save this admin token somewhere safe:"
 echo "${ADMIN_TOKEN}"
 echo
-echo "Participant page: https://${PROJECT_NAME}.pages.dev/submit.html"
-echo "Admin page:       https://${PROJECT_NAME}.pages.dev/admin-submissions.html"
-echo
-echo "If a custom domain is attached, use the same paths on that domain."
+echo "Participant page: https://hackthevalley.org/submit"
+echo "Admin page:       https://hackthevalley.org/admin-submissions"
+echo "Pages preview:    https://${PROJECT_NAME}.pages.dev/submit"

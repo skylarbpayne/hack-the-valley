@@ -4,8 +4,8 @@ This branch adds a scrappy-but-polished submission portal to the existing Cloudf
 
 ## URLs
 
-- Participant page: `/submit.html`
-- Admin page: `/admin-submissions.html`
+- Participant page: `/submit`
+- Admin page: `/admin-submissions`
 - Submission API: `/api/submissions`
 - Upload API: `/api/upload`
 - Private media proxy: `/api/media?key=...`
@@ -142,7 +142,7 @@ npx wrangler pages deploy --project-name hack-the-valley --branch main
 
 ## Admin usage
 
-1. Open `/admin-submissions.html`.
+1. Open `/admin-submissions`.
 2. Paste the `SUBMISSIONS_ADMIN_TOKEN` printed by setup.
 3. Click **Load submissions**.
 4. Use **Download CSV** for judging/export.
@@ -158,9 +158,9 @@ npm test
 
 Local end-to-end upload testing requires local D1/R2 bindings through Wrangler. The helper/unit tests cover validation, auth, CSV escaping, and JSON response behavior. For live smoke after deploy:
 
-1. Open `/submit.html`.
+1. Open `/submit`.
 2. Submit a test project with one small image.
-3. Open `/admin-submissions.html` with the token.
+3. Open `/admin-submissions` with the token.
 4. Verify the submission appears.
 5. Open the media link.
 6. Download CSV and verify the row is present.

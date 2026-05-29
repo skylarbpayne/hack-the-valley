@@ -91,6 +91,15 @@ test('participant form exposes optional checkbox tracks only for Education, Soci
   }
 });
 
+test('public surfaces use extensionless canonical submit path', () => {
+  const indexHtml = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const adminHtml = readFileSync(new URL('../public/admin-submissions.html', import.meta.url), 'utf8');
+  assert.match(indexHtml, /href="\/submit"/);
+  assert.match(adminHtml, /href="\/submit"/);
+  assert.doesNotMatch(indexHtml, /href="\/submit\.html"/);
+  assert.doesNotMatch(adminHtml, /href="\/submit\.html"/);
+});
+
 test('csvEscape safely quotes commas, quotes, and newlines', () => {
   assert.equal(csvEscape('plain'), 'plain');
   assert.equal(csvEscape('hello, "world"\n'), '"hello, ""world""\n"');

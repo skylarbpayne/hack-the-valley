@@ -3,3 +3,22 @@ compatibility_date = "2026-02-17"
 
 [assets]
 directory = "./public"
+
+[vars]
+MAX_UPLOAD_MB = "100"
+
+# Submissions portal setup:
+# 1. Create D1 + R2 resources.
+# 2. Uncomment and fill these IDs/names before deploying the portal.
+#
+# [[d1_databases]]
+# binding = "SUBMISSIONS_DB"
+# database_name = "hack-the-valley-submissions"
+# database_id = "REPLACE_WITH_D1_DATABASE_ID"
+#
+# [[r2_buckets]]
+# binding = "SUBMISSIONS_MEDIA"
+# bucket_name = "hack-the-valley-submission-media"
+#
+# Secret required in Cloudflare Pages:
+# SUBMISSIONS_ADMIN_TOKEN = long random token, set with `npx wrangler pages secret put SUBMISSIONS_ADMIN_TOKEN --project-name hack-the-valley`

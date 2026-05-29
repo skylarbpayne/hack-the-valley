@@ -1,0 +1,139 @@
+# Hack the Valley Submissions Portal
+
+This branch adds a scrappy-but-polished submission portal to the existing Cloudflare Pages site.
+
+## URLs
+
+- Participant page: `/submit.html`
+- Admin page: `/admin-submissions.html`
+- Submission API: `/api/submissions`
+- Upload API: `/api/upload`
+- Private media proxy: `/api/media?key=...`
+
+## What participants can submit
+
+Required:
+
+- Team name
+- Project title
+- Contact email
+- Team members
+- Track
+- Short description
+- At least one uploaded media file or one media/demo link
+
+Optional:
+
+- GitHub repo link
+- Live demo link
+- YouTube/Loom/Drive/Canva media fallback link
+- Demo video upload
+- Screenshot/image uploads
+- Judge notes
+
+Uploads go to Cloudflare R2. Metadata goes to Cloudflare D1.
+
+## Practical upload limit
+
+The upload endpoint is intentionally capped at **100MB per file** by default because Cloudflare request limits are real. Larger demo videos should be submitted as YouTube/Loom/Drive links through the same form. This keeps the participant flow one-page instead of duct-taping Dropbox onto the side.
+
+You can change this with `MAX_UPLOAD_MB`, but do not raise it without checking the Cloudflare plan request-body limit first.
+
+## One-command Cloudflare setup
+
+From the repo root:
+
+```bash
+npm install
+npx wrangler login
+./scripts/setup-submissions-cloudflare.sh
+```
+
+The setup script will:
+
+1. verify Cloudflare auth
+2. create/ensure the R2 bucket `hack-the-valley-submission-media`
+3. create a D1 database `hack-the-valley-submissions`
+4. write the D1/R2 bindings into `wrangler.toml`
+5. apply `schema.sql`
+6. generate and set `SUBMISSIONS_ADMIN_TOKEN`
+7. deploy the Pages site
+8. print the participant/admin URLs and token
+
+If the D1 database already exists and Wrangler does not print its ID, rerun with:
+
+```bash
+D1_DATABASE_ID=<database-id> ./scripts/setup-submissions-cloudflare.sh
+```
+
+Get the ID with:
+
+```bash
+npx wrangler d1 list
+```
+
+## Manual setup
+
+Create resources:
+
+```bash
+npx wrangler r2 bucket create hack-the-valley-submission-media
+npx wrangler d1 create hack-the-valley-submissions
+```
+
+Add the printed D1 database ID and R2 bucket binding to `wrangler.toml`:
+
+```toml
+[[d1_databases]]
+binding = "SUBMISSIONS_DB"
+database_name = "hack-the-valley-submissions"
+database_id = "<database-id>"
+
+[[r2_buckets]]
+binding = "SUBMISSIONS_MEDIA"
+bucket_name = "hack-the-valley-submission-media"
+```
+
+Apply schema:
+
+```bash
+npx wrangler d1 execute hack-the-valley-submissions --remote --file=schema.sql
+```
+
+Set admin token:
+
+```bash
+openssl rand -hex 24
+npx wrangler pages secret put SUBMISSIONS_ADMIN_TOKEN --project-name hack-the-valley
+```
+
+Deploy:
+
+```bash
+npx wrangler pages deploy ./public --project-name hack-the-valley
+```
+
+## Admin usage
+
+1. Open `/admin-submissions.html`.
+2. Paste the `SUBMISSIONS_ADMIN_TOKEN` printed by setup.
+3. Click **Load submissions**.
+4. Use **Download CSV** for judging/export.
+5. Open uploaded media links from each submission card.
+
+Do not share the admin token. Anyone with it can view uploaded media.
+
+## Local validation
+
+```bash
+npm test
+```
+
+Local end-to-end upload testing requires local D1/R2 bindings through Wrangler. The helper/unit tests cover validation, auth, CSV escaping, and JSON response behavior. For live smoke after deploy:
+
+1. Open `/submit.html`.
+2. Submit a test project with one small image.
+3. Open `/admin-submissions.html` with the token.
+4. Verify the submission appears.
+5. Open the media link.
+6. Download CSV and verify the row is present.

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Submit Your Project | Hack the Valley 2026</title>
+  <meta name="description" content="Submit your Hack the Valley 2026 project, demo video, screenshots, repo, and team details.">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = { theme: { extend: { colors: { "bc-blue": "#2563eb", "bc-navy": "#1e293b", "bc-cyan": "#06b6d4", "bc-orange": "#f59e0b", "bc-purple": "#7c3aed", "bc-dark": "#0f172a" }, fontFamily: { sans: ["Inter", "sans-serif"] } } } };
+  </script>
+  <style>
+    body { font-family: Inter, sans-serif; }
+    .gradient-text { background: linear-gradient(135deg, #06b6d4 0%, #2563eb 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .field { width: 100%; border-radius: 0.75rem; border: 1px solid rgb(51 65 85); background: rgb(15 23 42); padding: 0.85rem 1rem; color: white; outline: none; }
+    .field:focus { border-color: #06b6d4; box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.18); }
+    .label { display:block; font-weight:700; color: rgb(226 232 240); margin-bottom: 0.5rem; }
+    .hint { color: rgb(148 163 184); font-size: 0.875rem; margin-top: 0.35rem; }
+  </style>
+</head>
+<body class="bg-bc-dark text-slate-100">
+  <nav class="sticky top-0 z-50 bg-bc-dark/90 backdrop-blur-sm border-b border-slate-800">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-3">
+        <img src="/images/HackTheValleyLogo.PNG" alt="Hack the Valley Logo" class="w-12 h-12 object-contain rounded-full">
+        <span class="font-bold text-lg">Hack the Valley 2026</span>
+      </a>
+      <a href="/" class="text-slate-300 hover:text-white text-sm">Back to event site</a>
+    </div>
+  </nav>
+
+  <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <section class="mb-10">
+      <p class="uppercase tracking-widest text-sm text-bc-cyan font-semibold mb-3">Project submissions</p>
+      <h1 class="text-4xl sm:text-5xl font-black mb-4">Submit your <span class="gradient-text">Hack the Valley</span> project</h1>
+      <p class="text-lg text-slate-300 max-w-3xl">One form. Upload your demo video and screenshots here, or paste a YouTube/Loom/Drive link if your video is too large. Save the confirmation ID after submitting.</p>
+    </section>
+
+    <div id="status" class="hidden mb-6 rounded-xl border p-4"></div>
+
+    <form id="submission-form" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 sm:p-8 space-y-8">
+      <input type="text" id="website" name="website" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true">
+
+      <section>
+        <h2 class="text-2xl font-black mb-4">Team + project</h2>
+        <div class="grid md:grid-cols-2 gap-5">
+          <label><span class="label">Team name *</span><input class="field" id="teamName" required placeholder="Central Valley Builders"></label>
+          <label><span class="label">Project title *</span><input class="field" id="projectTitle" required placeholder="Farm Help AI"></label>
+          <label><span class="label">Contact email *</span><input class="field" id="contactEmail" type="email" required placeholder="student@example.edu"></label>
+          <label><span class="label">Track *</span><select class="field" id="track" required><option value="">Choose a track</option><option>AI for Good</option><option>Health</option><option>FinTech</option><option>Social Impact</option><option>Open Track</option></select></label>
+        </div>
+        <label class="block mt-5"><span class="label">Team members *</span><textarea class="field" id="members" required rows="3" placeholder="Names + emails if possible"></textarea></label>
+        <label class="block mt-5"><span class="label">Short description *</span><textarea class="field" id="description" required rows="4" maxlength="1600" placeholder="What did you build, who is it for, and what problem does it solve?"></textarea></label>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-black mb-4">Links</h2>
+        <div class="grid md:grid-cols-2 gap-5">
+          <label><span class="label">Repo link</span><input class="field" id="repoLink" type="url" placeholder="https://github.com/team/project"></label>
+          <label><span class="label">Live demo link</span><input class="field" id="demoLink" type="url" placeholder="https://your-demo.example.com"></label>
+          <label class="md:col-span-2"><span class="label">Video/media link fallback</span><input class="field" id="mediaLink" type="url" placeholder="YouTube, Loom, Google Drive, or Canva link"><span class="hint">Use this if your demo video is larger than 100MB or your upload is fighting the Wi‑Fi demons.</span></label>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-black mb-2">Uploads</h2>
+        <p class="text-slate-400 mb-4">Upload a demo video and images/screenshots. Keep files under 100MB each. Larger videos should use the fallback link above.</p>
+        <div class="grid md:grid-cols-2 gap-5">
+          <label><span class="label">Demo video</span><input class="field" id="videoFile" type="file" accept="video/*"><span class="hint">MP4/MOV/WebM recommended.</span></label>
+          <label><span class="label">Screenshots / images</span><input class="field" id="imageFiles" type="file" accept="image/*" multiple><span class="hint">You can select multiple images.</span></label>
+        </div>
+        <div id="upload-list" class="mt-5 space-y-3"></div>
+      </section>
+
+      <section>
+        <label class="block"><span class="label">Anything judges should know?</span><textarea class="field" id="notes" rows="3" placeholder="Setup notes, test account, known limitations, special shoutouts..."></textarea></label>
+      </section>
+
+      <button id="submit-button" type="submit" class="w-full bg-bc-cyan text-bc-dark px-8 py-4 rounded-xl text-lg font-black hover:bg-cyan-400 transition disabled:opacity-60 disabled:cursor-not-allowed">Submit project</button>
+    </form>
+  </main>
+
+  <script src="/submissions.js"></script>
+</body>
+</html>

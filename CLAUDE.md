@@ -8,15 +8,30 @@ Hack the Valley 2026 is a static landing page for a 50+ student one-day hackatho
 
 ## Development
 
+**Install/test:**
+```bash
+npm install
+npm test
+```
+
 **Local preview:**
 ```bash
-npx wrangler pages dev ./public
+npm run dev
 ```
 
 **Deploy to Cloudflare:**
 ```bash
-npx wrangler pages deploy ./public
+npm run deploy
 ```
+
+## Submissions portal
+
+The project submission flow lives on `/submit.html` with a private admin review page at `/admin-submissions.html`.
+
+- Uploads go to R2 through `/api/upload`.
+- Submission metadata goes to D1 through `/api/submissions`.
+- Admin media access goes through `/api/media` and requires `SUBMISSIONS_ADMIN_TOKEN`.
+- Full Cloudflare setup/deploy instructions are in `SUBMISSIONS-DEPLOYMENT.md`.
 
 ## Architecture
 

@@ -1,5 +1,18 @@
 name = "hack-the-valley"
 compatibility_date = "2026-02-17"
+pages_build_output_dir = "./public"
 
 [assets]
 directory = "./public"
+
+[vars]
+MAX_UPLOAD_MB = "100"
+
+[[d1_databases]]
+binding = "SUBMISSIONS_DB"
+database_name = "hack-the-valley-submissions"
+database_id = "a3e1c803-72b3-4a4b-b629-b24191795f6c"
+
+[[r2_buckets]]
+binding = "SUBMISSIONS_MEDIA"
+bucket_name = "hack-the-valley-submission-media"

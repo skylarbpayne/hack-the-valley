@@ -18,16 +18,41 @@ Professional landing page for Hack the Valley 2026, a 1-day student innovation e
 - Node.js & npm
 - Cloudflare account (for deployment)
 
+**Install + tests:**
+```bash
+npm install
+npm test
+```
+
 **Local Development:**
 ```bash
-npx wrangler pages dev ./public
+npm run dev
 ```
 
 Visit: http://localhost:8788
 
 **Deployment:**
 ```bash
-npx wrangler pages deploy ./public
+npm run deploy
+```
+
+## Project submissions portal
+
+This repo includes a Cloudflare Pages/D1/R2 submission portal:
+
+- Participant page: `/submit.html`
+- Admin page: `/admin-submissions.html`
+- Media uploads: R2 via `/api/upload`
+- Metadata/export: D1 via `/api/submissions`
+
+Setup/deploy instructions live in [`SUBMISSIONS-DEPLOYMENT.md`](SUBMISSIONS-DEPLOYMENT.md). The quick path is:
+
+```bash
+npm install
+cp .cloudflare.env.example .cloudflare.env
+# fill CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN locally; do not commit it
+./scripts/check-cloudflare-auth.sh
+./scripts/setup-submissions-cloudflare.sh
 ```
 
 ## Content Sources

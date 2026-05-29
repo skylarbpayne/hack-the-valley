@@ -1,5 +1,7 @@
 node_modules/
 .wrangler/
 .dev.vars
+.cloudflare.env
+.cloudflare.env.local
 .DS_Store
 *.log

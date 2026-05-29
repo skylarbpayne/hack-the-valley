@@ -1,0 +1,13 @@
+{
+  "name": "hack-the-valley-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "dev": "wrangler pages dev ./public --compatibility-date=2026-02-17",
+    "deploy": "wrangler pages deploy --project-name=hack-the-valley --branch=main"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

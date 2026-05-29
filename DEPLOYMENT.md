@@ -43,6 +43,15 @@ For production deployment, set these in Cloudflare Pages dashboard:
 
 - `REGISTRATION_TO_EMAIL`: Email to receive registrations (default: registrations@hackthevalley.com)
 - `REGISTRATION_FROM_EMAIL`: Sender email address (default: noreply@hackthevalley.com)
+- `ADMIN_TOKEN`: Long random token for `/admin-submissions.html`, `/api/admin/submissions`, `/api/admin/export`, and media review links
+- `SUBMISSIONS_DEADLINE_ISO` (optional): ISO timestamp that closes project submissions after the deadline
+
+Cloudflare bindings for the project submission portal:
+
+- `SUBMISSIONS_BUCKET`: R2 bucket for uploaded images/videos
+- `SUBMISSIONS_DB`: D1 database for submission metadata
+
+See `SUBMISSION-PORTAL.md` for exact setup, local validation, schema migration, and deploy commands.
 
 **Note:** MailChannels requires domain verification in production. See: https://mailchannels.zendesk.com/hc/en-us/articles/4565898358413-Sending-Email-from-Cloudflare-Workers-using-MailChannels-Send-API
 

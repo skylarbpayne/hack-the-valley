@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Submissions | Hack the Valley 2026</title>
+  <meta name="robots" content="noindex">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            "bc-blue": "#2563eb",
+            "bc-navy": "#1e293b",
+            "bc-cyan": "#06b6d4",
+            "bc-dark": "#0f172a"
+          },
+          fontFamily: { sans: ["Inter", "sans-serif"] }
+        }
+      }
+    };
+  </script>
+  <style>body { font-family: "Inter", sans-serif; }</style>
+</head>
+<body class="bg-bc-dark text-slate-100 min-h-screen">
+  <header class="border-b border-slate-800 bg-bc-dark/90 sticky top-0 z-20 backdrop-blur-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <p class="uppercase tracking-widest text-xs text-bc-cyan font-bold">Hack the Valley Admin</p>
+        <h1 class="text-2xl sm:text-3xl font-black">Project submissions</h1>
+      </div>
+      <div class="flex flex-wrap gap-3">
+        <input id="admin-token" type="password" class="rounded-lg bg-bc-navy border border-slate-700 px-4 py-2 text-white" placeholder="Admin token">
+        <button id="load-button" class="rounded-lg bg-bc-cyan text-bc-dark px-4 py-2 font-black hover:bg-cyan-400">Load</button>
+        <button id="export-button" class="rounded-lg border border-bc-cyan text-bc-cyan px-4 py-2 font-black hover:bg-bc-cyan/10">CSV Export</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div id="message" class="hidden mb-6 rounded-xl border p-4 text-sm"></div>
+    <div id="stats" class="grid sm:grid-cols-3 gap-4 mb-8"></div>
+    <div id="submissions" class="space-y-5"></div>
+  </main>
+
+  <template id="submission-template">
+    <article class="rounded-2xl border border-slate-700 bg-bc-navy p-5 shadow-xl shadow-black/10">
+      <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+        <div>
+          <div class="flex flex-wrap items-center gap-2 mb-2">
+            <span class="submission-id rounded-full bg-bc-dark px-3 py-1 text-xs text-slate-300"></span>
+            <span class="track rounded-full bg-bc-cyan/10 text-bc-cyan px-3 py-1 text-xs font-bold uppercase"></span>
+            <span class="status rounded-full bg-green-500/10 text-green-300 px-3 py-1 text-xs font-bold uppercase"></span>
+          </div>
+          <h2 class="project-title text-2xl font-black"></h2>
+          <p class="team text-slate-300 mt-1"></p>
+          <p class="submitted text-xs text-slate-500 mt-1"></p>
+        </div>
+        <a class="email rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-bc-cyan hover:text-bc-cyan"></a>
+      </div>
+      <p class="description mt-5 text-slate-200 whitespace-pre-wrap"></p>
+      <div class="links mt-5 grid sm:grid-cols-3 gap-3 text-sm"></div>
+      <div class="media mt-5 flex flex-wrap gap-3"></div>
+    </article>
+  </template>
+
+  <script>
+    const tokenInput = document.querySelector('#admin-token');
+    const loadButton = document.querySelector('#load-button');
+    const exportButton = document.querySelector('#export-button');
+    const message = document.querySelector('#message');
+    const stats = document.querySelector('#stats');
+    const submissions = document.querySelector('#submissions');
+    const template = document.querySelector('#submission-template');
+
+    tokenInput.value = localStorage.getItem('htv-admin-token') || '';
+
+    function showMessage(text, type = 'info') {
+      const styles = {
+        info: 'border-slate-700 bg-bc-navy text-slate-200',
+        error: 'border-red-500/50 bg-red-950/40 text-red-100',
+        success: 'border-green-500/50 bg-green-950/40 text-green-100'
+      };
+      message.className = `mb-6 rounded-xl border p-4 text-sm ${styles[type]}`;
+      message.textContent = text;
+      message.classList.remove('hidden');
+    }
+
+    function authHeaders() {
+      const token = tokenInput.value.trim();
+      if (token) localStorage.setItem('htv-admin-token', token);
+      return { Authorization: `Bearer ${token}` };
+    }
+
+    function link(label, href) {
+      if (!href) return '';
+      const safeHref = href.replaceAll('"', '&quot;');
+      return `<a class="rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-slate-200 hover:border-bc-cyan hover:text-bc-cyan break-all" href="${safeHref}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    }
+
+    function renderStats(items) {
+      const byTrack = items.reduce((acc, item) => {
+        acc[item.track] = (acc[item.track] || 0) + 1;
+        return acc;
+      }, {});
+      const cards = [
+        ['Total submissions', items.length],
+        ['With video/media', items.filter((item) => item.media?.length).length],
+        ['Tracks', Object.entries(byTrack).map(([track, count]) => `${track}: ${count}`).join(' • ') || 'None yet']
+      ];
+      stats.innerHTML = cards.map(([label, value]) => `<div class="rounded-2xl border border-slate-700 bg-bc-navy p-5"><div class="text-xs uppercase tracking-widest text-slate-500 font-bold">${label}</div><div class="mt-2 text-2xl font-black">${value}</div></div>`).join('');
+    }
+
+    function renderSubmissions(items) {
+      submissions.innerHTML = '';
+      if (!items.length) {
+        submissions.innerHTML = '<div class="rounded-2xl border border-slate-700 bg-bc-navy p-8 text-center text-slate-300">No submissions yet.</div>';
+        return;
+      }
+      for (const item of items) {
+        const node = template.content.cloneNode(true);
+        node.querySelector('.submission-id').textContent = item.id;
+        node.querySelector('.track').textContent = item.track || 'track';
+        node.querySelector('.status').textContent = item.status || 'submitted';
+        node.querySelector('.project-title').textContent = item.projectTitle || 'Untitled project';
+        node.querySelector('.team').textContent = `${item.teamName || 'Unknown team'} • ${item.contactName || 'Unknown contact'} • ${item.members || 'No members listed'}`;
+        node.querySelector('.submitted').textContent = item.submittedAt ? new Date(item.submittedAt).toLocaleString() : '';
+        node.querySelector('.email').textContent = item.contactEmail || 'No email';
+        node.querySelector('.email').href = item.contactEmail ? `mailto:${item.contactEmail}` : '#';
+        node.querySelector('.description').textContent = item.description || '';
+        node.querySelector('.links').innerHTML = [
+          link('Demo', item.demoUrl),
+          link('Repo', item.repoUrl),
+          link('Slides', item.slidesUrl)
+        ].filter(Boolean).join('') || '<div class="text-slate-500">No external links.</div>';
+        node.querySelector('.media').innerHTML = (item.media || []).map((media) => {
+          const href = `${media.adminUrl}&token=${encodeURIComponent(tokenInput.value.trim())}`;
+          return `<a class="media-link rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:border-bc-cyan hover:text-bc-cyan" href="${href}" target="_blank" rel="noopener noreferrer">${media.kind}: ${media.name}</a>`;
+        }).join('') || '<div class="text-sm text-slate-500">No uploaded media.</div>';
+        submissions.appendChild(node);
+      }
+    }
+
+    async function loadSubmissions() {
+      try {
+        showMessage('Loading submissions...', 'info');
+        const response = await fetch('/api/admin/submissions', { headers: authHeaders() });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) throw new Error(payload.error || 'Unable to load submissions');
+        renderStats(payload.submissions || []);
+        renderSubmissions(payload.submissions || []);
+        showMessage(`Loaded ${payload.submissions.length} submission${payload.submissions.length === 1 ? '' : 's'}.`, 'success');
+      } catch (error) {
+        showMessage(error.message || 'Unable to load submissions', 'error');
+      }
+    }
+
+    async function downloadCsv() {
+      try {
+        const response = await fetch('/api/admin/export', { headers: authHeaders() });
+        if (!response.ok) throw new Error(await response.text());
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = 'hack-the-valley-submissions.csv';
+        anchor.click();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        showMessage(error.message || 'Unable to export CSV', 'error');
+      }
+    }
+
+    loadButton.addEventListener('click', loadSubmissions);
+    exportButton.addEventListener('click', downloadCsv);
+    if (tokenInput.value) loadSubmissions();
+  </script>
+</body>
+</html>

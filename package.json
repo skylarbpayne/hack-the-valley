@@ -1,0 +1,11 @@
+{
+  "name": "hack-the-valley-site",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "validate": "npm test && node scripts/validate-submission-pages.mjs"
+  },
+  "devDependencies": {}
+}

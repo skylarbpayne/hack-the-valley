@@ -3,3 +3,16 @@ compatibility_date = "2026-02-17"
 
 [assets]
 directory = "./public"
+
+# Project submission portal bindings.
+# After creating the real Cloudflare resources, uncomment and fill these in,
+# or add equivalent bindings in the Cloudflare Pages dashboard.
+#
+# [[r2_buckets]]
+# binding = "SUBMISSIONS_BUCKET"
+# bucket_name = "hack-the-valley-submissions"
+#
+# [[d1_databases]]
+# binding = "SUBMISSIONS_DB"
+# database_name = "hack-the-valley-submissions"
+# database_id = "<database-id-from-wrangler-d1-create>"

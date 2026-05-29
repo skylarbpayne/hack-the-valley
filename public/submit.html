@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Submit Project | Hack the Valley 2026</title>
+  <meta name="description" content="Submit your Hack the Valley project, demo links, screenshots, and video for judging.">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            "bc-blue": "#2563eb",
+            "bc-navy": "#1e293b",
+            "bc-cyan": "#06b6d4",
+            "bc-orange": "#f59e0b",
+            "bc-purple": "#7c3aed",
+            "bc-dark": "#0f172a"
+          },
+          fontFamily: { sans: ["Inter", "sans-serif"] }
+        }
+      }
+    };
+  </script>
+  <style>
+    body { font-family: "Inter", sans-serif; }
+    .gradient-text {
+      background: linear-gradient(135deg, #06b6d4 0%, #2563eb 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+  </style>
+</head>
+<body class="bg-bc-dark text-slate-100 min-h-screen">
+  <nav class="sticky top-0 z-50 bg-bc-dark/90 backdrop-blur-sm border-b border-slate-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-3">
+        <img src="/images/HackTheValleyLogo.PNG" alt="Hack the Valley Logo" class="w-12 h-12 object-contain rounded-full">
+        <span class="font-bold text-lg">Hack the Valley 2026</span>
+      </a>
+      <a href="/" class="text-sm text-slate-300 hover:text-white">Back to event site</a>
+    </div>
+  </nav>
+
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <section class="grid lg:grid-cols-[0.9fr_1.1fr] gap-10 items-start">
+      <div class="lg:sticky lg:top-24">
+        <p class="uppercase tracking-widest text-sm text-bc-cyan font-semibold mb-4">Project submissions</p>
+        <h1 class="text-4xl sm:text-5xl font-black leading-tight mb-6">Submit your <span class="gradient-text">Hack the Valley</span> project.</h1>
+        <p class="text-lg text-slate-300 mb-6">One form. Upload screenshots and a demo video, add your links, and save the confirmation ID after submit.</p>
+        <div class="bg-bc-navy border border-slate-700 rounded-2xl p-6 space-y-4 text-sm text-slate-300">
+          <div>
+            <h2 class="font-bold text-white mb-2">Before you submit</h2>
+            <ul class="space-y-2 list-disc list-inside">
+              <li>Have your project title, team members, and track ready.</li>
+              <li>Add a demo/deployed URL if you have one.</li>
+              <li>Add GitHub/repo and slide links if available.</li>
+              <li>Upload up to 5 images and one demo video.</li>
+            </ul>
+          </div>
+          <div class="rounded-xl bg-bc-dark/70 border border-slate-700 p-4">
+            <div class="font-semibold text-bc-cyan">Upload limits</div>
+            <div>Images: 15 MB each. Video: 500 MB. If campus Wi‑Fi gets cursed, paste a YouTube/Loom/Drive link too.</div>
+          </div>
+        </div>
+      </div>
+
+      <form id="submission-form" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-bc-cyan/5" novalidate>
+        <div class="grid sm:grid-cols-2 gap-5">
+          <label class="block sm:col-span-2">
+            <span class="text-sm font-semibold text-slate-200">Team name *</span>
+            <input name="teamName" required class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-bc-cyan" placeholder="Team Valley">
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold text-slate-200">Primary contact name *</span>
+            <input name="contactName" required class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-bc-cyan" placeholder="Ada Lovelace">
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold text-slate-200">Primary contact email *</span>
+            <input name="contactEmail" type="email" required class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-bc-cyan" placeholder="ada@example.com">
+          </label>
+          <label class="block sm:col-span-2">
+            <span class="text-sm font-semibold text-slate-200">Team members</span>
+            <input name="members" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-bc-cyan" placeholder="Names and emails, comma-separated">
+          </label>
+          <label class="block sm:col-span-2">
+            <span class="text-sm font-semibold text-slate-200">Project title *</span>
+            <input name="projectTitle" required class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-bc-cyan" placeholder="Farm Signal">
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold text-slate-200">Track *</span>
+            <select name="track" required class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-bc-cyan">
+              <option value="">Choose a track</option>
+              <option value="ai">AI</option>
+              <option value="fintech">FinTech</option>
+              <option value="health">Health</option>
+              <option value="social-good">Social Good</option>
+              <option value="open">Open</option>
+            </select>
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold text-slate-200">Demo / deployed URL</span>
+            <input name="demoUrl" type="url" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-bc-cyan" placeholder="https://...">
+          </label>
+          <label class="block sm:col-span-2">
+            <span class="text-sm font-semibold text-slate-200">Short description *</span>
+            <textarea name="description" required minlength="20" rows="5" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-bc-cyan" placeholder="What problem did you solve? Who is it for? What did you build today?"></textarea>
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold text-slate-200">GitHub / repo URL</span>
+            <input name="repoUrl" type="url" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-bc-cyan" placeholder="https://github.com/...">
+          </label>
+          <label class="block">
+            <span class="text-sm font-semibold text-slate-200">Slides / deck URL</span>
+            <input name="slidesUrl" type="url" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-bc-cyan" placeholder="https://...">
+          </label>
+          <label class="block sm:col-span-2">
+            <span class="text-sm font-semibold text-slate-200">Screenshots / images</span>
+            <input name="images" type="file" multiple accept="image/*" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-slate-300 file:mr-4 file:rounded-lg file:border-0 file:bg-bc-cyan file:px-4 file:py-2 file:font-bold file:text-bc-dark hover:file:bg-cyan-400">
+          </label>
+          <label class="block sm:col-span-2">
+            <span class="text-sm font-semibold text-slate-200">Demo video</span>
+            <input name="video" type="file" accept="video/*" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-slate-300 file:mr-4 file:rounded-lg file:border-0 file:bg-bc-cyan file:px-4 file:py-2 file:font-bold file:text-bc-dark hover:file:bg-cyan-400">
+          </label>
+        </div>
+
+        <div id="file-summary" class="mt-5 hidden rounded-xl border border-slate-700 bg-bc-dark/70 p-4 text-sm text-slate-300"></div>
+        <div id="form-message" class="mt-5 hidden rounded-xl border p-4 text-sm"></div>
+
+        <button id="submit-button" type="submit" class="mt-6 w-full bg-bc-cyan text-bc-dark px-6 py-4 rounded-lg text-lg font-black hover:bg-cyan-400 transition disabled:cursor-not-allowed disabled:opacity-60">Submit project</button>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    const form = document.querySelector('#submission-form');
+    const button = document.querySelector('#submit-button');
+    const message = document.querySelector('#form-message');
+    const fileSummary = document.querySelector('#file-summary');
+    const IMAGE_LIMIT = 15 * 1024 * 1024;
+    const VIDEO_LIMIT = 500 * 1024 * 1024;
+    const MAX_IMAGES = 5;
+
+    function formatBytes(bytes) {
+      if (!bytes) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+      return `${(bytes / Math.pow(1024, index)).toFixed(index ? 1 : 0)} ${units[index]}`;
+    }
+
+    function showMessage(text, type = 'info') {
+      const styles = {
+        info: 'border-slate-700 bg-bc-dark/70 text-slate-200',
+        error: 'border-red-500/50 bg-red-950/40 text-red-100',
+        success: 'border-green-500/50 bg-green-950/40 text-green-100'
+      };
+      message.className = `mt-5 rounded-xl border p-4 text-sm ${styles[type]}`;
+      message.textContent = text;
+      message.classList.remove('hidden');
+    }
+
+    function validateMediaFiles() {
+      const images = Array.from(form.elements.images.files || []);
+      const videos = Array.from(form.elements.video.files || []);
+      if (images.length > MAX_IMAGES) return `Upload no more than ${MAX_IMAGES} images.`;
+      for (const image of images) {
+        if (!image.type.startsWith('image/')) return `${image.name} must be an image.`;
+        if (image.size > IMAGE_LIMIT) return `${image.name} is larger than 15 MB.`;
+      }
+      if (videos[0]) {
+        if (!videos[0].type.startsWith('video/')) return `${videos[0].name} must be a video.`;
+        if (videos[0].size > VIDEO_LIMIT) return `${videos[0].name} is larger than 500 MB.`;
+      }
+      return '';
+    }
+
+    function updateFileSummary() {
+      const images = Array.from(form.elements.images.files || []);
+      const video = form.elements.video.files?.[0];
+      const parts = [];
+      if (images.length) parts.push(`${images.length} image${images.length === 1 ? '' : 's'}: ${images.map((f) => `${f.name} (${formatBytes(f.size)})`).join(', ')}`);
+      if (video) parts.push(`Video: ${video.name} (${formatBytes(video.size)})`);
+      if (!parts.length) {
+        fileSummary.classList.add('hidden');
+        fileSummary.textContent = '';
+        return;
+      }
+      fileSummary.textContent = parts.join(' • ');
+      fileSummary.classList.remove('hidden');
+    }
+
+    form.elements.images.addEventListener('change', updateFileSummary);
+    form.elements.video.addEventListener('change', updateFileSummary);
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      message.classList.add('hidden');
+
+      if (!form.reportValidity()) return;
+      const mediaError = validateMediaFiles();
+      if (mediaError) {
+        showMessage(mediaError, 'error');
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = 'Uploading submission...';
+      try {
+        const response = await fetch('/api/submissions', {
+          method: 'POST',
+          body: new FormData(form)
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+          throw new Error(payload.error || 'Submission failed');
+        }
+        form.reset();
+        updateFileSummary();
+        showMessage(`Submitted. Confirmation ID: ${payload.submissionId}. Save this ID before you close the page.`, 'success');
+      } catch (error) {
+        showMessage(error.message || 'Submission failed. Try again or paste external links if upload is slow.', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Submit project';
+      }
+    });
+  </script>
+</body>
+</html>

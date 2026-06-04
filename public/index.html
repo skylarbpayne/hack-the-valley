@@ -51,7 +51,7 @@
           <a href="/events" class="text-slate-300 hover:text-white transition">Events</a>
           <a href="/events/hack-the-valley-2026" class="text-slate-300 hover:text-white transition">2026 Recap</a>
           <a href="https://forms.gle/CpechvKU24cPVAj38" target="_blank" rel="noopener noreferrer" class="text-bc-cyan hover:text-cyan-300 transition">Survey</a>
-          <a href="mailto:contact@hackthevalley.org?subject=Hack%20the%20Valley%20updates" class="bg-bc-cyan text-bc-dark px-4 py-2 rounded-lg font-semibold hover:bg-cyan-400 transition">Get Updates</a>
+          <a href="/#updates" class="bg-bc-cyan text-bc-dark px-4 py-2 rounded-lg font-semibold hover:bg-cyan-400 transition">Get Updates</a>
         </div>
       </div>
       <div class="pb-3 md:hidden flex gap-4 overflow-x-auto text-sm whitespace-nowrap">
@@ -59,7 +59,7 @@
         <a href="/events" class="text-slate-300">Events</a>
         <a href="/events/hack-the-valley-2026" class="text-slate-300">2026 Recap</a>
         <a href="https://forms.gle/CpechvKU24cPVAj38" target="_blank" rel="noopener noreferrer" class="text-bc-cyan font-semibold">Survey</a>
-        <a href="mailto:contact@hackthevalley.org?subject=Hack%20the%20Valley%20updates" class="text-bc-cyan font-semibold">Get Updates</a>
+        <a href="/#updates" class="text-bc-cyan font-semibold">Get Updates</a>
       </div>
     </div>
   </nav>
@@ -76,11 +76,43 @@
           <h1 class="text-5xl sm:text-6xl lg:text-7xl font-black leading-tight mb-6">The Valley needs more people who <span class="gradient-text">build.</span></h1>
           <p class="text-lg sm:text-2xl text-slate-300 mb-8 max-w-3xl">Hack the Valley is turning one hackathon into a year-round community for students, mentors, organizers, sponsors, and anyone serious about growing local tech talent.</p>
           <div class="flex flex-col sm:flex-row gap-4">
-            <a href="mailto:contact@hackthevalley.org?subject=Hack%20the%20Valley%20updates" class="bg-bc-cyan text-bc-dark px-8 py-4 rounded-lg text-lg font-bold hover:bg-cyan-400 transition text-center">Get community updates</a>
+            <a href="#updates" class="bg-bc-cyan text-bc-dark px-8 py-4 rounded-lg text-lg font-bold hover:bg-cyan-400 transition text-center">Get community updates</a>
             <a href="/events/hack-the-valley-2026" class="border-2 border-bc-cyan text-bc-cyan px-8 py-4 rounded-lg text-lg font-bold hover:bg-bc-cyan/10 transition text-center">See the 2026 recap</a>
             <a href="https://forms.gle/CpechvKU24cPVAj38" target="_blank" rel="noopener noreferrer" class="border-2 border-slate-500 text-slate-100 px-8 py-4 rounded-lg text-lg font-bold hover:border-white transition text-center">Take the survey</a>
           </div>
-          <p class="mt-4 text-sm text-slate-400">Temporary update CTA uses email while the permanent mailing-list backend is selected.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="updates" class="py-20 bg-bc-navy">
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="bg-bc-dark border border-slate-700 rounded-3xl p-8 sm:p-10 shadow-2xl shadow-bc-cyan/10">
+          <div class="grid lg:grid-cols-[.95fr_1.05fr] gap-8 items-start">
+            <div>
+              <p class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-3">Join the community list</p>
+              <h2 class="text-4xl sm:text-5xl font-black mb-5">Hear about the next workshop, meetup, or hackathon.</h2>
+              <p class="text-lg text-slate-300">We will use this for occasional Hack the Valley updates: event announcements, recap links, student project highlights, and ways to help build the local tech community.</p>
+              <p class="mt-4 text-sm text-slate-400">No spam. No sequences. Just the useful stuff when there is something real to share.</p>
+            </div>
+            <form action="/api/subscribe" method="post" data-subscribe-form class="space-y-4 bg-slate-950/60 border border-slate-800 rounded-2xl p-5">
+              <input type="text" name="website" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true">
+              <input type="hidden" name="source" value="homepage">
+              <label class="block">
+                <span class="block text-sm font-semibold text-slate-300 mb-2">Email *</span>
+                <input required type="email" name="email" autocomplete="email" placeholder="you@example.com" class="w-full rounded-lg border border-slate-700 bg-bc-dark px-4 py-3 text-white placeholder:text-slate-500 focus:border-bc-cyan focus:outline-none">
+              </label>
+              <label class="block">
+                <span class="block text-sm font-semibold text-slate-300 mb-2">Name <span class="text-slate-500 font-normal">optional</span></span>
+                <input type="text" name="name" autocomplete="name" placeholder="Your name" class="w-full rounded-lg border border-slate-700 bg-bc-dark px-4 py-3 text-white placeholder:text-slate-500 focus:border-bc-cyan focus:outline-none">
+              </label>
+              <label class="block">
+                <span class="block text-sm font-semibold text-slate-300 mb-2">What are you interested in? <span class="text-slate-500 font-normal">optional</span></span>
+                <textarea name="interest" rows="3" placeholder="Future hackathons, mentor nights, workshops, sponsoring, volunteering…" class="w-full rounded-lg border border-slate-700 bg-bc-dark px-4 py-3 text-white placeholder:text-slate-500 focus:border-bc-cyan focus:outline-none"></textarea>
+              </label>
+              <button type="submit" class="w-full bg-bc-cyan text-bc-dark px-6 py-3 rounded-lg font-bold hover:bg-cyan-400 transition disabled:cursor-not-allowed disabled:opacity-70">Join the list</button>
+              <p data-subscribe-status class="text-sm text-slate-400" aria-live="polite">We will add you to the Hack the Valley updates list.</p>
+            </form>
+          </div>
         </div>
       </div>
     </section>
@@ -177,5 +209,6 @@
       </div>
     </div>
   </footer>
+  <script src="/mailing-list.js" defer></script>
 </body>
 </html>

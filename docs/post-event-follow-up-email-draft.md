@@ -36,7 +36,7 @@ Approval checklist before draft/send:
 
 - Recap page is approved and deployed.
 - Production URL `https://hackthevalley.org/events/hack-the-valley-2026` resolves and renders the recap.
-- Mailing-list/update CTA has final approved backend or temporary email CTA is explicitly accepted.
+- Mailing-list/update CTA uses approved Resend backend and has been smoke-tested after deploy/preview.
 - Sender / To address is approved.
 - BCC recipient list is deduped to 59 valid unique emails and checked for opt-outs/bounces if available.
 - Attachment decision is approved: no attachment by default; the by-the-numbers image is linked from the recap page.

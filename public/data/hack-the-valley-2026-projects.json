@@ -1,0 +1,226 @@
+{
+  "projects": [
+    {
+      "slug": "ratemyrunner",
+      "title": "RateMyRunner",
+      "team": "avm.07",
+      "tracks": [],
+      "description": "Community focused professor rating application",
+      "links": [
+        {
+          "label": "Demo",
+          "url": "https://teresa88629.preview.softr.app/?autoUser=true&show-toolbar=true"
+        }
+      ]
+    },
+    {
+      "slug": "the-commons",
+      "title": "The Commons",
+      "team": "Atlas Protocols",
+      "tracks": [
+        "Education",
+        "Social Impact",
+        "AI"
+      ],
+      "description": "Retaining and maintaining meaningful human roles and community values-tradtions by tracking the personal and communal growth, skills and data of a complex project over time using a global Kanban Calendar board to organize the labour and service history of any given product.",
+      "links": [
+        {
+          "label": "Repository",
+          "url": "https://github.com/seekerflame/Static-Web-Builder"
+        }
+      ]
+    },
+    {
+      "slug": "no-sleepy-joes",
+      "title": "No Sleepy Joes",
+      "team": "SleepMaxxers",
+      "tracks": [
+        "Social Impact"
+      ],
+      "description": "Driver drowsiness + road hazard co-pilot. A single dashboard runs two detection pipelines in parallel and surfaces everything through one shared alert banner + synthesized audio. Commercial truck drivers operate 11-hour shifts covering 500\u2013700 miles daily. Two leading causes of trucking accidents are forward collisions (slow/stopped vehicles, pedestrians\u2026",
+      "links": []
+    },
+    {
+      "slug": "techpath-kern",
+      "title": "TechPath Kern",
+      "team": "Kern Coders",
+      "tracks": [
+        "Education",
+        "Social Impact",
+        "AI"
+      ],
+      "description": "TechPath Kern is an AI-style opportunity navigator that helps Kern County students discover scholarships, internships, STEM programs, hackathons, and career resources. Students enter a short profile and receive ranked matches, eligibility explanations, saved opportunity checklists, deadline-aware filters, and a personalized 30-day roadmap.",
+      "links": [
+        {
+          "label": "Repository",
+          "url": "https://github.com/JCVB51/techpath-kern"
+        }
+      ]
+    },
+    {
+      "slug": "decode-it",
+      "title": "decode it",
+      "team": "aiden michael sawyer preston",
+      "tracks": [
+        "Education",
+        "Social Impact",
+        "AI"
+      ],
+      "description": "Decode it is a guided document-walkthrough platform that strips the fear out of complex legal and financial paperwork. Most AI document tools do one trick. Decode This does five \u2014 Protect, Checklist, Guided, Chat, and Export \u2014 all from one extraction, because of a single architectural insight: the atomic unit is a Requirement, not a field. A form field\u2026",
+      "links": [
+        {
+          "label": "Repository",
+          "url": "https://github.com/prest2323/decode-this.git"
+        }
+      ]
+    },
+    {
+      "slug": "tokoro",
+      "title": "Tokoro",
+      "team": "CALM",
+      "tracks": [
+        "Education",
+        "Social Impact",
+        "AI"
+      ],
+      "description": "A location-based crime compiler that looks up crimes in selected areas and provides AI insights.",
+      "links": [
+        {
+          "label": "Repository",
+          "url": "https://github.com/christiandali/city-explorer"
+        }
+      ]
+    },
+    {
+      "slug": "valley-sat-prep",
+      "title": "Valley SAT Prep",
+      "team": "Sequoia Sasquatches",
+      "tracks": [
+        "Education",
+        "Social Impact",
+        "AI"
+      ],
+      "description": "SAT prep insight tool for educators",
+      "links": [
+        {
+          "label": "Repository",
+          "url": "https://github.com/impossible67/valley-sat-prep"
+        }
+      ]
+    },
+    {
+      "slug": "calcguide",
+      "title": "CalcGuide",
+      "team": "NewtonsNewts",
+      "tracks": [
+        "Education",
+        "Social Impact",
+        "AI"
+      ],
+      "description": "Math Tutor with focus on calculus.",
+      "links": [
+        {
+          "label": "Repository",
+          "url": "https://github.com/calc-guide/calc-guide-app/"
+        },
+        {
+          "label": "Demo",
+          "url": "https://calc.elexation.com/"
+        }
+      ]
+    },
+    {
+      "slug": "valley-roots-outreach",
+      "title": "Valley Roots Outreach",
+      "team": "BIG THREE",
+      "tracks": [
+        "Education",
+        "Social Impact",
+        "AI"
+      ],
+      "description": "Outreach app for students and college grads",
+      "links": []
+    },
+    {
+      "slug": "vapevision",
+      "title": "VapeVision",
+      "team": "No Geek Just Bars",
+      "tracks": [
+        "Social Impact",
+        "AI"
+      ],
+      "description": "Vaping legally is a big problem, and is something we see everyday, especially as high school students. We are taking steps to combat substance abuse in public spaces where a majority of e-cigarette users admit to using vapes. This hurts businessowners financially and causes unrest and discomfort among employees and civilians.",
+      "links": [
+        {
+          "label": "Repository",
+          "url": "https://github.com/C0derTang/vapevision"
+        },
+        {
+          "label": "Demo",
+          "url": "https://vapevision.vercel.app/"
+        },
+        {
+          "label": "Media",
+          "url": "https://youtu.be/sjhyWC3Nyzw"
+        }
+      ]
+    },
+    {
+      "slug": "live-lecture-accessibility-assistant",
+      "title": "Live Lecture Accessibility Assistant",
+      "team": "Bakersfield College Robotics Union",
+      "tracks": [
+        "Education",
+        "Social Impact",
+        "AI"
+      ],
+      "description": "Fast-paced lectures can be difficult to keep up with for both hearing impaired and English second language students. This app aims to solve this by having live lecture transcription as well as a translate button to four popular languages (Spanish, Chinese, Arabic, & Hindi). There are also download buttons for those who may want to save the English or\u2026",
+      "links": [
+        {
+          "label": "Repository",
+          "url": "https://github.com/staticdouble/Live_Lecture_Accessibility_Assistant"
+        },
+        {
+          "label": "Demo",
+          "url": "https://livelectureaccessibilityassistant-bjdxchgyjedddwwxwjz8w9.streamlit.app/"
+        }
+      ]
+    },
+    {
+      "slug": "emergency-digital-tools",
+      "title": "Emergency digital tools",
+      "team": "Bakersfield College Robotics Union",
+      "tracks": [
+        "Education",
+        "Social Impact",
+        "AI"
+      ],
+      "description": "In the spirit of Right to repair and keeping devices out of the landfill, we upcycle unused phones or tablets for use in an emergency / apocalyptic event where cell or wifi is not available.",
+      "links": [
+        {
+          "label": "Media",
+          "url": "https://docs.google.com/presentation/d/1lOd8TrtrEAAWKCPilB6KIe9jfHWj4-ix/edit"
+        }
+      ]
+    }
+  ],
+  "withheldCount": 4,
+  "withheldReasons": [
+    {
+      "title": "RateMyRunner",
+      "reason": "duplicate/admin-editor URL"
+    },
+    {
+      "title": "Continuum",
+      "reason": "needs organizer cleanup before public display"
+    },
+    {
+      "title": "Test Title",
+      "reason": "needs organizer cleanup before public display"
+    },
+    {
+      "title": "Ham",
+      "reason": "needs organizer cleanup before public display"
+    }
+  ]
+}

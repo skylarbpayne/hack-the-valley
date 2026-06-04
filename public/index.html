@@ -3,14 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hack the Valley 2026 | May 30, 2026 | Bakersfield, CA</title>
-  <meta name="description" content="Join 50 students for Hack the Valley 2026 in Bakersfield, CA on May 30, 2026. An intimate, community-focused hackathon with a $500 grand prize.">
-
+  <title>Hack the Valley | Bakersfield Tech Community</title>
+  <meta name="description" content="Hack the Valley is building a stronger Bakersfield and Kern County tech community through hackathons, student projects, mentorship, and practical AI events.">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-
   <script>
     tailwind.config = {
       theme: {
@@ -23,720 +21,161 @@
             "bc-purple": "#7c3aed",
             "bc-dark": "#0f172a"
           },
-          fontFamily: {
-            sans: ["Inter", "sans-serif"]
-          }
+          fontFamily: { sans: ["Inter", "sans-serif"] }
         }
       }
     };
   </script>
-
   <style>
-    body {
-      font-family: "Inter", sans-serif;
-    }
-
+    body { font-family: "Inter", sans-serif; }
     .gradient-text {
       background: linear-gradient(135deg, #06b6d4 0%, #2563eb 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
-
-    .card-hover {
-      transition: transform 0.25s ease, box-shadow 0.25s ease;
-    }
-
-    .card-hover:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 20px 24px rgba(0, 0, 0, 0.3);
-    }
+    .card-hover { transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+    .card-hover:hover { transform: translateY(-4px); box-shadow: 0 20px 28px rgba(6,182,212,.14); border-color: rgba(6,182,212,.45); }
   </style>
 </head>
 <body class="bg-bc-dark text-slate-100">
   <nav class="sticky top-0 z-50 bg-bc-dark/90 backdrop-blur-sm border-b border-slate-800">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="h-16 flex items-center justify-between">
-        <a href="#hero" class="flex items-center gap-4">
-          <img 
-            src="/images/HackTheValleyLogo.PNG" 
-            alt="Hack the Valley Logo"
-            class="w-14 h-14 object-contain rounded-full"
-          />
-          <span class="font-bold text-lg sm:text-xl">Hack the Valley 2026</span>
+      <div class="h-16 flex items-center justify-between gap-6">
+        <a href="/" class="flex items-center gap-4 min-w-0">
+          <img src="/images/HackTheValleyLogo.PNG" alt="Hack the Valley logo" class="w-12 h-12 object-contain rounded-full">
+          <span class="font-bold text-lg sm:text-xl truncate">Hack the Valley</span>
         </a>
         <div class="hidden md:flex items-center gap-6 text-sm font-medium">
-          <a href="#about" class="text-slate-300 hover:text-white transition">Overview</a>
-          <a href="#tracks" class="text-slate-300 hover:text-white transition">Tracks</a>
-          <a href="#sponsorship" class="text-slate-300 hover:text-white transition">Sponsor</a>
-          <a href="#donate" class="text-slate-300 hover:text-white transition">Donate</a>
-          <a href="#success-stories" class="text-slate-300 hover:text-white transition">Alumni</a>
-          <a href="#schedule" class="text-slate-300 hover:text-white transition">Schedule</a>
-          <a href="#parking" class="text-slate-300 hover:text-white transition">Parking</a>
-          <a href="#signup" class="text-slate-300 hover:text-white transition">Sign Up</a>
-          <a href="#survey" class="text-bc-cyan hover:text-cyan-300 transition">Survey</a>
-          <a href="/submit" class="bg-bc-cyan text-bc-dark px-4 py-2 rounded-lg font-semibold hover:bg-cyan-400 transition">Submit Project</a>
+          <a href="/#about" class="text-slate-300 hover:text-white transition">About</a>
+          <a href="/events" class="text-slate-300 hover:text-white transition">Events</a>
+          <a href="/events/hack-the-valley-2026" class="text-slate-300 hover:text-white transition">2026 Recap</a>
+          <a href="https://forms.gle/CpechvKU24cPVAj38" target="_blank" rel="noopener noreferrer" class="text-bc-cyan hover:text-cyan-300 transition">Survey</a>
+          <a href="mailto:contact@hackthevalley.org?subject=Hack%20the%20Valley%20updates" class="bg-bc-cyan text-bc-dark px-4 py-2 rounded-lg font-semibold hover:bg-cyan-400 transition">Get Updates</a>
         </div>
       </div>
       <div class="pb-3 md:hidden flex gap-4 overflow-x-auto text-sm whitespace-nowrap">
-        <a href="#about" class="text-slate-300">Overview</a>
-        <a href="#tracks" class="text-slate-300">Tracks</a>
-        <a href="#sponsorship" class="text-slate-300">Sponsor</a>
-        <a href="#donate" class="text-slate-300">Donate</a>
-        <a href="#success-stories" class="text-slate-300">Alumni</a>
-        <a href="#schedule" class="text-slate-300">Schedule</a>
-        <a href="#parking" class="text-slate-300">Parking</a>
-        <a href="#signup" class="text-slate-300">Sign Up</a>
-        <a href="#survey" class="text-bc-cyan font-semibold">Survey</a>
-        <a href="/submit" class="text-bc-cyan font-semibold">Submit Project</a>
+        <a href="/#about" class="text-slate-300">About</a>
+        <a href="/events" class="text-slate-300">Events</a>
+        <a href="/events/hack-the-valley-2026" class="text-slate-300">2026 Recap</a>
+        <a href="https://forms.gle/CpechvKU24cPVAj38" target="_blank" rel="noopener noreferrer" class="text-bc-cyan font-semibold">Survey</a>
+        <a href="mailto:contact@hackthevalley.org?subject=Hack%20the%20Valley%20updates" class="text-bc-cyan font-semibold">Get Updates</a>
       </div>
     </div>
   </nav>
 
-  <section id="hero" class="relative min-h-screen flex items-center justify-center">
-    <div class="absolute inset-0 overflow-hidden">
-      <img src="/images/hero-bg.png" alt="Students coding during Hack the Valley" class="w-full h-full object-cover opacity-35">
-      <div class="absolute inset-0 bg-gradient-to-b from-bc-dark/50 via-bc-dark/70 to-bc-dark"></div>
-    </div>
-    <div class="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-      <p class="uppercase tracking-widest text-sm text-bc-cyan font-semibold mb-4">May 30, 2026 • Bakersfield, California</p>
-      <h1 class="text-5xl sm:text-6xl lg:text-7xl font-black leading-tight mb-6">Build. Create. <span class="gradient-text">Innovate.</span></h1>
-      <p class="text-lg sm:text-2xl text-slate-300 mb-8 max-w-3xl mx-auto">Join 50 students for 1 day (8 hours) of hacking, mentorship, and breakthrough projects in Bakersfield's intimate, community-focused hackathon.</p>
-      <div class="flex flex-col sm:flex-row gap-4 justify-center">
-        <a href="https://forms.gle/CpechvKU24cPVAj38" target="_blank" rel="noopener noreferrer" class="bg-bc-cyan text-bc-dark px-8 py-4 rounded-lg text-lg font-bold hover:bg-cyan-400 transition">Take Post-Event Survey</a>
-        <a href="/submit" class="border-2 border-bc-cyan text-bc-cyan px-8 py-4 rounded-lg text-lg font-bold hover:bg-bc-cyan/10 transition">Submit Project</a>
-        <a href="#about" class="border-2 border-bc-cyan text-bc-cyan px-8 py-4 rounded-lg text-lg font-bold hover:bg-bc-cyan/10 transition">Explore Event</a>
+  <main>
+    <section class="relative min-h-[88vh] flex items-center overflow-hidden">
+      <div class="absolute inset-0">
+        <img src="/images/events/2026/photos/img_9824.jpg" alt="Students and mentors gathered at Hack the Valley 2026" class="w-full h-full object-cover opacity-35">
+        <div class="absolute inset-0 bg-gradient-to-b from-bc-dark/50 via-bc-dark/80 to-bc-dark"></div>
       </div>
-      <div class="mt-12 grid grid-cols-2 gap-6 max-w-xl mx-auto">
-        <div>
-          <div class="text-3xl sm:text-4xl font-black gradient-text">50</div>
-          <div class="text-slate-400 mt-1">Students</div>
-        </div>
-        <div>
-          <div class="text-3xl sm:text-4xl font-black gradient-text">$500</div>
-          <div class="text-slate-400 mt-1">Grand Prize</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="survey" class="py-20 bg-bc-navy">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-      <div class="inline-block bg-bc-cyan/10 text-bc-cyan text-sm font-bold px-5 py-2 rounded-full mb-6 border border-bc-cyan/30">
-        Post-event feedback
-      </div>
-      <h2 class="text-4xl font-black mb-4"><span class="gradient-text">Help Us Improve Hack the Valley</span></h2>
-      <p class="text-lg text-slate-300 mb-8 max-w-2xl mx-auto">If you attended Hack the Valley, please take a few minutes to share what worked, what did not, and what we should make better next time.</p>
-      <a href="https://forms.gle/CpechvKU24cPVAj38" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center bg-bc-cyan text-bc-dark px-8 py-4 rounded-lg text-lg font-bold hover:bg-cyan-400 transition">
-        Open the Post-Event Survey
-      </a>
-    </div>
-  </section>
-
-  <section id="about" class="py-20 bg-bc-dark">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Event Overview</span></h2>
-      <p class="text-center text-slate-400 mb-12 max-w-3xl mx-auto">Hack the Valley 2026 is a free, high-energy innovation day where students team up to solve real problems with mentorship from industry leaders.</p>
-      <div class="grid lg:grid-cols-2 gap-10 items-center">
-        <div>
-          <img src="/images/event-overview.png" alt="Students collaborating at Hack the Valley" class="w-full rounded-2xl border border-slate-700 object-cover">
-        </div>
-        <div class="space-y-6">
-          <div class="bg-bc-navy p-6 rounded-xl border border-slate-700">
-            <h3 class="text-2xl font-bold mb-4">What to Expect</h3>
-            <ul class="space-y-3 text-slate-300">
-              <li>• 8-hour access to mentors, workshops, and office hours</li>
-              <li>• Free meals, snacks, swag, and collaborative hacking spaces</li>
-              <li>• Networking with local tech professionals and mentors</li>
-              <li>• Project expo, judging, and awards before close</li>
-            </ul>
-          </div>
-          <div class="grid sm:grid-cols-2 gap-4">
-            <div class="bg-bc-navy p-4 rounded-xl border border-slate-700">
-              <div class="text-xs uppercase tracking-wider text-slate-400">Date</div>
-              <div class="font-semibold text-lg">May 30, 2026</div>
-            </div>
-            <div class="bg-bc-navy p-4 rounded-xl border border-slate-700">
-              <div class="text-xs uppercase tracking-wider text-slate-400">Location</div>
-              <div class="font-semibold text-lg">CSUB Student Union MPR</div>
-            </div>
-            <div class="bg-bc-navy p-4 rounded-xl border border-slate-700">
-              <div class="text-xs uppercase tracking-wider text-slate-400">Format</div>
-              <div class="font-semibold text-lg">7:30 AM check-in • 8:30 AM - 6:00 PM program</div>
-            </div>
-            <div class="bg-bc-navy p-4 rounded-xl border border-slate-700">
-              <div class="text-xs uppercase tracking-wider text-slate-400">Admission</div>
-              <div class="font-semibold text-lg text-bc-cyan">100% Free</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="benefits" class="py-20 bg-bc-navy">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Why Attend</span></h2>
-      <p class="text-center text-slate-400 mb-12">Built for beginners and experienced hackers alike.</p>
-      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div class="bg-bc-dark p-6 rounded-xl border border-slate-700 card-hover"><h3 class="font-bold text-lg mb-2">Build Real Projects</h3><p class="text-slate-400">Ship something meaningful in a focused one-day sprint.</p></div>
-        <div class="bg-bc-dark p-6 rounded-xl border border-slate-700 card-hover"><h3 class="font-bold text-lg mb-2">Learn From Experts</h3><p class="text-slate-400">Join technical workshops and mentor sessions throughout the event.</p></div>
-        <div class="bg-bc-dark p-6 rounded-xl border border-slate-700 card-hover"><h3 class="font-bold text-lg mb-2">Build Your Network</h3><p class="text-slate-400">Connect with local tech professionals, mentors, and fellow hackers.</p></div>
-        <div class="bg-bc-dark p-6 rounded-xl border border-slate-700 card-hover"><h3 class="font-bold text-lg mb-2">Compete for the Grand Prize</h3><p class="text-slate-400">Present your best project for a $500 overall winner award.</p></div>
-        <div class="bg-bc-dark p-6 rounded-xl border border-slate-700 card-hover"><h3 class="font-bold text-lg mb-2">Food and Swag Included</h3><p class="text-slate-400">Meals, snacks, and event merch are included for all participants.</p></div>
-        <div class="bg-bc-dark p-6 rounded-xl border border-slate-700 card-hover"><h3 class="font-bold text-lg mb-2">Boost Your Resume</h3><p class="text-slate-400">Showcase your work and stand out in internship and job applications.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <section id="sponsorship" class="py-20 bg-bc-dark">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Sponsorship Opportunities</span></h2>
-      <p class="text-center text-slate-400 mb-8 max-w-3xl mx-auto">Partner with Hack the Valley to support the next generation of innovators and connect with 200+ talented developers in the Central Valley.</p>
-      
-      <!-- Sponsorship Value Visual -->
-      <div class="mb-12">
-        <img src="/images/sponsor-booth.png" alt="Sponsors engaging with students at Hack the Valley booth" class="w-full max-w-5xl mx-auto rounded-2xl border border-slate-700 shadow-2xl shadow-bc-cyan/10 object-cover">
-      </div>
-
-      <!-- Value Proposition Visual -->
-      <div class="mb-16 grid md:grid-cols-3 gap-6">
-        <div class="bg-gradient-to-br from-bc-navy to-bc-blue/20 p-6 rounded-xl border-2 border-bc-blue/50 text-center">
-          <div class="text-5xl mb-3">🎯</div>
-          <div class="text-3xl font-black text-bc-cyan mb-2">200+</div>
-          <div class="text-slate-300 font-semibold">Engaged Students</div>
-          <div class="text-sm text-slate-400 mt-2">Direct access to top tech talent from regional universities</div>
-        </div>
-        <div class="bg-gradient-to-br from-bc-navy to-bc-purple/20 p-6 rounded-xl border-2 border-bc-purple/50 text-center">
-          <div class="text-5xl mb-3">🚀</div>
-          <div class="text-3xl font-black text-bc-purple mb-2">8 Hours</div>
-          <div class="text-slate-300 font-semibold">Brand Exposure</div>
-          <div class="text-sm text-slate-400 mt-2">Full-day immersion with your brand front and center</div>
-        </div>
-        <div class="bg-gradient-to-br from-bc-navy to-bc-cyan/20 p-6 rounded-xl border-2 border-bc-cyan/50 text-center">
-          <div class="text-5xl mb-3">💼</div>
-          <div class="text-3xl font-black text-bc-cyan mb-2">10+</div>
-          <div class="text-slate-300 font-semibold">Touchpoints</div>
-          <div class="text-sm text-slate-400 mt-2">Multiple interactions: swag, workshops, demos, judging, social</div>
-        </div>
-      </div>
-
-      <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-        <!-- Community Sponsor -->
-        <div class="bg-gradient-to-br from-bc-navy to-green-900/10 p-6 rounded-xl border-2 border-green-600/50 card-hover relative overflow-hidden">
-          <div class="absolute top-0 right-0 w-32 h-32 bg-green-600/5 rounded-full blur-3xl"></div>
-          <div class="relative">
-            <div class="flex items-center gap-2 mb-3">
-              <span class="text-4xl">💚</span>
-              <div>
-                <div class="text-green-500 font-black text-2xl">Community</div>
-                <div class="text-xs text-green-500/70 font-semibold">Individual Supporter</div>
-              </div>
-            </div>
-            <div class="text-3xl font-bold mb-2">$100</div>
-            <div class="inline-block bg-green-900/30 text-green-400 text-xs font-semibold px-3 py-1 rounded-full mb-4">
-              ❤️ Unlimited spots
-            </div>
-            
-            <ul class="space-y-2.5 text-sm text-slate-300">
-              <li class="flex items-start gap-3 bg-green-900/10 p-2 rounded-lg border border-green-800/30">
-                <span class="text-green-500 text-lg">📜</span>
-                <div>
-                  <div class="font-medium">Name on supporters wall</div>
-                  <div class="text-xs text-slate-400">Listed on website and event signage</div>
-                </div>
-              </li>
-              <li class="flex items-start gap-3 bg-green-900/10 p-2 rounded-lg border border-green-800/30">
-                <span class="text-green-500 text-lg">📱</span>
-                <div>
-                  <div class="font-medium">Social media thank you</div>
-                  <div class="text-xs text-slate-400">Personal shoutout on our channels</div>
-                </div>
-              </li>
-              <li class="flex items-start gap-3 bg-green-900/10 p-2 rounded-lg border border-green-800/30">
-                <span class="text-green-500 text-lg">🎫</span>
-                <div>
-                  <div class="font-medium">VIP event access</div>
-                  <div class="text-xs text-slate-400">Front row at awards, meet the teams</div>
-                </div>
-              </li>
-            </ul>
-          </div>
-        </div>
-        
-        <!-- Bronze Tier -->
-        <div class="bg-gradient-to-br from-bc-navy to-amber-900/10 p-6 rounded-xl border-2 border-amber-700/50 card-hover relative overflow-hidden">
-          <div class="absolute top-0 right-0 w-32 h-32 bg-amber-600/5 rounded-full blur-3xl"></div>
-          <div class="relative">
-            <div class="flex items-center gap-2 mb-3">
-              <span class="text-4xl">🥉</span>
-              <div>
-                <div class="text-amber-600 font-black text-2xl">Bronze</div>
-                <div class="text-xs text-amber-600/70 font-semibold">Foundation Partner</div>
-              </div>
-            </div>
-            <div class="text-3xl font-bold mb-2">$250</div>
-            <div class="inline-block bg-amber-900/30 text-amber-400 text-xs font-semibold px-3 py-1 rounded-full mb-4">
-              📊 10 spots available
-            </div>
-            
-            <ul class="space-y-2.5 text-sm text-slate-300">
-              <li class="flex items-start gap-3 bg-amber-900/10 p-2 rounded-lg border border-amber-800/30">
-                <span class="text-amber-500 text-lg">🖼️</span>
-                <div>
-                  <div class="font-medium">Logo on website</div>
-                  <div class="text-xs text-slate-400">Sponsors section placement</div>
-                </div>
-              </li>
-              <li class="flex items-start gap-3 bg-amber-900/10 p-2 rounded-lg border border-amber-800/30">
-                <span class="text-amber-500 text-lg">📱</span>
-                <div>
-                  <div class="font-medium">Social media recognition</div>
-                  <div class="text-xs text-slate-400">Tagged posts across platforms</div>
-                </div>
-              </li>
-              <li class="flex items-start gap-3 bg-amber-900/10 p-2 rounded-lg border border-amber-800/30">
-                <span class="text-amber-500 text-lg">📋</span>
-                <div>
-                  <div class="font-medium">Event day signage</div>
-                  <div class="text-xs text-slate-400">Logo displayed at venue</div>
-                </div>
-              </li>
-              <li class="flex items-start gap-3 bg-amber-900/10 p-2 rounded-lg border border-amber-800/30">
-                <span class="text-amber-500 text-lg">🎁</span>
-                <div>
-                  <div class="font-medium">Swag table presence</div>
-                  <div class="text-xs text-slate-400">Distribute branded materials</div>
-                </div>
-              </li>
-            </ul>
-          </div>
-        </div>
-        
-        <!-- Silver Tier -->
-        <div class="bg-gradient-to-br from-bc-navy to-slate-700/10 p-6 rounded-xl border-2 border-slate-400/50 card-hover relative overflow-hidden">
-          <div class="absolute top-0 right-0 w-32 h-32 bg-slate-400/5 rounded-full blur-3xl"></div>
-          <div class="relative">
-            <div class="flex items-center gap-2 mb-3">
-              <span class="text-4xl">🥈</span>
-              <div>
-                <div class="text-slate-300 font-black text-2xl">Silver</div>
-                <div class="text-xs text-slate-400 font-semibold">Growth Partner</div>
-              </div>
-            </div>
-            <div class="text-3xl font-bold mb-2">$500</div>
-            <div class="inline-block bg-slate-700/30 text-slate-300 text-xs font-semibold px-3 py-1 rounded-full mb-4">
-              📊 5 spots available
-            </div>
-            
-            <ul class="space-y-2.5 text-sm text-slate-300">
-              <li class="flex items-start gap-3 bg-slate-700/20 p-2 rounded-lg border border-slate-600/30">
-                <span class="text-slate-300 text-lg">✨</span>
-                <span class="font-medium">All Bronze benefits included</span>
-              </li>
-              <li class="flex items-start gap-3 bg-slate-700/20 p-2 rounded-lg border border-slate-600/30">
-                <span class="text-slate-300 text-lg">🖼️</span>
-                <div>
-                  <div class="font-medium">Prominent logo placement</div>
-                  <div class="text-xs text-slate-400">Larger size, better positioning</div>
-                </div>
-              </li>
-              <li class="flex items-start gap-3 bg-slate-700/20 p-2 rounded-lg border border-slate-600/30">
-                <span class="text-slate-300 text-lg">💼</span>
-                <div>
-                  <div class="font-medium">Recruiting table access</div>
-                  <div class="text-xs text-slate-400">Connect directly with students</div>
-                </div>
-              </li>
-              <li class="flex items-start gap-3 bg-slate-700/20 p-2 rounded-lg border border-slate-600/30">
-                <span class="text-slate-300 text-lg">📱</span>
-                <div>
-                  <div class="font-medium">Dedicated social post</div>
-                  <div class="text-xs text-slate-400">Full sponsor highlight</div>
-                </div>
-              </li>
-              <li class="flex items-start gap-3 bg-slate-700/20 p-2 rounded-lg border border-slate-600/30">
-                <span class="text-slate-300 text-lg">⚖️</span>
-                <div>
-                  <div class="font-medium">Judge participation</div>
-                  <div class="text-xs text-slate-400">Evaluate final projects</div>
-                </div>
-              </li>
-            </ul>
-          </div>
-        </div>
-        
-        <!-- Gold Tier -->
-        <div class="bg-gradient-to-br from-bc-navy to-yellow-600/10 p-6 rounded-xl border-2 border-yellow-500/50 card-hover relative overflow-hidden">
-          <div class="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl"></div>
-          <div class="relative">
-            <div class="flex items-center gap-2 mb-3">
-              <span class="text-4xl">🥇</span>
-              <div>
-                <div class="text-yellow-500 font-black text-2xl line-through decoration-2 decoration-yellow-500/80">Gold</div>
-                <div class="text-xs text-yellow-600/70 font-semibold line-through decoration-1 decoration-yellow-500/70">Premier Partner</div>
-              </div>
-            </div>
-            <div class="text-3xl font-bold mb-2 line-through decoration-2 decoration-yellow-500/80">$1,000</div>
-            <div class="inline-block bg-red-900/30 text-red-300 text-xs font-semibold px-3 py-1 rounded-full mb-4 border border-red-500/30">
-              ✅ Sold out
-            </div>
-            
-            <ul class="space-y-2.5 text-sm text-slate-300">
-              <li class="flex items-start gap-3 bg-yellow-900/20 p-2 rounded-lg border border-yellow-700/30">
-                <span class="text-yellow-500 text-lg">✨</span>
-                <span class="font-medium">All Silver benefits included</span>
-              </li>
-              <li class="flex items-start gap-3 bg-yellow-900/20 p-2 rounded-lg border border-yellow-700/30">
-                <span class="text-yellow-500 text-lg">🖼️</span>
-                <div>
-                  <div class="font-medium">Premium logo placement</div>
-                  <div class="text-xs text-slate-400">Top-tier visibility everywhere</div>
-                </div>
-              </li>
-              <li class="flex items-start gap-3 bg-yellow-900/20 p-2 rounded-lg border border-yellow-700/30">
-                <span class="text-yellow-500 text-lg">🎓</span>
-                <div>
-                  <div class="font-medium">Workshop opportunity</div>
-                  <div class="text-xs text-slate-400">Host a technical session</div>
-                </div>
-              </li>
-              <li class="flex items-start gap-3 bg-yellow-900/20 p-2 rounded-lg border border-yellow-700/30">
-                <span class="text-yellow-500 text-lg">🎤</span>
-                <div>
-                  <div class="font-medium">Opening remarks</div>
-                  <div class="text-xs text-slate-400">Address all participants</div>
-                </div>
-              </li>
-              <li class="flex items-start gap-3 bg-yellow-900/20 p-2 rounded-lg border border-yellow-700/30">
-                <span class="text-yellow-500 text-lg">🍕</span>
-                <div>
-                  <div class="font-medium">Branded meal sponsorship</div>
-                  <div class="text-xs text-slate-400">"Lunch by [Your Company]"</div>
-                </div>
-              </li>
-              <li class="flex items-start gap-3 bg-yellow-900/20 p-2 rounded-lg border border-yellow-700/30">
-                <span class="text-yellow-500 text-lg">🎁</span>
-                <div>
-                  <div class="font-medium">Swag in every bag</div>
-                  <div class="text-xs text-slate-400">Your merch to all participants</div>
-                </div>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <div id="donate" class="bg-gradient-to-br from-bc-navy to-bc-blue/20 rounded-3xl border border-slate-700 p-8 sm:p-10 shadow-2xl shadow-bc-cyan/10">
+      <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
         <div class="max-w-4xl">
-          <p class="uppercase tracking-widest text-sm text-bc-cyan font-semibold mb-4">Support Hack the Valley</p>
-          <h3 class="text-4xl font-black mb-4"><span class="gradient-text">Sponsor the event or make a donation</span></h3>
-          <p class="text-slate-300 text-lg leading-8 max-w-3xl">Help us create an unforgettable experience for student innovators in the Central Valley. Sponsorships support the event at a bigger level, and donations help cover the details that make the day actually great: meals, swag, prizes, and logistics.</p>
+          <p class="uppercase tracking-[0.35em] text-sm text-bc-cyan font-bold mb-5">Bakersfield • Kern County • Student builders</p>
+          <h1 class="text-5xl sm:text-6xl lg:text-7xl font-black leading-tight mb-6">The Valley needs more people who <span class="gradient-text">build.</span></h1>
+          <p class="text-lg sm:text-2xl text-slate-300 mb-8 max-w-3xl">Hack the Valley is turning one hackathon into a year-round community for students, mentors, organizers, sponsors, and anyone serious about growing local tech talent.</p>
+          <div class="flex flex-col sm:flex-row gap-4">
+            <a href="mailto:contact@hackthevalley.org?subject=Hack%20the%20Valley%20updates" class="bg-bc-cyan text-bc-dark px-8 py-4 rounded-lg text-lg font-bold hover:bg-cyan-400 transition text-center">Get community updates</a>
+            <a href="/events/hack-the-valley-2026" class="border-2 border-bc-cyan text-bc-cyan px-8 py-4 rounded-lg text-lg font-bold hover:bg-bc-cyan/10 transition text-center">See the 2026 recap</a>
+            <a href="https://forms.gle/CpechvKU24cPVAj38" target="_blank" rel="noopener noreferrer" class="border-2 border-slate-500 text-slate-100 px-8 py-4 rounded-lg text-lg font-bold hover:border-white transition text-center">Take the survey</a>
+          </div>
+          <p class="mt-4 text-sm text-slate-400">Temporary update CTA uses email while the permanent mailing-list backend is selected.</p>
+        </div>
+      </div>
+    </section>
 
-          <div class="mt-8 max-w-5xl bg-bc-dark/70 border border-slate-600 rounded-2xl p-6 sm:p-7 card-hover">
-            <div class="grid gap-4 lg:grid-cols-[auto_1fr_auto] lg:items-center">
-              <a href="https://givebutter.com/hackthevalley?gbtid=f8d86b51d27343748b51bf30c02b4ac2" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center bg-bc-cyan text-bc-dark px-8 py-3 rounded-lg font-bold shadow-lg shadow-cyan-950/40 hover:bg-cyan-400 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-cyan-900/50 transition cursor-pointer">Donate Online</a>
-              <p class="text-white text-lg leading-relaxed lg:text-center">or Text <span class="font-black">HACKTHEVALLEY</span> to <span class="font-black">53-555</span> to donate</p>
-              <a href="mailto:contact@hackthevalley.org" class="inline-flex items-center justify-center border-2 border-bc-cyan/50 text-bc-cyan px-6 py-3 rounded-lg font-bold hover:bg-bc-cyan/10 hover:border-bc-cyan hover:-translate-y-0.5 transition cursor-pointer">Contact Us</a>
+    <section id="about" class="py-20 bg-bc-dark">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid lg:grid-cols-[1.05fr_.95fr] gap-12 items-center">
+          <div>
+            <p class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-3">What this is becoming</p>
+            <h2 class="text-4xl sm:text-5xl font-black mb-6">Not just an event page anymore.</h2>
+            <p class="text-lg text-slate-300 mb-6">The first Hack the Valley proved there is real appetite for practical AI, student projects, mentorship, and a stronger Bakersfield tech network. The next step is turning that proof into a repeatable community surface.</p>
+            <div class="grid sm:grid-cols-2 gap-4">
+              <div class="bg-bc-navy border border-slate-700 rounded-2xl p-5 card-hover">
+                <div class="text-3xl mb-3">🧑‍💻</div>
+                <h3 class="font-bold text-xl mb-2">Students</h3>
+                <p class="text-slate-400">Build projects, meet peers, learn practical tools, and show real work.</p>
+              </div>
+              <div class="bg-bc-navy border border-slate-700 rounded-2xl p-5 card-hover">
+                <div class="text-3xl mb-3">🤝</div>
+                <h3 class="font-bold text-xl mb-2">Mentors</h3>
+                <p class="text-slate-400">Help teams get unstuck and turn ideas into working demos.</p>
+              </div>
+              <div class="bg-bc-navy border border-slate-700 rounded-2xl p-5 card-hover">
+                <div class="text-3xl mb-3">🏢</div>
+                <h3 class="font-bold text-xl mb-2">Sponsors</h3>
+                <p class="text-slate-400">Back local talent and connect with builders early.</p>
+              </div>
+              <div class="bg-bc-navy border border-slate-700 rounded-2xl p-5 card-hover">
+                <div class="text-3xl mb-3">📍</div>
+                <h3 class="font-bold text-xl mb-2">Organizers</h3>
+                <p class="text-slate-400">Host workshops, recruit students, take photos, run logistics, and make this durable.</p>
+              </div>
             </div>
+          </div>
+          <div class="bg-bc-navy border border-slate-700 rounded-3xl p-5 shadow-2xl shadow-bc-cyan/10">
+            <img src="/images/events/2026/hack-the-valley-by-the-numbers.png" alt="Hack the Valley by the numbers flyer" class="rounded-2xl w-full border border-slate-700 bg-white">
           </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section id="success-stories" class="py-20 bg-bc-navy">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">What Hackathons Build</span></h2>
-      <p class="text-center text-slate-400 mb-12 max-w-3xl mx-auto">Real outcomes from real hackathons. Companies founded, jobs landed, careers launched.</p>
-      
-      <!-- Featured Video: LA Tech Week 2024 Demo Day -->
-      <div class="mb-12">
-        <h3 class="text-2xl font-bold text-center mb-6 text-slate-200">Watch: LA Tech Week 2024 Demo Day</h3>
-        <div class="max-w-4xl mx-auto aspect-video rounded-xl overflow-hidden border border-slate-700">
-          <iframe 
-            width="100%" 
-            height="100%" 
-            src="https://www.youtube.com/embed/JL9f2RGJqlA" 
-            title="LA Tech Week 2024 Hackathon Demo Day" 
-            frameborder="0" 
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-            allowfullscreen>
-          </iframe>
+    <section class="py-20 bg-bc-navy">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex flex-col lg:flex-row justify-between gap-8 mb-10">
+          <div>
+            <p class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-3">Event archive</p>
+            <h2 class="text-4xl font-black mb-3">Hack the Valley 2026 recap is live for review.</h2>
+            <p class="text-slate-300 max-w-2xl">Projects, photos, the by-the-numbers snapshot, survey link, and helper CTA are now gathered in one place.</p>
+          </div>
+          <div class="flex items-start">
+            <a href="/events/hack-the-valley-2026" class="bg-bc-cyan text-bc-dark px-6 py-3 rounded-lg font-bold hover:bg-cyan-400 transition">Open recap page</a>
+          </div>
         </div>
-        <p class="text-center text-slate-500 text-sm mt-4">Top 8 teams pitch their inventions to VC investors at Google • Hacker Fund</p>
-      </div>
-      
-      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-        <!-- Vrban -->
-        <a href="https://devpost.com/software/vrban" target="_blank" rel="noopener noreferrer" class="block h-full">
-          <article class="bg-bc-dark rounded-xl border border-slate-700 card-hover h-full flex flex-col overflow-hidden">
-            <img src="/assets/demos/vrban.png" alt="Vrban - VR Urban Planning" class="w-full h-40 object-cover">
-            <div class="p-6 flex flex-col flex-grow">
-              <div class="flex items-center justify-between mb-4">
-                <span class="text-2xl">🚀</span>
-                <span class="bg-green-500/20 text-green-400 text-xs font-bold px-3 py-1 rounded-full">YC Company</span>
-              </div>
-              <h3 class="text-xl font-bold mb-2">Vrban</h3>
-              <p class="text-slate-400 text-sm mb-3 flex-grow">VR meets urban planning. Built at TechCrunch Disrupt 2014, became YC-backed Resolve.</p>
-              <div class="text-xs text-slate-500">Angel Say • Columbia University</div>
-            </div>
-          </article>
-        </a>
-
-        <!-- Tred -->
-        <a href="https://devpost.com/software/tred-virtual-reality-immersion-experience" target="_blank" rel="noopener noreferrer" class="block h-full">
-          <article class="bg-bc-dark rounded-xl border border-slate-700 card-hover h-full flex flex-col overflow-hidden">
-            <img src="/assets/demos/tred.jpg" alt="Tred - VR Immersion Experience" class="w-full h-40 object-cover">
-            <div class="p-6 flex flex-col flex-grow">
-              <div class="flex items-center justify-between mb-4">
-                <span class="text-2xl">💼</span>
-                <span class="bg-blue-500/20 text-blue-400 text-xs font-bold px-3 py-1 rounded-full">Job Offers</span>
-              </div>
-              <h3 class="text-xl font-bold mb-2">Tred</h3>
-              <p class="text-slate-400 text-sm mb-3 flex-grow">Walk in VR without a controller. LA Hacks 2014 Grand Prize winner.</p>
-              <div class="text-xs text-slate-500">UMD Students • Tinder Grand Prize</div>
-            </div>
-          </article>
-        </a>
-
-        <!-- Talk To Sign -->
-        <a href="https://www.youtube.com/watch?v=JL9f2RGJqlA" target="_blank" rel="noopener noreferrer" class="block h-full">
-          <article class="bg-bc-dark rounded-xl border border-slate-700 card-hover h-full flex flex-col overflow-hidden">
-            <img src="/assets/demos/talk-to-sign.png" alt="Talk To Sign - Sign Language Translation" class="w-full h-40 object-cover">
-            <div class="p-6 flex flex-col flex-grow">
-              <div class="flex items-center justify-between mb-4">
-                <span class="text-2xl">🏆</span>
-                <span class="bg-yellow-500/20 text-yellow-400 text-xs font-bold px-3 py-1 rounded-full">Olympics Track Winner</span>
-              </div>
-              <h3 class="text-xl font-bold mb-2">Talk To Sign</h3>
-              <p class="text-slate-400 text-sm mb-3 flex-grow">Sign language translation tool. Won LA28 Olympics track at LA Tech Week 2024.</p>
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-slate-500">USC Students • Considering Incorporation</span>
-                <span class="text-xs text-bc-cyan">▶ Watch Demo</span>
-              </div>
-            </div>
-          </article>
-        </a>
-
-        <!-- AI Commentator -->
-        <a href="https://www.youtube.com/watch?v=JL9f2RGJqlA" target="_blank" rel="noopener noreferrer" class="block h-full">
-          <article class="bg-bc-dark rounded-xl border border-slate-700 card-hover h-full flex flex-col overflow-hidden">
-            <img src="/assets/demos/ai-commentator.png" alt="AI Commentator - Sports Commentary" class="w-full h-40 object-cover">
-            <div class="p-6 flex flex-col flex-grow">
-              <div class="flex items-center justify-between mb-4">
-                <span class="text-2xl">🏢</span>
-                <span class="bg-purple-500/20 text-purple-400 text-xs font-bold px-3 py-1 rounded-full">Startup Potential</span>
-              </div>
-              <h3 class="text-xl font-bold mb-2">AI Commentator</h3>
-              <p class="text-slate-400 text-sm mb-3 flex-grow">AI-powered sports commentary. Grand Champion at LA Tech Week 2024.</p>
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-slate-500">USC + Pro Team • Considering Incorporation</span>
-                <span class="text-xs text-bc-cyan">▶ Watch Demo</span>
-              </div>
-            </div>
-          </article>
-        </a>
-
-        <!-- Our Green City -->
-        <a href="https://jewelcityhacks.devpost.com/" target="_blank" rel="noopener noreferrer" class="block h-full">
-          <article class="bg-bc-dark rounded-xl border border-slate-700 card-hover h-full flex flex-col overflow-hidden">
-            <img src="/assets/demos/green-city.png" alt="Our Green City - Sustainability Project" class="w-full h-40 object-cover">
-            <div class="p-6 flex flex-col flex-grow">
-              <div class="flex items-center justify-between mb-4">
-                <span class="text-2xl">🎓</span>
-                <span class="bg-cyan-500/20 text-cyan-400 text-xs font-bold px-3 py-1 rounded-full">Internships</span>
-              </div>
-              <h3 class="text-xl font-bold mb-2">Our Green City</h3>
-              <p class="text-slate-400 text-sm mb-3 flex-grow">Sustainability project from Jewel City Hacks 2025. Team received internship offers.</p>
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-slate-500">Glendale CC Students</span>
-                <span class="text-xs text-bc-cyan">View Event →</span>
-              </div>
-            </div>
-          </article>
-        </a>
-
-        <!-- CTA Card -->
-        <article class="bg-gradient-to-br from-bc-cyan/20 to-bc-blue/20 rounded-xl border-2 border-bc-cyan/30 flex flex-col justify-center items-center text-center card-hover h-full overflow-hidden">
-          <div class="w-full h-40 bg-gradient-to-br from-bc-cyan/30 to-bc-blue/30 flex items-center justify-center">
-            <span class="text-6xl">✨</span>
+        <div class="grid md:grid-cols-3 gap-6">
+          <div class="bg-bc-dark border border-slate-700 rounded-2xl overflow-hidden card-hover">
+            <img src="/images/events/2026/photos/img_9723.jpg" alt="Students coding at Hack the Valley" class="h-52 w-full object-cover">
+            <div class="p-6"><h3 class="font-bold text-xl mb-2">Real projects</h3><p class="text-slate-400">Curated, privacy-safe project cards from the 2026 submissions.</p></div>
           </div>
-          <div class="p-6 flex flex-col flex-grow justify-center">
-            <h3 class="text-xl font-bold mb-2">Your Project Here</h3>
-            <p class="text-slate-400 text-sm mb-4">Join Hack the Valley 2026 and build something that matters.</p>
-            <a href="#signup" class="bg-bc-cyan text-bc-dark px-6 py-2 rounded-lg font-bold hover:bg-cyan-400 transition">Register Now</a>
+          <div class="bg-bc-dark border border-slate-700 rounded-2xl overflow-hidden card-hover">
+            <img src="/images/events/2026/photos/img_9841.jpg" alt="Team discussing a project demo" class="h-52 w-full object-cover">
+            <div class="p-6"><h3 class="font-bold text-xl mb-2">Event photos</h3><p class="text-slate-400">Optimized highlights selected from the event photo archive.</p></div>
           </div>
-        </article>
-      </div>
-
-      <div class="text-center">
-        <p class="text-slate-500 text-sm">Projects from Hacker Fund events including Hackathon by the Sea, Recyclathon, Vision Hack, and Compton Tech Week.</p>
-      </div>
-    </div>
-  </section>
-
-  <section id="tracks" class="py-20 bg-bc-navy">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Challenge Tracks</span></h2>
-      <p class="text-center text-slate-400 mb-12 max-w-3xl mx-auto">Build in any track and pitch your best project for the grand prize.</p>
-      
-      <!-- Grand Prize Hero Card -->
-      <div class="mb-16 relative overflow-hidden">
-        <div class="absolute inset-0 bg-gradient-to-br from-bc-orange/30 via-bc-purple/20 to-bc-blue/30 blur-3xl"></div>
-        <div class="relative bg-gradient-to-br from-bc-blue/40 via-bc-purple/30 to-bc-orange/40 p-10 sm:p-16 rounded-3xl border-4 border-bc-orange shadow-2xl shadow-bc-orange/30">
-          <div class="absolute top-0 right-0 w-64 h-64 bg-bc-orange/10 rounded-full blur-3xl"></div>
-          <div class="absolute bottom-0 left-0 w-64 h-64 bg-bc-blue/10 rounded-full blur-3xl"></div>
-          <div class="relative text-center">
-            <div class="inline-block bg-bc-orange/20 text-bc-orange text-sm font-bold px-6 py-2 rounded-full mb-6 border-2 border-bc-orange/40">
-              🏆 GRAND PRIZE
-            </div>
-            <h3 class="text-5xl sm:text-6xl lg:text-7xl font-black mb-6 bg-gradient-to-r from-bc-orange via-yellow-400 to-bc-orange bg-clip-text text-transparent">
-              $500
-            </h3>
-            <p class="text-2xl sm:text-3xl font-bold text-white mb-4">Overall Winner</p>
-            <p class="text-lg sm:text-xl text-slate-200 max-w-2xl mx-auto">
-              Best overall project wins the top honor based on <span class="font-bold text-white">impact</span>, <span class="font-bold text-white">execution</span>, and <span class="font-bold text-white">innovation</span>.
-            </p>
+          <div class="bg-bc-dark border border-slate-700 rounded-2xl overflow-hidden card-hover">
+            <img src="/images/events/2026/photos/img_9865.jpg" alt="Hack the Valley group awards photo" class="h-52 w-full object-cover">
+            <div class="p-6"><h3 class="font-bold text-xl mb-2">What comes next</h3><p class="text-slate-400">A clear path for attendees, mentors, sponsors, and organizers to help build the next one.</p></div>
           </div>
         </div>
       </div>
+    </section>
 
-      <!-- Track Cards -->
-      <div class="grid md:grid-cols-3 gap-8">
-        <article class="bg-bc-dark p-6 rounded-xl border-2 border-slate-700 card-hover">
-          <img src="/images/track-ai.png" alt="AI and machine learning track" class="w-full h-44 object-cover rounded-lg mb-4">
-          <h3 class="text-xl font-bold mb-2">AI</h3>
-          <p class="text-slate-400 mb-3">Create intelligent products using models, data pipelines, and automation.</p>
-          <p class="text-bc-cyan font-semibold">Open to all teams</p>
-        </article>
-        <article class="bg-bc-dark p-6 rounded-xl border-2 border-slate-700 card-hover">
-          <img src="/images/track-social.png" alt="Social impact track" class="w-full h-44 object-cover rounded-lg mb-4">
-          <h3 class="text-xl font-bold mb-2">Social Impact</h3>
-          <p class="text-slate-400 mb-3">Develop solutions that support communities and improve quality of life.</p>
-          <p class="text-bc-cyan font-semibold">Open to all teams</p>
-        </article>
-        <article class="bg-bc-dark p-6 rounded-xl border-2 border-slate-700 card-hover">
-          <img src="/images/track-open.png" alt="Education track" class="w-full h-44 object-cover rounded-lg mb-4">
-          <h3 class="text-xl font-bold mb-2">Education</h3>
-          <p class="text-slate-400 mb-3">Build tools that enhance learning, accessibility, and educational outcomes.</p>
-          <p class="text-bc-cyan font-semibold">Open to all teams</p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section id="schedule" class="py-20 bg-bc-navy">
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-      <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Schedule</span></h2>
-      <p class="text-center text-slate-400 mb-12">May 30, 2026 • Check-in opens 7:30 AM • Program runs 8:30 AM - 6:00 PM</p>
-
-      <div class="bg-bc-navy border border-slate-700 rounded-xl p-6">
-        <h3 class="text-2xl font-bold text-bc-cyan mb-5">Event Day Schedule</h3>
-        <div class="space-y-3 text-sm sm:text-base">
-          <div class="flex gap-4"><span class="w-24 text-slate-400">7:30 AM</span><span>Check-in + breakfast</span></div>
-          <div class="flex gap-4"><span class="w-24 text-slate-400">8:30 AM</span><span>Welcome, rules, and team formation</span></div>
-          <div class="flex gap-4"><span class="w-24 text-slate-400">9:30 AM</span><span>Replit / AI builder workshop</span></div>
-          <div class="flex gap-4"><span class="w-24 text-slate-400">10:30 AM</span><span class="font-semibold text-bc-cyan">Team work begins</span></div>
-          <div class="flex gap-4"><span class="w-24 text-slate-400">12:30 PM</span><span>Lunch</span></div>
-          <div class="flex gap-4"><span class="w-24 text-slate-400">4:30 PM</span><span class="font-semibold text-bc-cyan">Final submissions open</span></div>
-          <div class="flex gap-4"><span class="w-24 text-slate-400">5:00 PM</span><span>Demos + judging</span></div>
-          <div class="flex gap-4"><span class="w-24 text-slate-400">5:30 PM</span><span>Awards + closing</span></div>
-          <div class="flex gap-4"><span class="w-24 text-slate-400">6:00 PM</span><span>Event ends</span></div>
+    <section id="help" class="py-20 bg-bc-dark">
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <p class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-3">Help build the next one</p>
+        <h2 class="text-4xl sm:text-5xl font-black mb-5">A tech community does not happen by accident.</h2>
+        <p class="text-lg text-slate-300 mb-8">We need people to organize, mentor, host workshops, recruit students, sponsor, take photos, promote, judge, and keep showing up after the first event glow wears off.</p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+          <a href="mailto:contact@hackthevalley.org?subject=I%20want%20to%20help%20with%20Hack%20the%20Valley" class="bg-bc-cyan text-bc-dark px-8 py-4 rounded-lg text-lg font-bold hover:bg-cyan-400 transition">Tell us how you can help</a>
+          <a href="/events" class="border-2 border-bc-cyan text-bc-cyan px-8 py-4 rounded-lg text-lg font-bold hover:bg-bc-cyan/10 transition">Browse events</a>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
+  </main>
 
-  <section id="parking" class="py-20 bg-bc-dark">
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-      <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Parking & Arrival</span></h2>
-      <p class="text-center text-slate-400 mb-12">Hack the Valley is at the CSUB Student Union MPR. Parking passes will be available for participants.</p>
-
-      <div class="mb-8 bg-bc-navy p-3 rounded-2xl border border-slate-700 shadow-2xl shadow-bc-cyan/10">
-        <img src="/images/csub-campus-parking-map.png" alt="CSUB campus parking map for Hack the Valley attendees" class="w-full rounded-xl border border-slate-700 object-cover">
-        <p class="text-sm text-slate-400 mt-3 text-center">Map reference only: park in Lot K2, then follow the written route below and event signage around construction.</p>
+  <footer class="bg-slate-950 border-t border-slate-800 py-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row gap-6 items-center justify-between text-sm text-slate-400">
+      <div class="flex items-center gap-3">
+        <img src="/images/HackTheValleyLogo.PNG" alt="Hack the Valley logo" class="w-10 h-10 rounded-full object-contain">
+        <span>© 2026 Hack the Valley</span>
       </div>
-
-      <div class="grid md:grid-cols-3 gap-6">
-        <div class="bg-bc-navy p-6 rounded-xl border border-slate-700">
-          <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">Where to park</div>
-          <h3 class="text-2xl font-bold text-bc-cyan mb-3">Lot K2</h3>
-          <p class="text-slate-300">Park in CSUB Lot K2. We will have parking passes available for Hack the Valley attendees.</p>
-        </div>
-
-        <div class="bg-bc-navy p-6 rounded-xl border border-slate-700">
-          <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">Construction note</div>
-          <h3 class="text-2xl font-bold text-bc-cyan mb-3">Use the updated walking route</h3>
-          <p class="text-slate-300">Construction is blocking the direct path from K2 to the Student Union, so do not try to cut straight across.</p>
-        </div>
-
-        <div class="bg-bc-navy p-6 rounded-xl border border-slate-700">
-          <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">Walking directions</div>
-          <h3 class="text-2xl font-bold text-bc-cyan mb-3">Head toward Runner Cafe</h3>
-          <p class="text-slate-300">From K2, walk toward Runner Cafe, then take a left toward the Student Union building. Follow event signage when you arrive.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="signup" class="py-20 bg-bc-navy">
-    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-      <h2 class="text-4xl font-black text-center mb-4"><span class="gradient-text">Register for Hack the Valley 2026</span></h2>
-      <p class="text-center text-slate-400 mb-3">Spots are limited. Filling out the form does not guarantee entry, and registration is free for accepted participants.</p>
-      <p class="text-center text-slate-400 mb-10">We will send more details to accepted participants 1 week before the event, on May 23, 2026.</p>
-
-      <div class="bg-bc-dark p-2 rounded-2xl border border-slate-700">
-        <iframe src="https://docs.google.com/forms/d/e/1FAIpQLSeHvE0DTYu5va_Z78UyvcWGjmu6MoBqKXY8bYZk7mtmtQLsdg/viewform?embedded=true" width="100%" height="800" frameborder="0" marginheight="0" marginwidth="0" title="Hack the Valley 2026 Registration">Loading…</iframe>
-      </div>
-    </div>
-  </section>
-
-  <footer class="border-t border-slate-800 bg-bc-dark py-10">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex flex-col sm:flex-row gap-6 sm:items-center sm:justify-between mb-6">
-        <div>
-          <div class="font-bold text-lg">Hack the Valley 2026</div>
-          <div class="text-sm text-slate-400">Bakersfield, California • May 30, 2026</div>
-        </div>
-      </div>
-      <div class="border-t border-slate-800 pt-6">
-        <div class="text-center">
-          <div class="text-sm text-slate-500 mb-3">Presented by</div>
-          <div class="flex flex-wrap justify-center items-center gap-8">
-            <a href="https://paynepathway.com" target="_blank" rel="noopener noreferrer" class="block hover:opacity-80 transition">
-              <img src="/images/payne-pathway-logo-transparent.png" alt="Payne Pathway Fund" class="h-16">
-            </a>
-            <a href="https://hacker.fund" target="_blank" rel="noopener noreferrer" class="block hover:opacity-80 transition">
-              <img src="/images/hackerfund-logo.png" alt="HackerFund" class="h-16">
-            </a>
-            <a href="https://www.youth2leaders.org/" target="_blank" rel="noopener noreferrer" class="block hover:opacity-80 transition">
-              <img src="/images/youth-2-leaders-logo.png" alt="Youth 2 Leaders Education Foundation" class="h-16 max-w-[14rem] rounded-lg bg-white px-3 py-2 object-contain">
-            </a>
-            <a href="https://bakersfieldmazda.com/" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center gap-1 hover:opacity-80 transition">
-              <span class="flex h-16 w-24 items-center justify-center rounded-lg bg-white px-4 py-2">
-                <img src="/images/bakersfield-mazda-logo.png" alt="Bakersfield Mazda" class="max-h-12 object-contain">
-              </span>
-              <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Bakersfield Mazda</span>
-            </a>
-            <a href="https://meshcowork.com" target="_blank" rel="noopener noreferrer" class="block hover:opacity-80 transition">
-              <img src="/images/mesh-cowork-logo.png" alt="MESH Cowork" class="h-16">
-            </a>
-            <a href="#" target="_blank" rel="noopener noreferrer" class="block hover:opacity-80 transition">
-              <img src="/images/idi-tech-logo.png" alt="IDI-Tech" class="h-16">
-            </a>
-            <a href="https://www.csub.edu" target="_blank" rel="noopener noreferrer" class="block hover:opacity-80 transition">
-              <img src="/images/csub-sec-logo.jpg" alt="CSUB Software Engineering Club" class="h-16">
-            </a>
-            <a href="#" target="_blank" rel="noopener noreferrer" class="block hover:opacity-80 transition">
-              <img src="/images/bc-cs-club-logo.png" alt="Bakersfield College CS Club" class="h-16">
-            </a>
-          </div>
-        </div>
+      <div class="flex gap-5 flex-wrap justify-center">
+        <a href="mailto:contact@hackthevalley.org" class="hover:text-white">contact@hackthevalley.org</a>
+        <a href="/events" class="hover:text-white">Events</a>
+        <a href="/submit" class="hover:text-white">Project submission portal</a>
       </div>
     </div>
   </footer>
-
-  
 </body>
 </html>

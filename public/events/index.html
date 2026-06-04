@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Events | Hack the Valley</title>
+  <meta name="description" content="Upcoming and past Hack the Valley events in Bakersfield and Kern County.">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = { theme: { extend: { colors: { "bc-blue": "#2563eb", "bc-navy": "#1e293b", "bc-cyan": "#06b6d4", "bc-orange": "#f59e0b", "bc-purple": "#7c3aed", "bc-dark": "#0f172a" }, fontFamily: { sans: ["Inter", "sans-serif"] } } } };
+  </script>
+  <style>
+    body { font-family: "Inter", sans-serif; }
+    .gradient-text { background: linear-gradient(135deg, #06b6d4 0%, #2563eb 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .card-hover { transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+    .card-hover:hover { transform: translateY(-4px); box-shadow: 0 20px 28px rgba(6,182,212,.14); border-color: rgba(6,182,212,.45); }
+  </style>
+</head>
+<body class="bg-bc-dark text-slate-100">
+  <nav class="sticky top-0 z-50 bg-bc-dark/90 backdrop-blur-sm border-b border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="h-16 flex items-center justify-between gap-6">
+        <a href="/" class="flex items-center gap-4 min-w-0">
+          <img src="/images/HackTheValleyLogo.PNG" alt="Hack the Valley logo" class="w-12 h-12 object-contain rounded-full">
+          <span class="font-bold text-lg sm:text-xl truncate">Hack the Valley</span>
+        </a>
+        <div class="hidden md:flex items-center gap-6 text-sm font-medium">
+          <a href="/" class="text-slate-300 hover:text-white transition">Home</a>
+          <a href="/events/hack-the-valley-2026" class="text-slate-300 hover:text-white transition">2026 Recap</a>
+          <a href="https://forms.gle/CpechvKU24cPVAj38" target="_blank" rel="noopener noreferrer" class="text-bc-cyan hover:text-cyan-300 transition">Survey</a>
+          <a href="mailto:contact@hackthevalley.org?subject=Hack%20the%20Valley%20updates" class="bg-bc-cyan text-bc-dark px-4 py-2 rounded-lg font-semibold hover:bg-cyan-400 transition">Get Updates</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <section class="py-24 bg-bc-dark">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <p class="text-bc-cyan uppercase tracking-[0.35em] text-sm font-bold mb-4">Events</p>
+        <h1 class="text-5xl sm:text-6xl font-black mb-6">A growing archive of Valley builders.</h1>
+        <p class="text-xl text-slate-300 max-w-3xl">Upcoming programming will show here as it is announced. For now, the most important thing is the 2026 recap: projects, photos, feedback, and the helper path for what comes next.</p>
+      </div>
+    </section>
+
+    <section class="pb-20 bg-bc-dark">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid lg:grid-cols-[.9fr_1.1fr] gap-8">
+          <div class="bg-bc-navy border border-slate-700 rounded-3xl p-8">
+            <p class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-3">Upcoming</p>
+            <h2 class="text-3xl font-black mb-4">No public dates announced yet.</h2>
+            <p class="text-slate-300 mb-6">We are collecting interest for future workshops, meetups, mentor nights, sponsor sessions, and the next Hack the Valley event.</p>
+            <a href="mailto:contact@hackthevalley.org?subject=Hack%20the%20Valley%20updates" class="inline-flex bg-bc-cyan text-bc-dark px-6 py-3 rounded-lg font-bold hover:bg-cyan-400 transition">Get future event updates</a>
+            <p class="mt-4 text-sm text-slate-400">Temporary update CTA uses email while the permanent mailing-list backend is selected.</p>
+          </div>
+
+          <a href="/events/hack-the-valley-2026" class="group bg-bc-navy border border-slate-700 rounded-3xl overflow-hidden card-hover">
+            <img src="/images/events/2026/photos/img_9824.jpg" alt="Students and mentors gathered at Hack the Valley 2026" class="w-full h-72 object-cover group-hover:opacity-90 transition">
+            <div class="p-8">
+              <div class="flex flex-wrap gap-3 mb-4">
+                <span class="bg-bc-cyan/10 text-bc-cyan border border-bc-cyan/30 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest">Past event</span>
+                <span class="bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest">May 30, 2026</span>
+              </div>
+              <h2 class="text-3xl font-black mb-3 group-hover:text-bc-cyan transition">Hack the Valley 2026</h2>
+              <p class="text-slate-300 mb-5">The first Hack the Valley brought students, mentors, sponsors, and organizers together at CSUB for a practical one-day build sprint.</p>
+              <span class="text-bc-cyan font-bold">Open recap →</span>
+            </div>
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="bg-slate-950 border-t border-slate-800 py-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row gap-6 items-center justify-between text-sm text-slate-400">
+      <span>© 2026 Hack the Valley</span>
+      <div class="flex gap-5 flex-wrap justify-center">
+        <a href="mailto:contact@hackthevalley.org" class="hover:text-white">contact@hackthevalley.org</a>
+        <a href="/" class="hover:text-white">Home</a>
+        <a href="/events/hack-the-valley-2026" class="hover:text-white">2026 Recap</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

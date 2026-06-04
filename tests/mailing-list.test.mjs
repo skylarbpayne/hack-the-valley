@@ -7,6 +7,7 @@ import {
   buildResendContactPayload,
   validateSubscribePayload,
 } from '../functions/_shared/mailing-list.js';
+import worker from '../worker.js';
 
 function jsonRequest(body) {
   return new Request('https://hackthevalley.org/api/subscribe', {
@@ -138,6 +139,36 @@ test('subscribe API supports OPTIONS preflight', () => {
   const response = onRequestOptions();
   assert.equal(response.status, 204);
   assert.match(response.headers.get('access-control-allow-methods'), /POST/);
+});
+
+test('worker routes deployed API requests instead of serving static 404s', async () => {
+  const options = await worker.fetch(
+    new Request('https://hackthevalley.org/api/subscribe', { method: 'OPTIONS' }),
+    { ASSETS: { fetch: () => new Response('static miss', { status: 404 }) } },
+    {}
+  );
+
+  assert.equal(options.status, 204);
+
+  const badPost = await worker.fetch(
+    jsonRequest({ email: 'bad' }),
+    { ASSETS: { fetch: () => new Response('static miss', { status: 404 }) } },
+    {}
+  );
+
+  assert.equal(badPost.status, 400);
+  assert.match((await badPost.json()).error, /Could not join/);
+});
+
+test('worker falls through non-API requests to static assets', async () => {
+  const response = await worker.fetch(
+    new Request('https://hackthevalley.org/'),
+    { ASSETS: { fetch: () => new Response('home', { status: 200 }) } },
+    {}
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), 'home');
 });
 
 test('homepage exposes real mailing-list form instead of temporary mailto CTA', () => {

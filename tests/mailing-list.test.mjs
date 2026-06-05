@@ -51,7 +51,7 @@ test('validateSubscribePayload rejects invalid email, honeypot spam, and non-obj
   assert.equal(validateSubscribePayload(null).ok, false);
 });
 
-test('buildResendContactPayload includes audit properties without secrets or segment fields', () => {
+test('buildResendContactPayload sends only Resend-supported contact fields', () => {
   const payload = buildResendContactPayload(
     {
       email: 'builder@example.com',
@@ -66,8 +66,7 @@ test('buildResendContactPayload includes audit properties without secrets or seg
   assert.equal(payload.first_name, 'Ada');
   assert.equal(payload.last_name, 'Lovelace');
   assert.equal(payload.unsubscribed, false);
-  assert.equal(payload.properties.source, 'homepage');
-  assert.equal(payload.properties.interest, 'Mentor nights');
+  assert.equal(payload.properties, undefined);
   assert.equal(payload.segments, undefined);
   assert.doesNotMatch(JSON.stringify(payload), /RESEND_API_KEY|re_[A-Za-z0-9]/);
 });
@@ -100,7 +99,7 @@ test('subscribe API creates a Resend contact with the configured API key', async
   assert.equal(calls[0].init.headers.Authorization, 'Bearer re_test_key');
   const body = JSON.parse(calls[0].init.body);
   assert.equal(body.email, 'builder@example.com');
-  assert.equal(body.properties.source, 'homepage');
+  assert.equal(body.properties, undefined);
   assert.equal(calls[1].url, 'https://api.resend.com/contacts/builder%40example.com/segments/seg_123');
   assert.equal(calls[1].init.method, 'POST');
 });

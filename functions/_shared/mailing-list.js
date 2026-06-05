@@ -48,11 +48,6 @@ export function buildResendContactPayload(subscriber, env = {}, options = {}) {
   const { firstName, lastName } = splitName(subscriber.name);
   const payload = {
     email: subscriber.email,
-    properties: {
-      source: subscriber.source || 'website',
-      interest: subscriber.interest || '',
-      signed_up_at: new Date().toISOString(),
-    },
   };
 
   if (firstName) payload.first_name = firstName;

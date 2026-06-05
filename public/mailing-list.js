@@ -6,7 +6,27 @@ function setStatus(form, message, tone = 'neutral') {
   status.classList.add(tone === 'success' ? 'text-green-300' : tone === 'error' ? 'text-red-300' : 'text-slate-400');
 }
 
+function completedControls(form) {
+  return form.querySelectorAll('input:not([type="hidden"]):not([name="website"]), textarea, button');
+}
+
+function lockCompletedForm(form, submit, message) {
+  form.reset();
+  form.dataset.subscribeComplete = 'true';
+  for (const control of completedControls(form)) {
+    control.disabled = true;
+    control.setAttribute('aria-disabled', 'true');
+    control.classList.add('opacity-60', 'cursor-not-allowed');
+  }
+  if (submit) {
+    submit.textContent = "You're on the list";
+  }
+  setStatus(form, message, 'success');
+}
+
 async function subscribe(form) {
+  if (form.dataset.subscribeComplete === 'true') return;
+
   const submit = form.querySelector('[type="submit"]');
   const originalText = submit?.textContent;
   const formData = new FormData(form);
@@ -28,12 +48,11 @@ async function subscribe(form) {
     if (!response.ok || !body.ok) {
       throw new Error(body.error || 'Signup failed.');
     }
-    form.reset();
-    setStatus(form, body.message || 'You are on the Hack the Valley updates list.', 'success');
+    lockCompletedForm(form, submit, body.message || 'You are on the Hack the Valley updates list.');
   } catch (error) {
     setStatus(form, `${error.message || 'Signup failed.'} If this keeps happening, email contact@hackthevalley.org.`, 'error');
   } finally {
-    if (submit) {
+    if (submit && form.dataset.subscribeComplete !== 'true') {
       submit.disabled = false;
       submit.textContent = originalText || 'Join the list';
     }

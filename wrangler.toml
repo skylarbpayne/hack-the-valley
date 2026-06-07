@@ -4,6 +4,8 @@ compatibility_date = "2026-02-17"
 
 [assets]
 directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*", "/events/*"]
 
 [vars]
 MAX_UPLOAD_MB = "100"

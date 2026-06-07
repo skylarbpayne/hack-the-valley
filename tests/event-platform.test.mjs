@@ -273,6 +273,12 @@ test("worker routes dynamic event APIs on the deployed Worker surface", async ()
   assert.equal(body.events[0].slug, "hack-hours-panera");
 });
 
+test("wrangler runs the Worker before event page asset routing", () => {
+  const config = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
+  assert.match(config, /binding\s*=\s*"ASSETS"/);
+  assert.match(config, /run_worker_first\s*=\s*\[[^\]]*"\/api\/\*"[^\]]*"\/events\/\*"[^\]]*\]/);
+});
+
 test("worker rewrites per-event URLs to the dynamic events app", async () => {
   const seen = [];
   const response = await worker.fetch(

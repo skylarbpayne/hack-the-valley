@@ -7,9 +7,11 @@ import {
   csvEscape,
   normalizeEventInput,
   normalizeSignupInput,
+  renderEventPageHtml,
   signupsToCsv,
   slugify,
-  upsertEvent
+  upsertEvent,
+  upsertUser
 } from "../functions/_lib/event-platform.js";
 import worker from "../worker.js";
 
@@ -96,6 +98,46 @@ test("upsertEvent persists event page fields", async () => {
   assert.ok(prepared[0].args.includes("/images/events/2026/hero.jpg"));
   assert.ok(prepared[0].args.includes("Editable event page body"));
   assert.ok(prepared[0].args.includes(JSON.stringify({ frequency: "yearly" })));
+});
+
+test("upsertUser gives users their own ID space and never uses email as ID", async () => {
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) {
+          this.args = args;
+          statements.push(this);
+          return this;
+        },
+        async run() {
+          return { success: true };
+        },
+        async first() {
+          return {
+            id: this.args[0]?.startsWith?.("usr_") ? this.args[0] : "usr_existing",
+            email: "ada@example.com",
+            name: "Ada Lovelace"
+          };
+        }
+      };
+      return statement;
+    }
+  };
+
+  const user = await upsertUser(db, {
+    email: " ADA@example.COM ",
+    name: "Ada Lovelace",
+    first_name: "Ada",
+    last_name: "Lovelace"
+  });
+
+  assert.match(user.id, /^usr_/);
+  assert.notEqual(user.id, "ada@example.com");
+  assert.match(statements[0].sql, /INSERT INTO users/);
+  assert.match(statements[0].sql, /ON CONFLICT\(email\)/);
 });
 
 test("signup input normalizes email and legacy school field", () => {
@@ -231,6 +273,22 @@ test("admin event form supports image uploads, auto-populates slug, and avoids a
   assert.doesNotMatch(html, /event\.currentTarget\.reset\(\)/);
 });
 
+test("event schema has users and user-linked signups instead of email-as-identity", () => {
+  const schema = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
+  const migration = readFileSync(new URL("../migrations/0004_users_and_user_signups.sql", import.meta.url), "utf8");
+
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS users/);
+  assert.match(schema, /id TEXT PRIMARY KEY/);
+  assert.match(schema, /email TEXT NOT NULL UNIQUE/);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS signups/);
+  assert.match(schema, /user_id TEXT NOT NULL REFERENCES users\(id\)/);
+  assert.match(schema, /UNIQUE\(event_slug, user_id\)/);
+  assert.doesNotMatch(schema, /UNIQUE\(event_slug, email\)/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS users/);
+  assert.match(migration, /INSERT OR IGNORE INTO users/);
+  assert.match(migration, /ALTER TABLE signups_new RENAME TO signups/);
+});
+
 test("event schema has editable page content and a forward cleanup migration", () => {
   const schema = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
   const migration = readFileSync(new URL("../migrations/0003_event_page_content.sql", import.meta.url), "utf8");
@@ -242,6 +300,26 @@ test("event schema has editable page content and a forward cleanup migration", (
   assert.match(migration, /ADD COLUMN page_content TEXT/i);
   assert.match(migration, /DROP COLUMN content_before/i);
   assert.match(migration, /DROP COLUMN content_after/i);
+});
+
+test("renderEventPageHtml returns a real event-specific page, not the events listing shell", () => {
+  const html = renderEventPageHtml({
+    slug: "hack-the-valley-2026",
+    title: "Hack the Valley 2026",
+    description: "Build in Bakersfield.",
+    image_url: "/api/events/hack-the-valley-2026/image?key=event-images%2Fhack-the-valley-2026%2Fhero.png",
+    page_content: "Agenda, prizes, venue details, and what to bring.",
+    status: "open",
+    starts_at: "2026-07-01T17:00:00.000Z",
+    venue_name: "Bakersfield College"
+  });
+
+  assert.match(html, /data-event-detail-page="hack-the-valley-2026"/);
+  assert.match(html, /Hack the Valley 2026/);
+  assert.match(html, /Agenda, prizes, venue details, and what to bring/);
+  assert.match(html, /<img[^>]+event-hero-image/);
+  assert.match(html, /<form[^>]+id="signup-form"/);
+  assert.doesNotMatch(html, /id="upcoming-events-panel"/);
 });
 
 test("public events page uses clickable cards, signup CTAs, and a true event-detail mode", () => {
@@ -291,24 +369,50 @@ test("wrangler runs the Worker before event page asset routing", () => {
   assert.match(config, /run_worker_first\s*=\s*\[[^\]]*"\/api\/\*"[^\]]*"\/events\/\*"[^\]]*\]/);
 });
 
-test("worker rewrites per-event URLs to the dynamic events app", async () => {
-  const seen = [];
-  const response = await worker.fetch(
-    new Request("https://hackthevalley.org/events/hack-hours-panera", { method: "GET" }),
-    {
-      ASSETS: {
-        fetch(request) {
-          seen.push(new URL(request.url).pathname);
-          return new Response("events app", { status: 200, headers: { "Content-Type": "text/html" } });
+test("worker renders real per-event HTML from D1 for /events/<slug>", async () => {
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        bind(slug) {
+          assert.match(sql, /FROM events WHERE slug = \?/);
+          assert.equal(slug, "hack-the-valley-2026");
+          return this;
+        },
+        async first() {
+          return {
+            slug: "hack-the-valley-2026",
+            title: "Hack the Valley 2026",
+            description: "Build in Bakersfield.",
+            status: "open",
+            image_url: "/image.png",
+            page_content: "This is the real event page body."
+          };
         }
-      }
-    },
+      };
+    }
+  };
+
+  const response = await worker.fetch(
+    new Request("https://hackthevalley.org/events/hack-the-valley-2026", { method: "GET" }),
+    { HTV_DB: fakeDb },
     {}
   );
 
   assert.equal(response.status, 200);
-  assert.equal(await response.text(), "events app");
-  assert.deepEqual(seen, ["/events/index.html"]);
+  const html = await response.text();
+  assert.match(html, /data-event-detail-page="hack-the-valley-2026"/);
+  assert.match(html, /This is the real event page body/);
+  assert.doesNotMatch(html, /id="upcoming-events-panel"/);
+});
+
+test("Resend import script pre-populates the users table without email IDs", () => {
+  const script = readFileSync(new URL("../scripts/import-resend-users.mjs", import.meta.url), "utf8");
+  assert.match(script, /RESEND_API_KEY/);
+  assert.match(script, /RESEND_AUDIENCE_ID/);
+  assert.match(script, /INSERT INTO users/);
+  assert.match(script, /usr_/);
+  assert.match(script, /ON CONFLICT\(email\)/);
+  assert.match(script, /wrangler d1 execute HTV_DB --remote/);
 });
 
 test("worker accepts admin event image uploads and serves uploaded event images publicly", async () => {

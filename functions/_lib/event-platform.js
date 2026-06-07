@@ -147,6 +147,11 @@ function buildLegacyMetadata(input) {
   return metadata;
 }
 
+export function generateId(prefix) {
+  if (globalThis.crypto?.randomUUID) return `${prefix}_${globalThis.crypto.randomUUID().replaceAll("-", "")}`;
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function trimOrNull(value) {
   if (value === undefined || value === null) return null;
   const trimmed = String(value).trim();
@@ -227,11 +232,59 @@ export async function upsertEvent(db, input, existing = {}) {
 
 export async function listSignups(db, eventSlug) {
   const result = await db.prepare(`
-    SELECT * FROM signups
-    WHERE event_slug = ?
-    ORDER BY created_at ASC
+    SELECT
+      s.*,
+      u.email,
+      COALESCE(s.name, u.name) AS name,
+      COALESCE(s.first_name, u.first_name) AS first_name,
+      COALESCE(s.last_name, u.last_name) AS last_name,
+      COALESCE(s.phone, u.phone) AS phone,
+      COALESCE(s.school, u.school) AS school
+    FROM signups s
+    JOIN users u ON u.id = s.user_id
+    WHERE s.event_slug = ?
+    ORDER BY s.created_at ASC
   `).bind(eventSlug).all();
   return result.results || [];
+}
+
+export async function upsertUser(db, input) {
+  const email = normalizeEmail(input.email);
+  if (!EMAIL_RE.test(email)) {
+    throw Object.assign(new Error("valid email is required"), { status: 400 });
+  }
+
+  const now = new Date().toISOString();
+  const id = input.id && String(input.id).startsWith("usr_") ? String(input.id) : generateId("usr");
+  const name = trimOrNull(input.name || `${input.first_name || ""} ${input.last_name || ""}`);
+  const metadata = stringifyJson(input.metadata || input.metadata_json || null);
+
+  await db.prepare(`
+    INSERT INTO users (
+      id, email, name, first_name, last_name, phone, school, metadata_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(email) DO UPDATE SET
+      name = COALESCE(excluded.name, users.name),
+      first_name = COALESCE(excluded.first_name, users.first_name),
+      last_name = COALESCE(excluded.last_name, users.last_name),
+      phone = COALESCE(excluded.phone, users.phone),
+      school = COALESCE(excluded.school, users.school),
+      metadata_json = COALESCE(excluded.metadata_json, users.metadata_json),
+      updated_at = excluded.updated_at
+  `).bind(
+    id,
+    email,
+    name,
+    trimOrNull(input.first_name),
+    trimOrNull(input.last_name),
+    trimOrNull(input.phone),
+    trimOrNull(input.school || input.university),
+    metadata,
+    now,
+    now
+  ).run();
+
+  return await db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first();
 }
 
 export async function upsertSignup(db, eventSlug, input, mailingListResult) {
@@ -240,13 +293,16 @@ export async function upsertSignup(db, eventSlug, input, mailingListResult) {
     throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
   }
 
+  const user = await upsertUser(db, signup);
   const now = new Date().toISOString();
+  const signupId = input.id && String(input.id).startsWith("sgn_") ? String(input.id) : generateId("sgn");
+
   await db.prepare(`
     INSERT INTO signups (
-      event_slug, email, name, first_name, last_name, phone, school, year, experience, notes,
+      id, event_slug, user_id, name, first_name, last_name, phone, school, year, experience, notes,
       email_list_opt_in, metadata_json, mailing_list_status, mailing_list_detail, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(event_slug, email) DO UPDATE SET
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(event_slug, user_id) DO UPDATE SET
       name = excluded.name,
       first_name = excluded.first_name,
       last_name = excluded.last_name,
@@ -261,8 +317,9 @@ export async function upsertSignup(db, eventSlug, input, mailingListResult) {
       mailing_list_detail = excluded.mailing_list_detail,
       updated_at = excluded.updated_at
   `).bind(
+    signupId,
     signup.event_slug,
-    signup.email,
+    user.id,
     signup.name,
     signup.first_name,
     signup.last_name,
@@ -279,9 +336,12 @@ export async function upsertSignup(db, eventSlug, input, mailingListResult) {
     now
   ).run();
 
-  return await db.prepare("SELECT * FROM signups WHERE event_slug = ? AND email = ?")
-    .bind(signup.event_slug, signup.email)
-    .first();
+  return await db.prepare(`
+    SELECT s.*, u.email
+    FROM signups s
+    JOIN users u ON u.id = s.user_id
+    WHERE s.event_slug = ? AND s.user_id = ?
+  `).bind(signup.event_slug, user.id).first();
 }
 
 export async function addSignupToEmailList(env, signup, event) {
@@ -356,13 +416,114 @@ export function csvEscape(value) {
 
 export function signupsToCsv(signups) {
   const columns = [
-    "created_at", "updated_at", "event_slug", "name", "email", "phone", "school", "year",
+    "created_at", "updated_at", "event_slug", "user_id", "name", "email", "phone", "school", "year",
     "experience", "notes", "email_list_opt_in", "metadata_json", "mailing_list_status", "mailing_list_detail"
   ];
   return [
     columns.join(","),
     ...signups.map((row) => columns.map((column) => csvEscape(row[column])).join(","))
   ].join("\n");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderText(value) {
+  return escapeHtml(value || "")
+    .split(/\n{2,}/)
+    .filter(Boolean)
+    .map((paragraph) => `<p>${paragraph.replaceAll("\n", "<br>")}</p>`)
+    .join("\n");
+}
+
+function formatEventDate(value) {
+  if (!value) return "Date TBA";
+  try {
+    return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Los_Angeles" }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
+export function renderEventPageHtml(event) {
+  const signupOpen = event.status === "open";
+  const title = escapeHtml(event.title);
+  const slug = escapeHtml(event.slug);
+  const description = escapeHtml(event.description || "Hack the Valley community event.");
+  const content = renderText(event.page_content || event.description || "More event details are coming soon.");
+  const image = event.image_url ? `<img class="event-hero-image" src="${escapeHtml(event.image_url)}" alt="${title}">` : "";
+  const venue = escapeHtml(event.venue_name || event.venue_address || "Location TBA");
+  const when = escapeHtml(formatEventDate(event.starts_at));
+  const signupForm = signupOpen ? `
+    <form id="signup-form" class="signup-card">
+      <h2>Sign up</h2>
+      <label>Name <input name="name" required autocomplete="name"></label>
+      <label>Email <input name="email" type="email" required autocomplete="email"></label>
+      <label>School / org <input name="school" autocomplete="organization"></label>
+      <label>Notes <textarea name="notes" rows="3"></textarea></label>
+      <label class="checkbox"><input name="email_list_opt_in" type="checkbox" checked> Send me Hack the Valley updates</label>
+      <button type="submit">Sign up</button>
+      <p id="form-message" role="status"></p>
+    </form>
+    <script>
+      document.getElementById("signup-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const button = form.querySelector("button");
+        const message = document.getElementById("form-message");
+        button.disabled = true;
+        message.textContent = "Submitting…";
+        const body = Object.fromEntries(new FormData(form).entries());
+        body.email_list_opt_in = new FormData(form).get("email_list_opt_in") === "on";
+        body.source = "event-detail-page";
+        try {
+          const response = await fetch("/api/events/${slug}/signups", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "Signup failed");
+          form.reset();
+          button.textContent = "You're signed up";
+          message.textContent = "You're on the list.";
+        } catch (error) {
+          button.disabled = false;
+          message.textContent = error.message;
+        }
+      });
+    </script>` : `<div class="signup-card"><h2>Signups are ${escapeHtml(event.status || "closed")}</h2><p>This event is not currently accepting signups.</p></div>`;
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title} — Hack the Valley</title>
+  <meta name="description" content="${description}">
+  <style>
+    body{margin:0;background:#0f172a;color:#f8fafc;font-family:Inter,ui-sans-serif,system-ui,sans-serif}a{color:#67e8f9}.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 72px}.nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:48px}.brand{font-weight:900;text-decoration:none;color:#fff}.back{text-decoration:none;color:#94a3b8}.hero{display:grid;gap:28px}.kicker{text-transform:uppercase;letter-spacing:.24em;color:#67e8f9;font-weight:800;font-size:.8rem}h1{font-size:clamp(2.5rem,7vw,5.5rem);line-height:.92;margin:.25em 0}.lede{font-size:1.25rem;color:#cbd5e1;max-width:760px}.event-hero-image{width:100%;max-height:520px;object-fit:cover;border-radius:28px;border:1px solid #334155}.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:28px 0}.meta div,.content,.signup-card{background:#111827;border:1px solid #334155;border-radius:22px;padding:22px}.content{font-size:1.08rem;line-height:1.7;color:#dbeafe}.content p{margin:0 0 1em}.signup-card{margin-top:28px;max-width:680px}.signup-card label{display:block;margin:14px 0;color:#cbd5e1}.signup-card input,.signup-card textarea{box-sizing:border-box;width:100%;margin-top:6px;border-radius:12px;border:1px solid #475569;background:#020617;color:#fff;padding:12px}.signup-card .checkbox{display:flex;gap:10px;align-items:center}.signup-card .checkbox input{width:auto}.signup-card button{border:0;border-radius:14px;background:#67e8f9;color:#0f172a;font-weight:900;padding:14px 22px;cursor:pointer}.signup-card button:disabled{opacity:.7;cursor:not-allowed}
+  </style>
+</head>
+<body data-event-detail-page="${slug}">
+  <main class="wrap">
+    <nav class="nav"><a class="brand" href="/">Hack the Valley</a><a class="back" href="/events">All events</a></nav>
+    <section class="hero">
+      <div><p class="kicker">Event page</p><h1>${title}</h1><p class="lede">${description}</p></div>
+      ${image}
+    </section>
+    <section class="meta"><div><strong>When</strong><br>${when}</div><div><strong>Where</strong><br>${venue}</div></section>
+    <section class="content">${content}</section>
+    ${signupForm}
+  </main>
+</body>
+</html>`;
 }
 
 export async function handleErrors(fn) {

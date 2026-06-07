@@ -6,6 +6,7 @@ import * as media from './functions/api/media.js';
 import * as register from './functions/api/register.js';
 import * as submissions from './functions/api/submissions.js';
 import * as subscribe from './functions/api/subscribe.js';
+import { getDb, getEvent, handleErrors, renderEventPageHtml } from './functions/_lib/event-platform.js';
 import * as upload from './functions/api/upload.js';
 import { corsHeaders } from './functions/_shared/submissions.js';
 
@@ -81,6 +82,21 @@ function isEventPagePath(pathname) {
   return /^\/events\/[^/.][^/]*\/?$/.test(pathname);
 }
 
+async function renderEventPage(request, env) {
+  return handleErrors(async () => {
+    const url = new URL(request.url);
+    const slug = decodeURIComponent(url.pathname.match(/^\/events\/([^/]+)\/?$/)?.[1] || "");
+    const event = await getEvent(getDb(env), slug);
+    if (!event || event.status === "archived") {
+      return new Response("Event not found", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    }
+    return new Response(renderEventPageHtml(event), {
+      status: 200,
+      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }
+    });
+  });
+}
+
 export default {
   async fetch(request, env = {}, ctx = {}) {
     const url = new URL(request.url);
@@ -90,14 +106,11 @@ export default {
       return routeApiRequest(request, env, ctx, route.routeModule, route.params);
     }
 
-    if (env.ASSETS?.fetch) {
-      if (isEventPagePath(url.pathname)) {
-        const rewritten = new URL(request.url);
-        rewritten.pathname = "/events/index.html";
-        rewritten.search = url.search;
-        return env.ASSETS.fetch(new Request(rewritten, request));
-      }
+    if (isEventPagePath(url.pathname)) {
+      return renderEventPage(request, env);
+    }
 
+    if (env.ASSETS?.fetch) {
       return env.ASSETS.fetch(request);
     }
 

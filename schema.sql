@@ -34,11 +34,26 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_status_starts_at ON events(status, starts_at);
 
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT,
+  first_name TEXT,
+  last_name TEXT,
+  phone TEXT,
+  school TEXT,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
 CREATE TABLE IF NOT EXISTS signups (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT PRIMARY KEY,
   event_slug TEXT NOT NULL REFERENCES events(slug) ON DELETE CASCADE,
-  email TEXT NOT NULL,
-  name TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT,
   first_name TEXT,
   last_name TEXT,
   phone TEXT,
@@ -52,8 +67,8 @@ CREATE TABLE IF NOT EXISTS signups (
   mailing_list_detail TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  UNIQUE(event_slug, email)
+  UNIQUE(event_slug, user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_signups_event_created_at ON signups(event_slug, created_at);
-CREATE INDEX IF NOT EXISTS idx_signups_email ON signups(email);
+CREATE INDEX IF NOT EXISTS idx_signups_user_id ON signups(user_id);

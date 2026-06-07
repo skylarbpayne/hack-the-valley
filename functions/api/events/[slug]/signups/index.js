@@ -61,6 +61,7 @@ export async function onRequestPost(context) {
       event: { slug: event.slug, title: event.title },
       signup: {
         id: savedSignup.id,
+        user_id: savedSignup.user_id,
         name: savedSignup.name,
         email: savedSignup.email,
         mailing_list_status: savedSignup.mailing_list_status

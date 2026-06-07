@@ -90,7 +90,11 @@ export function normalizeEventInput(input, existing = {}) {
     venue_address: trimOrNull(input.venue_address ?? existing.venue_address),
     capacity: input.capacity ?? existing.capacity ?? null,
     status,
-    signup_fields_json: stringifyJson(input.signup_fields ?? input.signup_fields_json ?? existing.signup_fields_json ?? null)
+    image_url: trimOrNull(input.image_url ?? existing.image_url),
+    content_before: trimOrNull(input.content_before ?? existing.content_before),
+    content_after: trimOrNull(input.content_after ?? existing.content_after),
+    signup_fields_json: stringifyJson(input.signup_fields ?? input.signup_fields_json ?? existing.signup_fields_json ?? null),
+    recurrence_rule_json: stringifyJson(input.recurrence_rule ?? input.recurrence_rule_json ?? existing.recurrence_rule_json ?? null)
   };
 
   const errors = [];
@@ -183,8 +187,10 @@ export async function upsertEvent(db, input, existing = {}) {
 
   const now = new Date().toISOString();
   await db.prepare(`
-    INSERT INTO events (slug, title, description, starts_at, ends_at, venue_name, venue_address, capacity, status, signup_fields_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO events (
+      slug, title, description, starts_at, ends_at, venue_name, venue_address, capacity, status,
+      image_url, content_before, content_after, signup_fields_json, recurrence_rule_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(slug) DO UPDATE SET
       title = excluded.title,
       description = excluded.description,
@@ -194,7 +200,11 @@ export async function upsertEvent(db, input, existing = {}) {
       venue_address = excluded.venue_address,
       capacity = excluded.capacity,
       status = excluded.status,
+      image_url = excluded.image_url,
+      content_before = excluded.content_before,
+      content_after = excluded.content_after,
       signup_fields_json = excluded.signup_fields_json,
+      recurrence_rule_json = excluded.recurrence_rule_json,
       updated_at = excluded.updated_at
   `).bind(
     event.slug,
@@ -206,7 +216,11 @@ export async function upsertEvent(db, input, existing = {}) {
     event.venue_address,
     event.capacity,
     event.status,
+    event.image_url,
+    event.content_before,
+    event.content_after,
     event.signup_fields_json,
+    event.recurrence_rule_json,
     now,
     now
   ).run();
@@ -346,7 +360,7 @@ export function csvEscape(value) {
 export function signupsToCsv(signups) {
   const columns = [
     "created_at", "updated_at", "event_slug", "name", "email", "phone", "school", "year",
-    "experience", "notes", "email_list_opt_in", "mailing_list_status", "mailing_list_detail"
+    "experience", "notes", "email_list_opt_in", "metadata_json", "mailing_list_status", "mailing_list_detail"
   ];
   return [
     columns.join(","),

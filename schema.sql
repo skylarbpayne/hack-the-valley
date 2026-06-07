@@ -24,7 +24,11 @@ CREATE TABLE IF NOT EXISTS events (
   venue_address TEXT,
   capacity INTEGER,
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'open', 'closed', 'archived')),
+  image_url TEXT,
+  content_before TEXT,
+  content_after TEXT,
   signup_fields_json TEXT,
+  recurrence_rule_json TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

@@ -16,66 +16,85 @@
 </head>
 <body class="bg-bc-dark text-slate-100 font-sans min-h-screen">
   <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-      <div>
-        <a href="/events" class="text-bc-cyan text-sm">← Public events</a>
-        <h1 class="text-4xl font-black mt-2">Hack the Valley Admin</h1>
-        <p class="text-slate-400 mt-2 max-w-2xl">One admin page for event ops and organizer tools. Event creation/export uses the single admin password configured as <code>HTV_ADMIN_TOKEN</code>.</p>
-      </div>
-    </div>
-
-    <section class="grid md:grid-cols-3 gap-4 mb-8">
-      <a href="#events-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
-        <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Events</div>
-        <h2 class="text-xl font-black mt-2">Create / update events</h2>
-        <p class="text-slate-400 text-sm mt-2">Open/close signups, export registrants, and manage Hack Hours.</p>
-      </a>
-      <a href="/admin-submissions" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
-        <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Project submissions</div>
-        <h2 class="text-xl font-black mt-2">Review submitted projects</h2>
-        <p class="text-slate-400 text-sm mt-2">Jump to the private submissions table and media review tools.</p>
-      </a>
-      <a href="/submit" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
-        <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Public tools</div>
-        <h2 class="text-xl font-black mt-2">Submission portal</h2>
-        <p class="text-slate-400 text-sm mt-2">Open the participant-facing project submit page.</p>
-      </a>
-    </section>
-
-    <section id="events-admin" class="bg-bc-navy border border-slate-700 rounded-2xl p-5 mb-8">
-      <label class="block">
-        <span class="text-sm font-semibold">Admin password</span>
-        <input id="admin-token" type="password" autocomplete="off" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-bc-cyan" placeholder="Enter admin password">
-      </label>
-      <div class="mt-4 flex flex-wrap gap-3">
-        <button id="load-events" class="bg-bc-cyan text-bc-dark px-5 py-2.5 rounded-lg font-bold hover:bg-cyan-400">Load events</button>
-        <button id="prefill-hack-hours" class="border border-bc-cyan/60 text-bc-cyan px-5 py-2.5 rounded-lg font-bold hover:bg-bc-cyan/10">Prefill Hack Hours at Panera</button>
-      </div>
-      <p id="status" class="mt-4 text-sm text-slate-300"></p>
-    </section>
-
-    <section class="grid lg:grid-cols-[1fr_1.2fr] gap-8">
-      <form id="event-form" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 space-y-4">
-        <h2 class="text-2xl font-black">Create / update event</h2>
-        <label class="block"><span class="text-sm font-semibold">Title *</span><input name="title" required class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
-        <label class="block"><span class="text-sm font-semibold">Slug</span><input name="slug" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white" placeholder="hack-hours-panera"></label>
-        <label class="block"><span class="text-sm font-semibold">Description</span><textarea name="description" rows="3" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></textarea></label>
-        <div class="grid sm:grid-cols-2 gap-4">
-          <label class="block"><span class="text-sm font-semibold">Starts at</span><input name="starts_at" type="datetime-local" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
-          <label class="block"><span class="text-sm font-semibold">Ends at</span><input name="ends_at" type="datetime-local" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
-        </div>
-        <label class="block"><span class="text-sm font-semibold">Venue name</span><input name="venue_name" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
-        <label class="block"><span class="text-sm font-semibold">Venue address</span><input name="venue_address" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
-        <div class="grid sm:grid-cols-2 gap-4">
-          <label class="block"><span class="text-sm font-semibold">Capacity</span><input name="capacity" type="number" min="1" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
-          <label class="block"><span class="text-sm font-semibold">Status</span><select name="status" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"><option>draft</option><option selected>open</option><option>closed</option><option>archived</option></select></label>
-        </div>
-        <button class="bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400">Save event</button>
+    <section id="login-panel" class="max-w-xl mx-auto bg-bc-navy border border-slate-700 rounded-3xl p-6 sm:p-8 mt-10">
+      <a href="/events" class="text-bc-cyan text-sm">← Public events</a>
+      <h1 class="text-4xl font-black mt-4">Hack the Valley Admin</h1>
+      <p class="text-slate-400 mt-2">Enter the admin password once. We’ll keep it in this browser for admin API calls.</p>
+      <form id="login-form" class="mt-6 space-y-4">
+        <label class="block">
+          <span class="text-sm font-semibold">Admin password</span>
+          <input id="admin-token" type="password" autocomplete="off" required class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-bc-cyan" placeholder="Enter admin password">
+        </label>
+        <button class="w-full bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-black hover:bg-cyan-400">Log in</button>
+        <p id="login-status" class="text-sm text-slate-300"></p>
       </form>
+    </section>
 
-      <section>
-        <h2 class="text-2xl font-black mb-4">Events</h2>
-        <div id="events" class="space-y-4"></div>
+    <section id="admin-app" class="hidden">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div>
+          <a href="/events" class="text-bc-cyan text-sm">← Public events</a>
+          <h1 class="text-4xl font-black mt-2">Hack the Valley Admin</h1>
+          <p class="text-slate-400 mt-2 max-w-2xl">One admin page for event ops and organizer tools. Event creation/export uses <code>HTV_ADMIN_TOKEN</code>.</p>
+        </div>
+        <button id="logout" class="border border-slate-600 px-4 py-2 rounded-lg text-sm hover:border-bc-cyan">Forget password</button>
+      </div>
+
+      <section class="grid md:grid-cols-3 gap-4 mb-8">
+        <a href="#events-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
+          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Events</div>
+          <h2 class="text-xl font-black mt-2">Create / update event</h2>
+          <p class="text-slate-400 text-sm mt-2">Open/close signups, set event photos, add page copy, and export registrants.</p>
+        </a>
+        <a href="/admin-submissions" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
+          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Project submissions</div>
+          <h2 class="text-xl font-black mt-2">Review submitted projects</h2>
+          <p class="text-slate-400 text-sm mt-2">Jump to the private submissions table and media review tools.</p>
+        </a>
+        <a href="/submit" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
+          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Public tools</div>
+          <h2 class="text-xl font-black mt-2">Submission portal</h2>
+          <p class="text-slate-400 text-sm mt-2">Open the participant-facing project submit page.</p>
+        </a>
+      </section>
+
+      <section id="events-admin" class="bg-bc-navy border border-slate-700 rounded-2xl p-5 mb-8">
+        <div class="flex flex-wrap gap-3 items-center">
+          <button id="load-events" class="bg-bc-cyan text-bc-dark px-5 py-2.5 rounded-lg font-bold hover:bg-cyan-400">Load events</button>
+          <p id="status" class="text-sm text-slate-300"></p>
+        </div>
+      </section>
+
+      <section class="grid lg:grid-cols-[1fr_1.2fr] gap-8">
+        <form id="event-form" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 space-y-4">
+          <h2 class="text-2xl font-black">Create / update event</h2>
+          <label class="block"><span class="text-sm font-semibold">Title *</span><input name="title" required class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
+          <label class="block"><span class="text-sm font-semibold">Slug</span><input name="slug" readonly class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-slate-300" placeholder="auto-generated-from-title"><span class="text-xs text-slate-500">Auto-populates from title. Existing event slugs stay fixed when editing.</span></label>
+          <label class="block"><span class="text-sm font-semibold">Description</span><textarea name="description" rows="3" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></textarea></label>
+          <label class="block"><span class="text-sm font-semibold">Event photo URL</span><input name="image_url" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white" placeholder="/images/events/2026/hero.jpg or https://..."></label>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <label class="block"><span class="text-sm font-semibold">Starts at</span><input name="starts_at" type="datetime-local" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
+            <label class="block"><span class="text-sm font-semibold">Ends at</span><input name="ends_at" type="datetime-local" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
+          </div>
+          <label class="block"><span class="text-sm font-semibold">Venue name</span><input name="venue_name" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
+          <label class="block"><span class="text-sm font-semibold">Venue address</span><input name="venue_address" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <label class="block"><span class="text-sm font-semibold">Capacity</span><input name="capacity" type="number" min="1" placeholder="Leave blank for no cap" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
+            <label class="block"><span class="text-sm font-semibold">Status</span><select name="status" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"><option>draft</option><option selected>open</option><option>closed</option><option>archived</option></select></label>
+          </div>
+          <label class="block"><span class="text-sm font-semibold">Before-event page copy</span><textarea name="content_before" rows="4" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white" placeholder="What people need before the event: schedule, parking, prep, links."></textarea></label>
+          <label class="block"><span class="text-sm font-semibold">After-event page copy</span><textarea name="content_after" rows="4" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white" placeholder="Recap, projects, photos, survey, sponsor notes."></textarea></label>
+          <label class="block"><span class="text-sm font-semibold">Recurrence rule JSON</span><textarea name="recurrence_rule" rows="3" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white" placeholder='{"frequency":"yearly","interval":1}'></textarea><span class="text-xs text-slate-500">Stored now so recurring events are possible later; no recurrence generation yet.</span></label>
+          <div class="flex flex-wrap gap-3">
+            <button class="bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400">Save event</button>
+            <button id="new-event" type="button" class="border border-slate-600 px-5 py-3 rounded-lg font-bold hover:border-bc-cyan">New blank event</button>
+          </div>
+        </form>
+
+        <section>
+          <h2 class="text-2xl font-black mb-4">Events</h2>
+          <div id="events" class="space-y-4"></div>
+        </section>
       </section>
     </section>
   </main>
@@ -83,17 +102,60 @@
   <script>
     const $ = (id) => document.getElementById(id);
     const tokenInput = $("admin-token");
+    const loginPanel = $("login-panel");
+    const adminApp = $("admin-app");
+    const eventForm = $("event-form");
+    const titleInput = eventForm?.elements.title;
+    const slugInput = eventForm?.elements.slug;
+    let editingSlug = null;
     tokenInput.value = localStorage.getItem("htv_admin_token") || "";
 
+    function slugify(value) {
+      return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/&/g, " and ")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .replace(/-{2,}/g, "-");
+    }
+
     function setStatus(message, error = false) {
-      $("status").className = `mt-4 text-sm ${error ? "text-red-300" : "text-slate-300"}`;
+      $("status").className = `text-sm ${error ? "text-red-300" : "text-slate-300"}`;
       $("status").textContent = message;
     }
 
+    function setLoginStatus(message, error = false) {
+      $("login-status").className = `text-sm ${error ? "text-red-300" : "text-slate-300"}`;
+      $("login-status").textContent = message;
+    }
+
+    function getToken() {
+      return tokenInput.value.trim() || localStorage.getItem("htv_admin_token") || "";
+    }
+
     function headers() {
-      const token = tokenInput.value.trim();
-      if (token) localStorage.setItem("htv_admin_token", token);
+      const token = getToken();
       return { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
+    }
+
+    function showApp() {
+      loginPanel.classList.add("hidden");
+      adminApp.classList.remove("hidden");
+    }
+
+    function rememberToken(token) {
+      localStorage.setItem("htv_admin_token", token);
+      document.cookie = `htv_admin_logged_in=1; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax; Path=/`;
+    }
+
+    function forgetToken() {
+      localStorage.removeItem("htv_admin_token");
+      document.cookie = "htv_admin_logged_in=; Max-Age=0; SameSite=Lax; Path=/";
+      tokenInput.value = "";
+      adminApp.classList.add("hidden");
+      loginPanel.classList.remove("hidden");
+      setLoginStatus("Password forgotten in this browser.");
     }
 
     function toIsoLocalValue(value) {
@@ -108,13 +170,27 @@
       return value ? new Date(value).toISOString() : null;
     }
 
+    function parseJsonOrString(value) {
+      const trimmed = String(value || "").trim();
+      if (!trimmed) return null;
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        return trimmed;
+      }
+    }
+
     function formPayload(form) {
       const data = Object.fromEntries(new FormData(form).entries());
       return {
         ...data,
         starts_at: fromLocalDatetime(data.starts_at),
         ends_at: fromLocalDatetime(data.ends_at),
-        capacity: data.capacity ? Number(data.capacity) : null
+        capacity: data.capacity ? Number(data.capacity) : null,
+        image_url: data.image_url || null,
+        content_before: data.content_before || null,
+        content_after: data.content_after || null,
+        recurrence_rule: parseJsonOrString(data.recurrence_rule)
       };
     }
 
@@ -134,6 +210,7 @@
         setStatus("Loaded events.");
       } catch (error) {
         setStatus(error.message, true);
+        throw error;
       }
     }
 
@@ -145,17 +222,20 @@
       }
       container.innerHTML = events.map((event) => `
         <article class="bg-bc-navy border border-slate-700 rounded-xl p-5">
-          <div class="flex flex-col sm:flex-row sm:justify-between gap-3">
-            <div>
-              <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">${escapeHtml(event.status)} • ${escapeHtml(event.slug)}</div>
-              <h3 class="text-xl font-black mt-1">${escapeHtml(event.title)}</h3>
-              <p class="text-slate-400 text-sm mt-2">${escapeHtml(event.description || "")}</p>
-              <p class="text-slate-500 text-sm mt-2">${escapeHtml(event.starts_at || "Time TBA")} ${event.venue_name ? `• ${escapeHtml(event.venue_name)}` : ""}</p>
-            </div>
-            <div class="flex flex-wrap gap-2 sm:justify-end">
-              <button data-edit="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Edit</button>
-              <a href="/events?event=${encodeURIComponent(event.slug)}" target="_blank" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Public</a>
-              <button data-export="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Export CSV</button>
+          <div class="flex gap-4">
+            ${event.image_url ? `<img src="${escapeHtml(event.image_url)}" alt="${escapeHtml(event.title)}" class="hidden sm:block w-24 h-24 object-cover rounded-xl border border-slate-700">` : ""}
+            <div class="flex-1 flex flex-col sm:flex-row sm:justify-between gap-3">
+              <div>
+                <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">${escapeHtml(event.status)} • ${escapeHtml(event.slug)}</div>
+                <h3 class="text-xl font-black mt-1">${escapeHtml(event.title)}</h3>
+                <p class="text-slate-400 text-sm mt-2">${escapeHtml(event.description || "")}</p>
+                <p class="text-slate-500 text-sm mt-2">${escapeHtml(event.starts_at || "Time TBA")} ${event.venue_name ? `• ${escapeHtml(event.venue_name)}` : ""}${event.capacity ? ` • cap ${escapeHtml(event.capacity)}` : " • no cap"}</p>
+              </div>
+              <div class="flex flex-wrap gap-2 sm:justify-end sm:content-start">
+                <button data-edit="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Edit</button>
+                <a href="/events?event=${encodeURIComponent(event.slug)}" target="_blank" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Public</a>
+                <button data-export="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Export CSV</button>
+              </div>
             </div>
           </div>
         </article>
@@ -172,18 +252,28 @@
       });
     }
 
+    function resetForm() {
+      eventForm.reset();
+      editingSlug = null;
+      slugInput.value = "";
+    }
+
     function fillForm(event) {
-      const form = $("event-form");
-      form.title.value = event.title || "";
-      form.slug.value = event.slug || "";
-      form.description.value = event.description || "";
-      form.starts_at.value = toIsoLocalValue(event.starts_at);
-      form.ends_at.value = toIsoLocalValue(event.ends_at);
-      form.venue_name.value = event.venue_name || "";
-      form.venue_address.value = event.venue_address || "";
-      form.capacity.value = event.capacity || "";
-      form.status.value = event.status || "draft";
-      form.scrollIntoView({ behavior: "smooth" });
+      editingSlug = event.slug;
+      eventForm.title.value = event.title || "";
+      eventForm.slug.value = event.slug || "";
+      eventForm.description.value = event.description || "";
+      eventForm.image_url.value = event.image_url || "";
+      eventForm.starts_at.value = toIsoLocalValue(event.starts_at);
+      eventForm.ends_at.value = toIsoLocalValue(event.ends_at);
+      eventForm.venue_name.value = event.venue_name || "";
+      eventForm.venue_address.value = event.venue_address || "";
+      eventForm.capacity.value = event.capacity || "";
+      eventForm.status.value = event.status || "draft";
+      eventForm.content_before.value = event.content_before || "";
+      eventForm.content_after.value = event.content_after || "";
+      eventForm.recurrence_rule.value = event.recurrence_rule_json || "";
+      eventForm.scrollIntoView({ behavior: "smooth" });
     }
 
     async function downloadCsv(slug) {
@@ -205,12 +295,32 @@
       }
     }
 
-    $("event-form").addEventListener("submit", async (event) => {
+    titleInput.addEventListener("input", () => {
+      if (!editingSlug) slugInput.value = slugify(titleInput.value);
+    });
+
+    $("login-form").addEventListener("submit", async (event) => {
       event.preventDefault();
+      const token = tokenInput.value.trim();
+      if (!token) return setLoginStatus("Enter the admin password.", true);
+      rememberToken(token);
+      showApp();
+      try {
+        await loadEvents();
+      } catch (error) {
+        setLoginStatus(error.message, true);
+      }
+    });
+
+    eventForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
       try {
         setStatus("Saving…");
-        await api("/api/events", { method: "POST", body: JSON.stringify(formPayload(event.currentTarget)) });
-        event.currentTarget.reset();
+        await api("/api/events", { method: "POST", body: JSON.stringify(formPayload(form)) });
+        form.reset();
+        editingSlug = null;
+        slugInput.value = "";
         setStatus("Saved event.");
         await loadEvents();
       } catch (error) {
@@ -218,23 +328,19 @@
       }
     });
 
-    $("load-events").addEventListener("click", loadEvents);
-    $("prefill-hack-hours").addEventListener("click", () => fillForm({
-      title: "Hack Hours at Panera",
-      slug: "hack-hours-panera",
-      description: "Casual Hack the Valley builder hours: bring a laptop, get help, work on projects, and meet other Central Valley builders.",
-      starts_at: "",
-      ends_at: "",
-      venue_name: "Panera Bread",
-      venue_address: "",
-      capacity: "",
-      status: "open"
-    }));
+    $("load-events").addEventListener("click", () => loadEvents().catch(() => {}));
+    $("new-event").addEventListener("click", resetForm);
+    $("logout").addEventListener("click", forgetToken);
 
     function escapeHtml(value) {
       return String(value ?? "")
         .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+    }
+
+    if (tokenInput.value) {
+      showApp();
+      loadEvents().catch(() => {});
     }
   </script>
 </body>

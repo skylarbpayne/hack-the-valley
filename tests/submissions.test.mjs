@@ -148,6 +148,13 @@ test('isAuthorized accepts bearer, x-admin-token, token query param, and shared 
   assert.equal(isAuthorized(new Request('https://example.com/admin'), {}), false);
 });
 
+test('submissions app-db migration helper avoids SQL transaction-control statements', () => {
+  const script = readFileSync(new URL('../scripts/migrate-submissions-to-app-db.sh', import.meta.url), 'utf8');
+  assert.doesNotMatch(script, /BEGIN\s+TRANSACTION/i);
+  assert.doesNotMatch(script, /SAVEPOINT/i);
+  assert.doesNotMatch(script, /COMMIT\s*;/i);
+});
+
 test('jsonResponse returns JSON with no-store cache headers', async () => {
   const response = jsonResponse({ ok: true }, { status: 201 });
   assert.equal(response.status, 201);

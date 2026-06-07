@@ -146,8 +146,10 @@ def sql_value(value):
         return "NULL"
     return "'" + str(value).replace("'", "''") + "'"
 
+# Keep this SQL Cloudflare-D1/Durable-Object-safe: do not emit explicit
+# SQL transaction-control statements. Wrangler/Miniflare rejects them in
+# this path; D1 execute can safely run these idempotent statements one by one.
 statements = [
-    "BEGIN TRANSACTION;",
     "CREATE TABLE IF NOT EXISTS submissions (\n"
     "  id TEXT PRIMARY KEY,\n"
     "  created_at TEXT NOT NULL,\n"
@@ -173,7 +175,6 @@ statements.extend([
     "CREATE INDEX IF NOT EXISTS idx_submissions_created_at ON submissions(created_at DESC);",
     "CREATE INDEX IF NOT EXISTS idx_submissions_track ON submissions(track);",
     "CREATE INDEX IF NOT EXISTS idx_submissions_contact_email ON submissions(contact_email);",
-    "COMMIT;",
 ])
 
 sql_path.write_text("\n".join(statements) + "\n")

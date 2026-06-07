@@ -40,11 +40,16 @@
         <button id="logout" class="border border-slate-600 px-4 py-2 rounded-lg text-sm hover:border-bc-cyan">Forget password</button>
       </div>
 
-      <section class="grid md:grid-cols-3 gap-4 mb-8">
+      <section class="grid md:grid-cols-4 gap-4 mb-8">
         <a href="#events-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Events</div>
           <h2 class="text-xl font-black mt-2">Create / update event</h2>
           <p class="text-slate-400 text-sm mt-2">Open/close signups, set event photos, add page copy, and export registrants.</p>
+        </a>
+        <a href="#users-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
+          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">People</div>
+          <h2 class="text-xl font-black mt-2">Users</h2>
+          <p class="text-slate-400 text-sm mt-2">See imported Resend contacts and users created by event signups.</p>
         </a>
         <a href="/admin-submissions" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Project submissions</div>
@@ -99,6 +104,27 @@
           <h2 class="text-2xl font-black mb-4">Events</h2>
           <div id="events" class="space-y-4"></div>
         </section>
+      </section>
+
+      <section id="event-signups" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div>
+            <h2 class="text-2xl font-black">Event signups</h2>
+            <p id="event-signups-status" class="text-sm text-slate-400 mt-1">Pick “View signups” on an event.</p>
+          </div>
+        </div>
+        <div id="event-signups-list" class="overflow-x-auto text-sm text-slate-300"></div>
+      </section>
+
+      <section id="users-admin" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div>
+            <h2 class="text-2xl font-black">Users</h2>
+            <p id="users-status" class="text-sm text-slate-400 mt-1">Resend-imported users plus anyone created during event signup.</p>
+          </div>
+          <button id="load-users" class="border border-slate-600 px-4 py-2 rounded-lg text-sm hover:border-bc-cyan">Load users</button>
+        </div>
+        <div id="users-list" class="overflow-x-auto text-sm text-slate-300"></div>
       </section>
     </section>
   </main>
@@ -256,6 +282,82 @@
       }
     }
 
+    async function loadUsers() {
+      const status = $("users-status");
+      try {
+        status.textContent = "Loading users…";
+        const data = await api("/api/users?limit=1000");
+        renderUsers(data.users || []);
+        status.textContent = `Loaded ${data.count ?? (data.users || []).length} users.`;
+      } catch (error) {
+        status.textContent = error.message;
+        status.className = "text-sm text-red-300 mt-1";
+        throw error;
+      }
+    }
+
+    function renderUsers(users) {
+      const container = $("users-list");
+      if (!users.length) {
+        container.innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">No users yet.</div>`;
+        return;
+      }
+      container.innerHTML = `
+        <table class="min-w-full border-separate border-spacing-y-2">
+          <thead class="text-left text-xs uppercase tracking-[0.16em] text-slate-500"><tr><th class="pr-4">Name</th><th class="pr-4">Email</th><th class="pr-4">School</th><th class="pr-4">Signups</th><th class="pr-4">User ID</th></tr></thead>
+          <tbody>
+            ${users.map((user) => `
+              <tr class="bg-bc-dark border border-slate-700">
+                <td class="p-3 rounded-l-xl font-semibold">${escapeHtml(user.name || `${user.first_name || ""} ${user.last_name || ""}`.trim() || "—")}</td>
+                <td class="p-3">${escapeHtml(user.email || "")}</td>
+                <td class="p-3">${escapeHtml(user.school || "—")}</td>
+                <td class="p-3">${escapeHtml(user.signup_count ?? 0)}</td>
+                <td class="p-3 rounded-r-xl font-mono text-xs text-slate-400">${escapeHtml(user.id)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>`;
+    }
+
+    async function loadEventSignups(slug, title = slug) {
+      const status = $("event-signups-status");
+      try {
+        status.textContent = `Loading signups for ${title}…`;
+        const data = await api(`/api/events/${encodeURIComponent(slug)}/signups`);
+        renderEventSignups(data.event || { slug, title }, data.signups || []);
+        status.textContent = `${data.count ?? (data.signups || []).length} signups for ${data.event?.title || title}.`;
+        $("event-signups").scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (error) {
+        status.textContent = error.message;
+        status.className = "text-sm text-red-300 mt-1";
+        throw error;
+      }
+    }
+
+    function renderEventSignups(event, signups) {
+      const container = $("event-signups-list");
+      if (!signups.length) {
+        container.innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">No signups for ${escapeHtml(event.title || event.slug)} yet.</div>`;
+        return;
+      }
+      container.innerHTML = `
+        <table class="min-w-full border-separate border-spacing-y-2">
+          <thead class="text-left text-xs uppercase tracking-[0.16em] text-slate-500"><tr><th class="pr-4">Name</th><th class="pr-4">Email</th><th class="pr-4">School</th><th class="pr-4">Notes</th><th class="pr-4">User ID</th><th class="pr-4">Signed up</th></tr></thead>
+          <tbody>
+            ${signups.map((signup) => `
+              <tr class="bg-bc-dark border border-slate-700">
+                <td class="p-3 rounded-l-xl font-semibold">${escapeHtml(signup.name || "—")}</td>
+                <td class="p-3">${escapeHtml(signup.email || "")}</td>
+                <td class="p-3">${escapeHtml(signup.school || "—")}</td>
+                <td class="p-3 max-w-xs truncate" title="${escapeHtml(signup.notes || "")}">${escapeHtml(signup.notes || "—")}</td>
+                <td class="p-3 font-mono text-xs text-slate-400">${escapeHtml(signup.user_id || "")}</td>
+                <td class="p-3 rounded-r-xl text-slate-400">${escapeHtml(signup.created_at || "")}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>`;
+    }
+
     function renderEvents(events) {
       const container = $("events");
       if (!events.length) {
@@ -276,6 +378,7 @@
               <div class="flex flex-wrap gap-2 sm:justify-end sm:content-start">
                 <button data-edit="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Edit</button>
                 <a href="/events/${encodeURIComponent(event.slug)}" target="_blank" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Event page</a>
+                <button data-signups="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">View signups</button>
                 <button data-export="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Export CSV</button>
               </div>
             </div>
@@ -287,6 +390,12 @@
         button.addEventListener("click", () => {
           const event = events.find((candidate) => candidate.slug === button.dataset.edit);
           fillForm(event);
+        });
+      });
+      container.querySelectorAll("[data-signups]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const event = events.find((candidate) => candidate.slug === button.dataset.signups);
+          loadEventSignups(button.dataset.signups, event?.title || button.dataset.signups).catch(() => {});
         });
       });
       container.querySelectorAll("[data-export]").forEach((button) => {
@@ -350,6 +459,7 @@
       showApp();
       try {
         await loadEvents();
+        await loadUsers();
       } catch (error) {
         setLoginStatus(error.message, true);
       }
@@ -383,6 +493,7 @@
     });
 
     eventForm.image_url.addEventListener("input", () => updateImagePreview(eventForm.image_url.value));
+    $("load-users").addEventListener("click", () => loadUsers().catch(() => {}));
     $("load-events").addEventListener("click", () => loadEvents().catch(() => {}));
     $("new-event").addEventListener("click", resetForm);
     $("logout").addEventListener("click", forgetToken);
@@ -396,6 +507,7 @@
     if (tokenInput.value) {
       showApp();
       loadEvents().catch(() => {});
+      loadUsers().catch(() => {});
     }
   </script>
 </body>

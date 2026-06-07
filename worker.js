@@ -8,6 +8,7 @@ import * as submissions from './functions/api/submissions.js';
 import * as subscribe from './functions/api/subscribe.js';
 import { getDb, getEvent, handleErrors, renderEventPageHtml } from './functions/_lib/event-platform.js';
 import * as upload from './functions/api/upload.js';
+import * as users from './functions/api/users/index.js';
 import { corsHeaders } from './functions/_shared/submissions.js';
 
 const API_ROUTES = {
@@ -16,6 +17,7 @@ const API_ROUTES = {
   '/api/submissions': submissions,
   '/api/subscribe': subscribe,
   '/api/upload': upload,
+  '/api/users': users,
 };
 
 function methodHandlerName(method) {

@@ -230,6 +230,30 @@ export async function upsertEvent(db, input, existing = {}) {
   return await getEvent(db, event.slug);
 }
 
+export async function listUsers(db, { limit = 500 } = {}) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 500, 1000));
+  const result = await db.prepare(`
+    SELECT
+      u.id,
+      u.email,
+      u.name,
+      u.first_name,
+      u.last_name,
+      u.phone,
+      u.school,
+      u.metadata_json,
+      u.created_at,
+      u.updated_at,
+      COUNT(s.id) AS signup_count
+    FROM users u
+    LEFT JOIN signups s ON s.user_id = u.id
+    GROUP BY u.id
+    ORDER BY u.updated_at DESC, u.created_at DESC
+    LIMIT ?
+  `).bind(safeLimit).all();
+  return result.results || [];
+}
+
 export async function listSignups(db, eventSlug) {
   const result = await db.prepare(`
     SELECT

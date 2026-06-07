@@ -254,6 +254,18 @@ test("admin page gates the full UI behind a saved admin login", () => {
   assert.doesNotMatch(html, /Prefill Hack Hours at Panera/);
 });
 
+test("admin page can list users and per-event signups", () => {
+  const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
+  assert.match(html, /id="users-admin"/);
+  assert.match(html, /id="users-list"/);
+  assert.match(html, /function loadUsers/);
+  assert.match(html, /\/api\/users/);
+  assert.match(html, /id="event-signups"/);
+  assert.match(html, /function loadEventSignups/);
+  assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(slug\)\}\/signups/);
+  assert.match(html, /data-signups=/);
+});
+
 test("admin event form supports image uploads, auto-populates slug, and avoids async currentTarget reset bug", () => {
   const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
   assert.match(html, /function slugify/);
@@ -361,6 +373,40 @@ test("worker routes dynamic event APIs on the deployed Worker surface", async ()
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.events[0].slug, "hack-hours-panera");
+});
+
+test("worker exposes admin-only users API", async () => {
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        bind(...args) {
+          this.args = args;
+          return this;
+        },
+        async all() {
+          assert.match(sql, /FROM users/);
+          return { results: [{ id: "usr_1", email: "ada@example.com", name: "Ada", created_at: "2026-01-01T00:00:00.000Z" }] };
+        }
+      };
+    }
+  };
+
+  const unauthorized = await worker.fetch(
+    new Request("https://hackthevalley.org/api/users", { method: "GET" }),
+    { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" },
+    {}
+  );
+  assert.equal(unauthorized.status, 401);
+
+  const response = await worker.fetch(
+    new Request("https://hackthevalley.org/api/users", { method: "GET", headers: { Authorization: "Bearer secret" } }),
+    { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" },
+    {}
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.users[0].id, "usr_1");
+  assert.equal(body.users[0].email, "ada@example.com");
 });
 
 test("wrangler runs the Worker before event page asset routing", () => {

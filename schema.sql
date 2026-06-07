@@ -72,3 +72,37 @@ CREATE TABLE IF NOT EXISTS signups (
 
 CREATE INDEX IF NOT EXISTS idx_signups_event_created_at ON signups(event_slug, created_at);
 CREATE INDEX IF NOT EXISTS idx_signups_user_id ON signups(user_id);
+
+CREATE TABLE IF NOT EXISTS event_participant_events (
+  id TEXT PRIMARY KEY,
+  event_slug TEXT NOT NULL REFERENCES events(slug) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  signup_id TEXT REFERENCES signups(id) ON DELETE SET NULL,
+  event_type TEXT NOT NULL,
+  actor TEXT,
+  source TEXT NOT NULL DEFAULT 'system',
+  data_json TEXT,
+  occurred_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_participant_events_participant_time
+  ON event_participant_events(event_slug, user_id, occurred_at);
+
+CREATE INDEX IF NOT EXISTS idx_event_participant_events_type_time
+  ON event_participant_events(event_slug, event_type, occurred_at);
+
+CREATE VIEW IF NOT EXISTS event_participant_current_state AS
+SELECT
+  event_slug,
+  user_id,
+  MIN(CASE WHEN event_type = 'signed_up' THEN occurred_at END) AS signed_up_at,
+  MAX(CASE WHEN event_type = 'checked_in' THEN occurred_at END) AS checked_in_at,
+  MAX(CASE WHEN event_type = 'checked_out' THEN occurred_at END) AS checked_out_at,
+  MAX(CASE WHEN event_type = 'no_show' THEN occurred_at END) AS no_show_at,
+  MAX(CASE WHEN event_type = 'cancelled' THEN occurred_at END) AS cancelled_at,
+  MAX(CASE WHEN event_type = 'waitlisted' THEN occurred_at END) AS waitlisted_at,
+  MAX(CASE WHEN event_type = 'waiver_confirmed' THEN occurred_at END) AS waiver_confirmed_at,
+  COUNT(*) AS event_count
+FROM event_participant_events
+GROUP BY event_slug, user_id;

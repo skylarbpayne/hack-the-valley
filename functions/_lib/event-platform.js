@@ -360,12 +360,27 @@ export async function upsertSignup(db, eventSlug, input, mailingListResult) {
     now
   ).run();
 
-  return await db.prepare(`
+  const savedSignup = await db.prepare(`
     SELECT s.*, u.email
     FROM signups s
     JOIN users u ON u.id = s.user_id
     WHERE s.event_slug = ? AND s.user_id = ?
   `).bind(signup.event_slug, user.id).first();
+
+  await db.prepare(`
+    INSERT OR IGNORE INTO event_participant_events (
+      id, event_slug, user_id, signup_id, event_type, actor, source, data_json, occurred_at, created_at
+    ) VALUES (?, ?, ?, ?, 'signed_up', NULL, 'signup-api', NULL, ?, ?)
+  `).bind(
+    `evt_${savedSignup.id}_signed_up`,
+    savedSignup.event_slug,
+    savedSignup.user_id,
+    savedSignup.id,
+    savedSignup.created_at || now,
+    now
+  ).run();
+
+  return savedSignup;
 }
 
 export async function addSignupToEmailList(env, signup, event) {

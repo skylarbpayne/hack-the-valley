@@ -254,7 +254,7 @@ test("admin page gates the full UI behind a saved admin login", () => {
   assert.doesNotMatch(html, /Prefill Hack Hours at Panera/);
 });
 
-test("admin page can list users and per-event signups", () => {
+test("admin page can list users and per-event signups without school/org or notes clutter", () => {
   const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
   assert.match(html, /id="users-admin"/);
   assert.match(html, /id="users-list"/);
@@ -264,6 +264,19 @@ test("admin page can list users and per-event signups", () => {
   assert.match(html, /function loadEventSignups/);
   assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(slug\)\}\/signups/);
   assert.match(html, /data-signups=/);
+  assert.doesNotMatch(html, /<th[^>]*>School<\/th>/);
+  assert.doesNotMatch(html, /<th[^>]*>Notes<\/th>/);
+  assert.doesNotMatch(html, /user\.school/);
+  assert.doesNotMatch(html, /signup\.school/);
+  assert.doesNotMatch(html, /signup\.notes/);
+});
+
+test("public event signup form keeps only name, email, and mailing list opt-in", () => {
+  const html = readFileSync(new URL("../public/events/index.html", import.meta.url), "utf8");
+  assert.doesNotMatch(html, /School \/ organization/);
+  assert.doesNotMatch(html, /name="school"/);
+  assert.doesNotMatch(html, /name="notes"/);
+  assert.doesNotMatch(html, /Anything we should know/);
 });
 
 test("admin event form supports image uploads, auto-populates slug, and avoids async currentTarget reset bug", () => {
@@ -273,6 +286,8 @@ test("admin event form supports image uploads, auto-populates slug, and avoids a
   assert.match(html, /accept="image\/\*"/);
   assert.match(html, /id="upload-event-image"/);
   assert.match(html, /function uploadEventImage/);
+  assert.match(html, /async function ensureEventImageUploaded/);
+  assert.match(html, /await ensureEventImageUploaded\(form\)/);
   assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(slug\)\}\/image/);
   assert.match(html, /name="image_url"/);
   assert.match(html, /name="page_content"/);
@@ -299,6 +314,22 @@ test("event schema has users and user-linked signups instead of email-as-identit
   assert.match(migration, /CREATE TABLE IF NOT EXISTS users/);
   assert.match(migration, /INSERT OR IGNORE INTO users/);
   assert.match(migration, /ALTER TABLE signups_new RENAME TO signups/);
+});
+
+test("event schema has event-sourced participant state for check-in and future attendance facts", () => {
+  const schema = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
+  const migration = readFileSync(new URL("../migrations/0005_event_participant_events.sql", import.meta.url), "utf8");
+  for (const text of [schema, migration]) {
+    assert.match(text, /CREATE TABLE IF NOT EXISTS event_participant_events/);
+    assert.match(text, /event_slug TEXT NOT NULL REFERENCES events\(slug\)/);
+    assert.match(text, /user_id TEXT NOT NULL REFERENCES users\(id\)/);
+    assert.match(text, /event_type TEXT NOT NULL/);
+    assert.match(text, /data_json TEXT/);
+    assert.match(text, /occurred_at TEXT NOT NULL/);
+  }
+  assert.match(migration, /INSERT OR IGNORE INTO event_participant_events/);
+  assert.match(migration, /'signed_up'/);
+  assert.match(schema, /CREATE VIEW IF NOT EXISTS event_participant_current_state/);
 });
 
 test("event schema has editable page content and a forward cleanup migration", () => {
@@ -449,6 +480,13 @@ test("worker renders real per-event HTML from D1 for /events/<slug>", async () =
   assert.match(html, /data-event-detail-page="hack-the-valley-2026"/);
   assert.match(html, /This is the real event page body/);
   assert.doesNotMatch(html, /id="upcoming-events-panel"/);
+});
+
+test("event signup writes an append-only signed_up participant event", () => {
+  const source = readFileSync(new URL("../functions/_lib/event-platform.js", import.meta.url), "utf8");
+  assert.match(source, /INSERT OR IGNORE INTO event_participant_events/);
+  assert.match(source, /'signed_up'/);
+  assert.match(source, /evt_\$\{savedSignup\.id\}_signed_up/);
 });
 
 test("Resend import script pre-populates the users table without email IDs", () => {

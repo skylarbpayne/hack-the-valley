@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hack the Valley Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: { extend: { colors: { "bc-cyan": "#06b6d4", "bc-navy": "#1e293b", "bc-dark": "#0f172a" }, fontFamily: { sans: ["Inter", "sans-serif"] } } }
+    };
+  </script>
+</head>
+<body class="bg-bc-dark text-slate-100 font-sans min-h-screen">
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+      <div>
+        <a href="/events" class="text-bc-cyan text-sm">← Public events</a>
+        <h1 class="text-4xl font-black mt-2">Hack the Valley Admin</h1>
+        <p class="text-slate-400 mt-2 max-w-2xl">One admin page for event ops and organizer tools. Event creation/export uses the single admin password configured as <code>HTV_ADMIN_TOKEN</code>.</p>
+      </div>
+    </div>
+
+    <section class="grid md:grid-cols-3 gap-4 mb-8">
+      <a href="#events-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
+        <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Events</div>
+        <h2 class="text-xl font-black mt-2">Create / update events</h2>
+        <p class="text-slate-400 text-sm mt-2">Open/close signups, export registrants, and manage Hack Hours.</p>
+      </a>
+      <a href="/admin-submissions" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
+        <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Project submissions</div>
+        <h2 class="text-xl font-black mt-2">Review submitted projects</h2>
+        <p class="text-slate-400 text-sm mt-2">Jump to the private submissions table and media review tools.</p>
+      </a>
+      <a href="/submit" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
+        <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Public tools</div>
+        <h2 class="text-xl font-black mt-2">Submission portal</h2>
+        <p class="text-slate-400 text-sm mt-2">Open the participant-facing project submit page.</p>
+      </a>
+    </section>
+
+    <section id="events-admin" class="bg-bc-navy border border-slate-700 rounded-2xl p-5 mb-8">
+      <label class="block">
+        <span class="text-sm font-semibold">Admin password</span>
+        <input id="admin-token" type="password" autocomplete="off" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-bc-cyan" placeholder="Enter admin password">
+      </label>
+      <div class="mt-4 flex flex-wrap gap-3">
+        <button id="load-events" class="bg-bc-cyan text-bc-dark px-5 py-2.5 rounded-lg font-bold hover:bg-cyan-400">Load events</button>
+        <button id="prefill-hack-hours" class="border border-bc-cyan/60 text-bc-cyan px-5 py-2.5 rounded-lg font-bold hover:bg-bc-cyan/10">Prefill Hack Hours at Panera</button>
+      </div>
+      <p id="status" class="mt-4 text-sm text-slate-300"></p>
+    </section>
+
+    <section class="grid lg:grid-cols-[1fr_1.2fr] gap-8">
+      <form id="event-form" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 space-y-4">
+        <h2 class="text-2xl font-black">Create / update event</h2>
+        <label class="block"><span class="text-sm font-semibold">Title *</span><input name="title" required class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
+        <label class="block"><span class="text-sm font-semibold">Slug</span><input name="slug" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white" placeholder="hack-hours-panera"></label>
+        <label class="block"><span class="text-sm font-semibold">Description</span><textarea name="description" rows="3" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></textarea></label>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <label class="block"><span class="text-sm font-semibold">Starts at</span><input name="starts_at" type="datetime-local" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
+          <label class="block"><span class="text-sm font-semibold">Ends at</span><input name="ends_at" type="datetime-local" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
+        </div>
+        <label class="block"><span class="text-sm font-semibold">Venue name</span><input name="venue_name" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
+        <label class="block"><span class="text-sm font-semibold">Venue address</span><input name="venue_address" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <label class="block"><span class="text-sm font-semibold">Capacity</span><input name="capacity" type="number" min="1" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
+          <label class="block"><span class="text-sm font-semibold">Status</span><select name="status" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"><option>draft</option><option selected>open</option><option>closed</option><option>archived</option></select></label>
+        </div>
+        <button class="bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400">Save event</button>
+      </form>
+
+      <section>
+        <h2 class="text-2xl font-black mb-4">Events</h2>
+        <div id="events" class="space-y-4"></div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const tokenInput = $("admin-token");
+    tokenInput.value = localStorage.getItem("htv_admin_token") || "";
+
+    function setStatus(message, error = false) {
+      $("status").className = `mt-4 text-sm ${error ? "text-red-300" : "text-slate-300"}`;
+      $("status").textContent = message;
+    }
+
+    function headers() {
+      const token = tokenInput.value.trim();
+      if (token) localStorage.setItem("htv_admin_token", token);
+      return { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
+    }
+
+    function toIsoLocalValue(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "";
+      const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+      return shifted.toISOString().slice(0, 16);
+    }
+
+    function fromLocalDatetime(value) {
+      return value ? new Date(value).toISOString() : null;
+    }
+
+    function formPayload(form) {
+      const data = Object.fromEntries(new FormData(form).entries());
+      return {
+        ...data,
+        starts_at: fromLocalDatetime(data.starts_at),
+        ends_at: fromLocalDatetime(data.ends_at),
+        capacity: data.capacity ? Number(data.capacity) : null
+      };
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
+      const contentType = response.headers.get("Content-Type") || "";
+      const data = contentType.includes("application/json") ? await response.json() : await response.text();
+      if (!response.ok) throw new Error(typeof data === "string" ? data : data.error || "Request failed");
+      return data;
+    }
+
+    async function loadEvents() {
+      try {
+        setStatus("Loading…");
+        const data = await api("/api/events?include_archived=1");
+        renderEvents(data.events || []);
+        setStatus("Loaded events.");
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    }
+
+    function renderEvents(events) {
+      const container = $("events");
+      if (!events.length) {
+        container.innerHTML = `<div class="bg-bc-navy border border-slate-700 rounded-xl p-5 text-slate-400">No events yet.</div>`;
+        return;
+      }
+      container.innerHTML = events.map((event) => `
+        <article class="bg-bc-navy border border-slate-700 rounded-xl p-5">
+          <div class="flex flex-col sm:flex-row sm:justify-between gap-3">
+            <div>
+              <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">${escapeHtml(event.status)} • ${escapeHtml(event.slug)}</div>
+              <h3 class="text-xl font-black mt-1">${escapeHtml(event.title)}</h3>
+              <p class="text-slate-400 text-sm mt-2">${escapeHtml(event.description || "")}</p>
+              <p class="text-slate-500 text-sm mt-2">${escapeHtml(event.starts_at || "Time TBA")} ${event.venue_name ? `• ${escapeHtml(event.venue_name)}` : ""}</p>
+            </div>
+            <div class="flex flex-wrap gap-2 sm:justify-end">
+              <button data-edit="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Edit</button>
+              <a href="/events?event=${encodeURIComponent(event.slug)}" target="_blank" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Public</a>
+              <button data-export="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Export CSV</button>
+            </div>
+          </div>
+        </article>
+      `).join("");
+
+      container.querySelectorAll("[data-edit]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const event = events.find((candidate) => candidate.slug === button.dataset.edit);
+          fillForm(event);
+        });
+      });
+      container.querySelectorAll("[data-export]").forEach((button) => {
+        button.addEventListener("click", () => downloadCsv(button.dataset.export));
+      });
+    }
+
+    function fillForm(event) {
+      const form = $("event-form");
+      form.title.value = event.title || "";
+      form.slug.value = event.slug || "";
+      form.description.value = event.description || "";
+      form.starts_at.value = toIsoLocalValue(event.starts_at);
+      form.ends_at.value = toIsoLocalValue(event.ends_at);
+      form.venue_name.value = event.venue_name || "";
+      form.venue_address.value = event.venue_address || "";
+      form.capacity.value = event.capacity || "";
+      form.status.value = event.status || "draft";
+      form.scrollIntoView({ behavior: "smooth" });
+    }
+
+    async function downloadCsv(slug) {
+      try {
+        const response = await fetch(`/api/events/${encodeURIComponent(slug)}/signups?format=csv`, { headers: headers() });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || "Export failed");
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${slug}-signups.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    }
+
+    $("event-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        setStatus("Saving…");
+        await api("/api/events", { method: "POST", body: JSON.stringify(formPayload(event.currentTarget)) });
+        event.currentTarget.reset();
+        setStatus("Saved event.");
+        await loadEvents();
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    });
+
+    $("load-events").addEventListener("click", loadEvents);
+    $("prefill-hack-hours").addEventListener("click", () => fillForm({
+      title: "Hack Hours at Panera",
+      slug: "hack-hours-panera",
+      description: "Casual Hack the Valley builder hours: bring a laptop, get help, work on projects, and meet other Central Valley builders.",
+      starts_at: "",
+      ends_at: "",
+      venue_name: "Panera Bread",
+      venue_address: "",
+      capacity: "",
+      status: "open"
+    }));
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+    }
+  </script>
+</body>
+</html>

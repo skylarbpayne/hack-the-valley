@@ -24,6 +24,15 @@ npm run dev
 npm run deploy
 ```
 
+## Event signup platform
+
+The `/events` page is the canonical events surface. It combines the existing event archive with dynamic upcoming events from the event/signup backend.
+
+- Event/signup API lives under `/api/events` and stores records in D1 binding `HTV_DB`.
+- Admin UI lives at `/admin` and event create/export actions require `HTV_ADMIN_TOKEN`. Legacy `/admin-events.html` redirects to `/admin`.
+- Public signups sync opted-in emails to Resend using `RESEND_API_KEY`; per-event signup history lives in `HTV_DB`.
+- Do not create a separate root `/events.html`; preserve the existing `/events` information architecture.
+
 ## Submissions portal
 
 The project submission flow lives on `/submit` with a private admin review page at `/admin-submissions`.
@@ -35,10 +44,11 @@ The project submission flow lives on `/submit` with a private admin review page 
 
 ## Architecture
 
-This is a simple static site with no build step:
-- All static files live in `public/`
-- Single-page HTML site (`public/index.html`) using Tailwind CSS via CDN
-- Images in `public/images/`
+Static site with Cloudflare Worker/Pages Functions API routes:
+- Static files live in `public/`
+- `worker.js` routes deployed `/api/*` requests to files under `functions/api/`
+- Tailwind CSS via CDN
+- Cloudflare Pages/Workers hosting
 
 ## Brand Guidelines
 

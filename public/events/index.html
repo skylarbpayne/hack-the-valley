@@ -40,18 +40,17 @@
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <p class="text-bc-cyan uppercase tracking-[0.35em] text-sm font-bold mb-4">Events</p>
         <h1 class="text-5xl sm:text-6xl font-black mb-6">A growing archive of Valley builders.</h1>
-        <p class="text-xl text-slate-300 max-w-3xl">Upcoming programming will show here as it is announced. For now, the most important thing is the 2026 recap: projects, photos, feedback, and the helper path for what comes next.</p>
+        <p class="text-xl text-slate-300 max-w-3xl">Upcoming programming, workshops, meetups, mentor nights, and community sessions show here as they are announced.</p>
       </div>
     </section>
 
     <section class="pb-20 bg-bc-dark">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="grid lg:grid-cols-[.9fr_1.1fr] gap-8">
-          <div class="bg-bc-navy border border-slate-700 rounded-3xl p-8">
+        <div class="grid lg:grid-cols-[.9fr_1.1fr] gap-8 items-start">
+          <div id="upcoming-events-panel" class="bg-bc-navy border border-slate-700 rounded-3xl p-8">
             <p class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-3">Upcoming</p>
-            <h2 class="text-3xl font-black mb-4">No public dates announced yet.</h2>
-            <p class="text-slate-300 mb-6">We are collecting interest for future workshops, meetups, mentor nights, sponsor sessions, and the next Hack the Valley event.</p>
-            <a href="/#updates" class="inline-flex bg-bc-cyan text-bc-dark px-6 py-3 rounded-lg font-bold hover:bg-cyan-400 transition">Get future event updates</a>
+            <h2 class="text-3xl font-black mb-4">Loading upcoming events…</h2>
+            <p class="text-slate-300 mb-6">Checking the Hack the Valley event list.</p>
           </div>
 
           <a href="/events/hack-the-valley-2026" class="group bg-bc-navy border border-slate-700 rounded-3xl overflow-hidden card-hover">
@@ -67,6 +66,49 @@
             </div>
           </a>
         </div>
+
+        <section id="signup-panel" class="hidden mt-10 bg-slate-950 border border-slate-800 rounded-3xl p-6 sm:p-8">
+          <div class="mb-6">
+            <p class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-2">Event signup</p>
+            <h2 id="event-title" class="text-3xl font-black mb-2"></h2>
+            <p id="event-description" class="text-slate-300"></p>
+            <div class="mt-4 grid sm:grid-cols-2 gap-3 text-sm text-slate-400">
+              <p id="event-when"></p>
+              <p id="event-where"></p>
+            </div>
+          </div>
+
+          <form id="signup-form" class="grid sm:grid-cols-2 gap-4">
+            <label class="block sm:col-span-2">
+              <span class="text-sm font-semibold text-slate-200">Full name *</span>
+              <input name="name" required class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
+            </label>
+            <label class="block sm:col-span-2">
+              <span class="text-sm font-semibold text-slate-200">Email *</span>
+              <input name="email" type="email" required class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
+            </label>
+            <label class="block">
+              <span class="text-sm font-semibold text-slate-200">School / organization</span>
+              <input name="school" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
+            </label>
+            <label class="block">
+              <span class="text-sm font-semibold text-slate-200">Year / role</span>
+              <input name="year" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
+            </label>
+            <label class="block sm:col-span-2">
+              <span class="text-sm font-semibold text-slate-200">Anything we should know?</span>
+              <textarea name="notes" rows="3" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan"></textarea>
+            </label>
+            <label class="sm:col-span-2 flex gap-3 items-start text-sm text-slate-300">
+              <input name="email_list_opt_in" type="checkbox" checked class="mt-1 accent-bc-cyan">
+              <span>Add me to the Hack the Valley email list for event updates.</span>
+            </label>
+            <div class="sm:col-span-2 flex flex-col sm:flex-row gap-3 sm:items-center">
+              <button id="submit-button" type="submit" class="bg-bc-cyan text-bc-dark px-6 py-3 rounded-lg font-bold hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed">Sign up</button>
+              <p id="form-message" class="text-sm text-slate-300"></p>
+            </div>
+          </form>
+        </section>
       </div>
     </section>
   </main>
@@ -81,5 +123,145 @@
       </div>
     </div>
   </footer>
+
+  <script>
+    const state = { events: [], selected: null, completedSignups: new Set() };
+    const params = new URLSearchParams(window.location.search);
+    const requestedSlug = params.get("event") || params.get("slug");
+    const $ = (id) => document.getElementById(id);
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function formatDateRange(event) {
+      if (!event.starts_at) return "Time TBA";
+      const start = new Date(event.starts_at);
+      const end = event.ends_at ? new Date(event.ends_at) : null;
+      const date = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" }).format(start);
+      const startTime = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(start);
+      const endTime = end ? new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(end) : null;
+      return `${date} • ${startTime}${endTime ? ` – ${endTime}` : ""}`;
+    }
+
+    function eventLocation(event) {
+      return [event.venue_name, event.venue_address].filter(Boolean).join(" • ") || "Location TBA";
+    }
+
+    function noUpcomingMarkup() {
+      return `
+        <p class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-3">Upcoming</p>
+        <h2 class="text-3xl font-black mb-4">No public dates announced yet.</h2>
+        <p class="text-slate-300 mb-6">We are collecting interest for future workshops, meetups, mentor nights, sponsor sessions, and the next Hack the Valley event.</p>
+        <a href="/#updates" class="inline-flex bg-bc-cyan text-bc-dark px-6 py-3 rounded-lg font-bold hover:bg-cyan-400 transition">Get future event updates</a>
+      `;
+    }
+
+    function renderUpcomingEvents() {
+      const panel = $("upcoming-events-panel");
+      const openEvents = state.events.filter((event) => event.status === "open");
+      if (!openEvents.length) {
+        panel.innerHTML = noUpcomingMarkup();
+        return;
+      }
+      panel.innerHTML = `
+        <p class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-3">Upcoming</p>
+        <h2 class="text-3xl font-black mb-4">Upcoming events</h2>
+        <div class="space-y-4">
+          ${openEvents.map((event) => `
+            <article class="bg-bc-dark border border-slate-700 rounded-2xl p-5">
+              <h3 class="text-2xl font-black mb-2">${escapeHtml(event.title)}</h3>
+              <p class="text-slate-300 mb-4">${escapeHtml(event.description || "Community builder session.")}</p>
+              <div class="text-sm text-slate-400 space-y-1 mb-4">
+                <p>${escapeHtml(formatDateRange(event))}</p>
+                <p>${escapeHtml(eventLocation(event))}</p>
+              </div>
+              <button type="button" data-event-slug="${escapeHtml(event.slug)}" class="signup-trigger bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400 transition">Sign up</button>
+            </article>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function selectEvent(slug) {
+      const selected = state.events.find((event) => event.slug === slug && event.status === "open");
+      if (!selected) return;
+      state.selected = selected;
+      $("signup-panel").classList.remove("hidden");
+      $("event-title").textContent = selected.title;
+      $("event-description").textContent = selected.description || "Community builder session.";
+      $("event-when").textContent = formatDateRange(selected);
+      $("event-where").textContent = eventLocation(selected);
+      $("submit-button").textContent = state.completedSignups.has(selected.slug) ? "You're signed up" : "Sign up";
+      $("submit-button").disabled = state.completedSignups.has(selected.slug);
+      $("form-message").textContent = state.completedSignups.has(selected.slug) ? "You're already on the list for this event." : "";
+      history.replaceState(null, "", `/events?event=${encodeURIComponent(slug)}`);
+      $("signup-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    async function loadEvents() {
+      try {
+        const response = await fetch("/api/events", { headers: { Accept: "application/json" } });
+        if (!response.ok) throw new Error("Could not load events.");
+        const data = await response.json();
+        state.events = data.events || [];
+        renderUpcomingEvents();
+        if (requestedSlug) selectEvent(requestedSlug);
+      } catch (error) {
+        $("upcoming-events-panel").innerHTML = noUpcomingMarkup();
+        console.warn(error);
+      }
+    }
+
+    document.addEventListener("click", (event) => {
+      const trigger = event.target.closest(".signup-trigger");
+      if (trigger) selectEvent(trigger.dataset.eventSlug);
+    });
+
+    $("signup-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!state.selected) return;
+      const button = $("submit-button");
+      const message = $("form-message");
+      if (state.completedSignups.has(state.selected.slug)) {
+        button.textContent = "You're signed up";
+        button.disabled = true;
+        message.textContent = "You're already on the list for this event.";
+        return;
+      }
+      button.disabled = true;
+      message.textContent = "Submitting…";
+
+      const form = new FormData(event.currentTarget);
+      const payload = Object.fromEntries(form.entries());
+      payload.email_list_opt_in = form.get("email_list_opt_in") === "on";
+      payload.source = "events-page";
+
+      try {
+        const response = await fetch(`/api/events/${encodeURIComponent(state.selected.slug)}/signups`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Signup failed");
+        event.currentTarget.reset();
+        state.completedSignups.add(state.selected.slug);
+        button.textContent = "You're signed up";
+        button.disabled = true;
+        message.textContent = "You're on the list. We'll email updates before the event.";
+      } catch (error) {
+        button.disabled = false;
+        message.textContent = error.message;
+      }
+    });
+
+    loadEvents();
+  </script>
 </body>
 </html>

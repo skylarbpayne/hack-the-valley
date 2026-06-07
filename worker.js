@@ -1,3 +1,6 @@
+import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
+import * as eventSlug from './functions/api/events/[slug].js';
+import * as eventsIndex from './functions/api/events/index.js';
 import * as media from './functions/api/media.js';
 import * as register from './functions/api/register.js';
 import * as submissions from './functions/api/submissions.js';
@@ -34,14 +37,14 @@ function methodNotAllowed(routeModule) {
   });
 }
 
-async function routeApiRequest(request, env, ctx, routeModule) {
+async function routeApiRequest(request, env, ctx, routeModule, params = {}) {
   const handler = routeModule[methodHandlerName(request.method)];
   if (!handler) return methodNotAllowed(routeModule);
 
   return handler({
     request,
     env,
-    params: {},
+    params,
     waitUntil: ctx?.waitUntil?.bind(ctx),
     passThroughOnException: ctx?.passThroughOnException?.bind(ctx),
     next: () => env?.ASSETS?.fetch(request),
@@ -49,13 +52,32 @@ async function routeApiRequest(request, env, ctx, routeModule) {
   });
 }
 
+function matchApiRoute(pathname) {
+  if (pathname === '/api/events') {
+    return { routeModule: eventsIndex, params: {} };
+  }
+
+  const signupMatch = pathname.match(/^\/api\/events\/([^/]+)\/signups\/?$/);
+  if (signupMatch) {
+    return { routeModule: eventSignups, params: { slug: decodeURIComponent(signupMatch[1]) } };
+  }
+
+  const eventMatch = pathname.match(/^\/api\/events\/([^/]+)\/?$/);
+  if (eventMatch) {
+    return { routeModule: eventSlug, params: { slug: decodeURIComponent(eventMatch[1]) } };
+  }
+
+  const routeModule = API_ROUTES[pathname];
+  return routeModule ? { routeModule, params: {} } : null;
+}
+
 export default {
   async fetch(request, env = {}, ctx = {}) {
     const url = new URL(request.url);
-    const routeModule = API_ROUTES[url.pathname];
+    const route = matchApiRoute(url.pathname);
 
-    if (routeModule) {
-      return routeApiRequest(request, env, ctx, routeModule);
+    if (route) {
+      return routeApiRequest(request, env, ctx, route.routeModule, route.params);
     }
 
     if (env.ASSETS?.fetch) {

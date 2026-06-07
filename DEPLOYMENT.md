@@ -39,10 +39,16 @@ npx wrangler pages deploy ./public --project-name hack-the-valley
 
 ## Environment Variables (Production)
 
-For production deployment, set these in Cloudflare Pages dashboard:
+For production deployment, set these in Cloudflare Pages/Workers:
 
-- `REGISTRATION_TO_EMAIL`: Email to receive registrations (default: registrations@hackthevalley.com)
+Legacy registration notification fallback:
+- `REGISTRATION_TO_EMAIL`: Email to receive legacy registrations (default: registrations@hackthevalley.com)
 - `REGISTRATION_FROM_EMAIL`: Sender email address (default: noreply@hackthevalley.com)
+
+Event signup platform:
+- D1 binding `HTV_DB`: event and signup storage
+- `HTV_ADMIN_TOKEN`: organizer/admin bearer token
+- `RESEND_API_KEY`: Resend contact sync
 
 **Note:** MailChannels requires domain verification in production. See: https://mailchannels.zendesk.com/hc/en-us/articles/4565898358413-Sending-Email-from-Cloudflare-Workers-using-MailChannels-Send-API
 
@@ -67,6 +73,23 @@ For production deployment, set these in Cloudflare Pages dashboard:
   "message": "Registration received"
 }
 ```
+
+## Event Signup Platform
+
+Public/admin surfaces:
+- Existing events page with dynamic upcoming event signups: `/events`
+- Organizer/admin page: `/admin`
+- Admin event create/update: `POST /api/events`, `PATCH /api/events/:slug`
+- Public signup: `POST /api/events/:slug/signups`
+- Admin signup list/export: `GET /api/events/:slug/signups`, `GET /api/events/:slug/signups?format=csv`
+
+Setup after approval:
+
+```bash
+./scripts/setup-event-platform.sh
+```
+
+Then set `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real Hack Hours event from `/admin`, submit a test signup from `/events?event=<slug>`, export CSV, and confirm the signup row exists in HTV_DB and the opted-in contact was created/updated in Resend.
 
 ## Current Status
 

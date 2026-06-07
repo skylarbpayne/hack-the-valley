@@ -22,6 +22,7 @@ Professional landing page for Hack the Valley 2026, a 1-day student innovation e
 ```bash
 npm install
 npm test
+npm run check
 ```
 
 **Local Development:**
@@ -55,16 +56,35 @@ cp .cloudflare.env.example .cloudflare.env
 ./scripts/setup-submissions-cloudflare.sh
 ```
 
+## Event signup platform
+
+The current `/events` page includes the existing event archive plus dynamic upcoming events from the event/signup backend:
+
+- Public upcoming events + signup form: `/events`
+- Admin page: `/admin`
+- Event APIs: `/api/events`, `/api/events/:slug`, `/api/events/:slug/signups`
+- Signup storage: D1 binding `HTV_DB`
+- Email list sync: Resend via `RESEND_API_KEY`; per-event signup history stays in `HTV_DB`
+
+Production setup after approval:
+
+```bash
+./scripts/setup-event-platform.sh
+```
+
+Then set `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real event, and smoke signup + CSV export + Resend contact creation.
+
 ## Content Sources
 
 Event details and sponsorship information are tracked in Skyvault under `1_Projects/Hack the Valley.md` and the current run-of-show Google Doc.
 
 ## Architecture
 
-Static site with no build step:
-- Pure HTML/CSS/JavaScript
+Static site with Cloudflare Worker/Pages API routes:
+- Static assets in `public/`
+- `worker.js` routes deployed `/api/*` requests to `functions/api/`
 - Tailwind CSS via CDN
-- Cloudflare Pages hosting
+- Cloudflare Pages/Workers hosting
 
 ## Brand
 

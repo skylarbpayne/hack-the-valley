@@ -1,6 +1,6 @@
 # Hack the Valley Submissions Portal
 
-This branch adds a scrappy-but-polished submission portal to the existing Cloudflare Pages site.
+This branch adds a scrappy-but-polished submission portal to the existing Cloudflare Worker + Assets site.
 
 ## URLs
 
@@ -45,7 +45,6 @@ Preferred path for remote/agent work: use a Cloudflare API token in a local igno
 
 1. In Cloudflare Dashboard, create a **custom API token** scoped to the account that owns `hack-the-valley`.
 2. Give it account permissions for:
-   - `Cloudflare Pages:Edit` / `Pages Write`
    - `D1:Edit` / `D1 Write`
    - `Workers R2 Storage:Edit` / `R2 Storage Write`
    - `Workers Scripts:Edit` / `Workers Scripts Write`
@@ -76,16 +75,15 @@ npm install
 The setup script will:
 
 1. verify Cloudflare auth
-2. create/ensure the Pages project `hack-the-valley`
-3. create/ensure the R2 bucket `hack-the-valley-submission-media`
-4. create or reuse the D1 database `hack-the-valley-submissions`
-5. write the D1/R2 bindings into `wrangler.toml`
-6. apply `schema.sql`
-7. generate and set `SUBMISSIONS_ADMIN_TOKEN`
-8. deploy the Pages site to `main` by default
-9. print the participant/admin URLs and token
+2. create/ensure the R2 bucket `hack-the-valley-submission-media`
+3. create or reuse the D1 database `hack-the-valley-submissions`
+4. write the D1/R2 bindings into `wrangler.toml`
+5. apply `schema.sql`
+6. generate and set Worker secret `SUBMISSIONS_ADMIN_TOKEN`
+7. deploy the Worker
+8. print the participant/admin URLs and token
 
-If you want a preview-only deploy, run `DEPLOY_BRANCH=<branch-name> ./scripts/setup-submissions-cloudflare.sh`.
+If you want to avoid deploying, stop after the manual resource/schema steps and deploy separately with your normal Worker Git flow.
 
 If the D1 database already exists and Wrangler does not print its ID, rerun with:
 
@@ -131,13 +129,13 @@ Set admin token:
 
 ```bash
 openssl rand -hex 24
-npx wrangler pages secret put SUBMISSIONS_ADMIN_TOKEN --project-name hack-the-valley
+npx wrangler secret put SUBMISSIONS_ADMIN_TOKEN --name hack-the-valley
 ```
 
 Deploy:
 
 ```bash
-npx wrangler pages deploy --project-name hack-the-valley --branch main
+npx wrangler deploy --name hack-the-valley --keep-vars
 ```
 
 ## Admin usage

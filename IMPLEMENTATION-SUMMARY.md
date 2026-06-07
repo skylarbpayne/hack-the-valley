@@ -139,7 +139,7 @@ git commit -m "Add coding experience level field to signup form
 git push origin main
 ```
 
-3. **Cloudflare Pages auto-deploys:**
+3. **Cloudflare Workers auto-deploys:**
    - Detects push to main branch
    - Builds and deploys automatically
    - Functions deploy as edge workers
@@ -276,14 +276,14 @@ The signup form now successfully captures participant coding experience levels, 
 
 **Deployment ready:**
 - All changes committed (pending `git push`)
-- Cloudflare Pages will auto-deploy
+- Cloudflare Workers will auto-deploy
 - No additional configuration required
 - Environment variables already set for production email
 
 **Access:**
 - **Local:** http://localhost:8788/#signup
 - **Remote:** https://skylars-mac-mini.taile4d789.ts.net:8789/#signup
-- **Production:** (after deployment to Cloudflare Pages)
+- **Production:** (after deployment to Cloudflare Workers)
 
 ---
 

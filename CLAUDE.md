@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Hack the Valley 2026 is a static landing page for a 50+ student one-day hackathon event in Bakersfield, California on May 30, 2026. The site is deployed to Cloudflare Pages using Wrangler.
+Hack the Valley 2026 is a static landing page for a 50+ student one-day hackathon event in Bakersfield, California on May 30, 2026. The site is deployed as a Cloudflare Worker + Assets app using Wrangler.
 
 ## Development
 
@@ -28,9 +28,9 @@ npm run deploy
 
 The `/events` page is the canonical events surface. It combines the existing event archive with dynamic upcoming events from the event/signup backend.
 
-- Event/signup API lives under `/api/events` and stores records in D1 binding `HTV_DB`.
+- Event/signup API lives under `/api/events` and stores records in shared D1 binding `SUBMISSIONS_DB`.
 - Admin UI lives at `/admin` and event create/export actions require `HTV_ADMIN_TOKEN`. Legacy `/admin-events.html` redirects to `/admin`.
-- Public signups sync opted-in emails to Resend using `RESEND_API_KEY`; per-event signup history lives in `HTV_DB`.
+- Public signups sync opted-in emails to Resend using `RESEND_API_KEY`; per-event signup history lives in `SUBMISSIONS_DB`.
 - Do not create a separate root `/events.html`; preserve the existing `/events` information architecture.
 
 ## Submissions portal
@@ -44,11 +44,11 @@ The project submission flow lives on `/submit` with a private admin review page 
 
 ## Architecture
 
-Static site with Cloudflare Worker/Pages Functions API routes:
+Static site with Cloudflare Worker + Assets API routes:
 - Static files live in `public/`
 - `worker.js` routes deployed `/api/*` requests to files under `functions/api/`
 - Tailwind CSS via CDN
-- Cloudflare Pages/Workers hosting
+- Cloudflare Worker + Assets hosting
 
 ## Brand Guidelines
 

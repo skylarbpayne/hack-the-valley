@@ -5,8 +5,8 @@
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "check": "node --check worker.js && node --check functions/_lib/event-platform.js && node --check functions/api/register.js && node --check functions/api/events/index.js && node --check functions/api/events/[slug].js && node --check functions/api/events/[slug]/signups/index.js && node --check functions/api/subscribe.js",
-    "dev": "wrangler pages dev ./public --compatibility-date=2026-02-17",
-    "deploy": "./scripts/setup-submissions-cloudflare.sh"
+    "dev": "wrangler dev --port 8788",
+    "deploy": "wrangler deploy"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

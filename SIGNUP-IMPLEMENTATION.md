@@ -148,7 +148,7 @@ Form reset + success message
 ## Email Delivery
 
 ### Production
-- Uses **MailChannels API** (free tier for Cloudflare Pages)
+- Uses **MailChannels API** from the Cloudflare Worker runtime
 - Sends HTML-formatted email to configured recipient
 - Reply-to address set to participant's email
 - Subject: "New registration: [Participant Name]"
@@ -210,7 +210,7 @@ REGISTRATION_FROM_EMAIL=noreply@hackthevalley.com
 ### Running the Dev Server
 ```bash
 cd ~/palmer/workspace/hack-the-valley
-npx wrangler pages dev public --port 8788
+npx wrangler dev --port 8788
 ```
 
 ### Exposing via Tailscale
@@ -230,7 +230,7 @@ tailscale serve --https=8789 off
 
 ## Production Deployment
 
-The site is deployed via **Cloudflare Pages** with automatic GitHub integration.
+The site is deployed via **Cloudflare Workers + Assets** with automatic GitHub integration.
 
 ### Deployment Process
 ```bash
@@ -239,7 +239,7 @@ git add .
 git commit -m "Add experience level field to signup form"
 git push origin main
 
-# Cloudflare Pages automatically:
+# Cloudflare Workers automatically:
 # - Detects the push
 # - Builds the site
 # - Deploys to production
@@ -247,7 +247,7 @@ git push origin main
 ```
 
 ### Production URL
-Check `wrangler.toml` or Cloudflare Pages dashboard for the production URL.
+Check `wrangler.toml` or the Cloudflare Workers dashboard for the production URL.
 
 ## Data Storage
 
@@ -322,7 +322,7 @@ const escapeHtml = (value) =>
 ```
 
 ### Rate Limiting
-Cloudflare Pages provides built-in DDoS protection and rate limiting.
+Cloudflare Workers provides built-in DDoS protection and rate limiting.
 
 ### Email Validation
 Both client and server validate email format to prevent malformed addresses.
@@ -349,7 +349,7 @@ All production traffic served over HTTPS via Cloudflare's edge network.
 - Check that `experience` field has `required` attribute
 
 ### Backend error
-- Check wrangler logs: `npx wrangler pages deployment tail`
+- Check wrangler logs: `npx wrangler tail hack-the-valley`
 - Look for console.error output
 - Verify all required fields are being sent
 

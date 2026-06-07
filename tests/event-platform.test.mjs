@@ -55,7 +55,7 @@ test("signup input requires name and valid email", () => {
   assert.match(errors.join(";"), /valid email is required/);
 });
 
-test("Resend sync creates/updates a contact; per-event signup state stays in HTV_DB", async () => {
+test("Resend sync creates/updates a contact; per-event signup state stays in the app D1 database", async () => {
   const calls = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
@@ -143,7 +143,7 @@ test("worker routes dynamic event APIs on the deployed Worker surface", async ()
 
   const response = await worker.fetch(
     new Request("https://hackthevalley.org/api/events", { method: "GET" }),
-    { HTV_DB: fakeDb, ASSETS: { fetch: () => new Response("static miss", { status: 404 }) } },
+    { SUBMISSIONS_DB: fakeDb, ASSETS: { fetch: () => new Response("static miss", { status: 404 }) } },
     {}
   );
 

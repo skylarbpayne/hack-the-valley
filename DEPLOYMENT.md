@@ -20,7 +20,7 @@
 
 ## Deployment to Production
 
-### Option 1: Cloudflare Pages (via Git)
+### Option 1: Cloudflare Workers (via Git)
 
 1. **Push to GitHub:**
    ```bash
@@ -28,25 +28,25 @@
    git push origin main
    ```
 
-2. **Cloudflare will auto-deploy** from the connected GitHub repo
+2. **Cloudflare will auto-deploy the Worker** from the connected GitHub repo
 
 ### Option 2: Direct Deploy (wrangler CLI)
 
 ```bash
 cd /Users/skylarpayne/chiefs/palmer-workspace/tmp/hack-the-valley
-npx wrangler pages deploy ./public --project-name hack-the-valley
+npx wrangler deploy --name hack-the-valley --keep-vars
 ```
 
 ## Environment Variables (Production)
 
-For production deployment, set these in Cloudflare Pages/Workers:
+For production deployment, set these on the Cloudflare Worker:
 
 Legacy registration notification fallback:
 - `REGISTRATION_TO_EMAIL`: Email to receive legacy registrations (default: registrations@hackthevalley.com)
 - `REGISTRATION_FROM_EMAIL`: Sender email address (default: noreply@hackthevalley.com)
 
 Event signup platform:
-- D1 binding `HTV_DB`: event and signup storage
+- D1 binding `SUBMISSIONS_DB`: shared app database for submissions, events, and signups
 - `HTV_ADMIN_TOKEN`: organizer/admin bearer token
 - `RESEND_API_KEY`: Resend contact sync
 
@@ -89,7 +89,7 @@ Setup after approval:
 ./scripts/setup-event-platform.sh
 ```
 
-Then set `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real Hack Hours event from `/admin`, submit a test signup from `/events?event=<slug>`, export CSV, and confirm the signup row exists in HTV_DB and the opted-in contact was created/updated in Resend.
+Then set Worker secrets `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real Hack Hours event from `/admin`, submit a test signup from `/events?event=<slug>`, export CSV, and confirm the signup row exists in SUBMISSIONS_DB and the opted-in contact was created/updated in Resend.
 
 ## Current Status
 
@@ -99,7 +99,7 @@ Then set `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real Hack Ho
 
 **Next Steps:**
 1. Push to GitHub: `git push origin main` (if using Pages Git integration)
-2. OR Deploy directly: `npx wrangler pages deploy ./public`
+2. OR Deploy directly: `npx wrangler deploy --keep-vars`
 3. Verify production deployment
 4. Test form submission in production (with proper email credentials)
 
@@ -108,7 +108,7 @@ Then set `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real Hack Ho
 - **Static files:** `public/` directory
 - **Functions:** `functions/api/` (Cloudflare Workers)
 - **No build step:** Pure HTML/CSS/JS with Tailwind CDN
-- **Hosting:** Cloudflare Pages
+- **Hosting:** Cloudflare Worker + Assets
 - **Email:** MailChannels (free tier for Cloudflare Workers)
 
 ## Support

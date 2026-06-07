@@ -46,9 +46,9 @@ export function requireAdmin(request, env) {
 }
 
 export function getDb(env) {
-  const db = env.HTV_DB || env.DB;
+  const db = env.SUBMISSIONS_DB || env.DB;
   if (!db) {
-    throw Object.assign(new Error("HTV_DB D1 binding is not configured"), { status: 500 });
+    throw Object.assign(new Error("SUBMISSIONS_DB D1 binding is not configured"), { status: 500 });
   }
   return db;
 }
@@ -314,7 +314,7 @@ export async function addSignupToEmailList(env, signup, event) {
     }
   }
 
-  return { status: "synced", detail: `Resend contact ${contactStatus}; event signup stored in HTV_DB` };
+  return { status: "synced", detail: `Resend contact ${contactStatus}; event signup stored in SUBMISSIONS_DB` };
 }
 
 async function resendFetch(env, path, init) {

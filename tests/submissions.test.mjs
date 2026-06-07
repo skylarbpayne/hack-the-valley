@@ -101,7 +101,7 @@ test('public surfaces use extensionless canonical submit path', () => {
   assert.doesNotMatch(adminHtml, /href="\/submit\.html"/);
 });
 
-test('custom-domain scripts send APIs to the Pages functions origin', () => {
+test('custom-domain scripts send APIs to the Worker API origin', () => {
   const submitJs = readFileSync(new URL('../public/submissions.js', import.meta.url), 'utf8');
   const adminJs = readFileSync(new URL('../public/admin-submissions.js', import.meta.url), 'utf8');
   for (const js of [submitJs, adminJs]) {
@@ -124,7 +124,7 @@ test('admin page renders uploaded images and videos inline with download links',
   assert.match(adminJs, /Open\/download/);
 });
 
-test('CORS headers allow the custom domain to call Pages functions', () => {
+test('CORS headers allow the custom domain to call Worker APIs', () => {
   const headers = corsHeaders();
   assert.equal(headers['access-control-allow-origin'], '*');
   assert.match(headers['access-control-allow-methods'], /POST/);

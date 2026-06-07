@@ -43,21 +43,6 @@ elif [[ -z "${CI:-}" ]]; then
 fi
 npx wrangler whoami >/dev/null
 
-echo "==> Ensuring Pages project exists: ${PROJECT_NAME}"
-PROJECT_LIST="$(npx wrangler pages project list 2>&1)"
-if ! PROJECT_LIST_TEXT="${PROJECT_LIST}" python3 - "${PROJECT_NAME}" <<'PY'
-import os
-import re
-import sys
-project = sys.argv[1]
-text = os.environ.get('PROJECT_LIST_TEXT', '')
-pattern = r'(^|\s)' + re.escape(project) + r'(\s|$)'
-raise SystemExit(0 if re.search(pattern, text) else 1)
-PY
-then
-  npx wrangler pages project create "${PROJECT_NAME}" --production-branch=main
-fi
-
 echo "==> Ensuring R2 bucket exists: ${R2_BUCKET}"
 R2_LIST="$(npx wrangler r2 bucket list 2>&1)"
 if ! R2_LIST_TEXT="${R2_LIST}" python3 - "${R2_BUCKET}" <<'PY'
@@ -160,33 +145,11 @@ PY
 echo "==> Applying schema to remote D1"
 npx wrangler d1 execute "${D1_NAME}" --remote --file=schema.sql
 
-echo "==> Preparing Pages-compatible deploy config"
-PAGES_DEPLOY_PARENT=".wrangler/pages-deploy"
-mkdir -p "${PAGES_DEPLOY_PARENT}"
-PAGES_DEPLOY_DIR="$(mktemp -d "${PAGES_DEPLOY_PARENT}/run.XXXXXX")"
-cleanup_pages_deploy_dir() {
-  rm -rf "${PAGES_DEPLOY_DIR}"
-}
-trap cleanup_pages_deploy_dir EXIT
-cp -R public "${PAGES_DEPLOY_DIR}/public"
-cp -R functions "${PAGES_DEPLOY_DIR}/functions"
-python3 - "${PAGES_DEPLOY_DIR}/wrangler.toml" <<'PY'
-from pathlib import Path
-import re
-import sys
-source = Path('wrangler.toml').read_text()
-# Cloudflare Pages wrangler config requires pages_build_output_dir but rejects
-# the Workers-only [assets] table. Keep root wrangler.toml compatible with the
-# existing Workers build check, and deploy Pages from this generated config.
-source = re.sub(r'\n\[assets\]\n(?:[^\n\[]+\n?)*', '\n', source)
-Path(sys.argv[1]).write_text(source)
-PY
+echo "==> Setting Worker admin-token secret"
+printf '%s' "${ADMIN_TOKEN}" | npx wrangler secret put SUBMISSIONS_ADMIN_TOKEN --name "${PROJECT_NAME}"
 
-echo "==> Setting Pages admin-token secret"
-printf '%s' "${ADMIN_TOKEN}" | npx wrangler pages secret put SUBMISSIONS_ADMIN_TOKEN --cwd "${PAGES_DEPLOY_DIR}" --project-name "${PROJECT_NAME}"
-
-echo "==> Deploying Pages project to ${DEPLOY_BRANCH}"
-npx wrangler pages deploy --cwd "${PAGES_DEPLOY_DIR}" --project-name "${PROJECT_NAME}" --branch "${DEPLOY_BRANCH}"
+echo "==> Deploying Worker ${PROJECT_NAME}"
+npx wrangler deploy --name "${PROJECT_NAME}" --keep-vars
 
 echo
 echo "Done. Save this admin token somewhere safe:"
@@ -194,4 +157,4 @@ echo "${ADMIN_TOKEN}"
 echo
 echo "Participant page: https://hackthevalley.org/submit"
 echo "Admin page:       https://hackthevalley.org/admin-submissions"
-echo "Pages preview:    https://${PROJECT_NAME}.pages.dev/submit"
+echo "Worker route:      https://hackthevalley.org/submit"

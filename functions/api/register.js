@@ -16,7 +16,7 @@ export async function onRequestPost(context) {
 
     // New path: event-aware signup processing + Resend list sync.
     // Legacy path remains below so an old /api/register caller does not break before D1 is configured.
-    if (eventSlug && (context.env.HTV_DB || context.env.DB)) {
+    if (eventSlug && (context.env.SUBMISSIONS_DB || context.env.DB)) {
       const db = getDb(context.env);
       const event = await getEvent(db, eventSlug);
       if (!event || event.status === "archived") {

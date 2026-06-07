@@ -1,5 +1,5 @@
--- Hack the Valley event + signup platform
--- Apply with: npx wrangler d1 execute hack-the-valley-events --file migrations/0001_event_signups.sql --remote
+-- Hack the Valley event + signup platform tables for the shared app D1 database
+-- Apply with: npx wrangler d1 execute hack-the-valley-submissions --file migrations/0001_event_signups.sql --remote
 
 CREATE TABLE IF NOT EXISTS events (
   slug TEXT PRIMARY KEY,

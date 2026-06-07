@@ -62,7 +62,7 @@
 
 ### Local Development Server
 ```bash
-✅ Server: http://localhost:8788 (wrangler pages dev)
+✅ Server: http://localhost:8788 (wrangler dev)
 ✅ Tailscale: https://skylars-mac-mini.taile4d789.ts.net:8790/
 ✅ Form test: POST /api/register - 200 OK response
 ✅ HTML verification: No sponsor references remaining
@@ -107,17 +107,17 @@
 
 ## Deployment Instructions
 
-### To Production (Cloudflare Pages)
+### To Production (Cloudflare Workers)
 
 **Option A: Auto-deploy via Git**
 ```bash
 git push origin main
 ```
-Cloudflare Pages will automatically deploy from GitHub.
+Cloudflare Workers will automatically deploy from GitHub.
 
 **Option B: Direct deploy via CLI**
 ```bash
-npx wrangler pages deploy ./public --project-name hack-the-valley
+npx wrangler deploy --name hack-the-valley --keep-vars
 ```
 
 ### Production Checklist

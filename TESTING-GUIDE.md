@@ -7,7 +7,7 @@ Quick reference for testing the Hack the Valley signup form.
 ### 1. Start Dev Server
 ```bash
 cd ~/palmer/workspace/hack-the-valley
-npx wrangler pages dev public --port 8788
+npx wrangler dev --port 8788
 ```
 
 ### 2. Access Locally
@@ -182,7 +182,7 @@ open -a Firefox http://localhost:8788/#signup
 
 ## Production Testing
 
-Once deployed to Cloudflare Pages:
+Once deployed to Cloudflare Workers:
 
 1. Go to production URL
 2. Test form submission

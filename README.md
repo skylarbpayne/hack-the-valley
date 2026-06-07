@@ -39,7 +39,7 @@ npm run deploy
 
 ## Project submissions portal
 
-This repo includes a Cloudflare Pages/D1/R2 submission portal:
+This repo includes a Cloudflare Worker + Assets/D1/R2 submission portal:
 
 - Participant page: `/submit`
 - Admin page: `/admin-submissions`
@@ -63,8 +63,8 @@ The current `/events` page includes the existing event archive plus dynamic upco
 - Public upcoming events + signup form: `/events`
 - Admin page: `/admin`
 - Event APIs: `/api/events`, `/api/events/:slug`, `/api/events/:slug/signups`
-- Signup storage: D1 binding `HTV_DB`
-- Email list sync: Resend via `RESEND_API_KEY`; per-event signup history stays in `HTV_DB`
+- Signup storage: shared D1 binding `SUBMISSIONS_DB`
+- Email list sync: Resend via `RESEND_API_KEY`; per-event signup history stays in `SUBMISSIONS_DB`
 
 Production setup after approval:
 
@@ -72,7 +72,7 @@ Production setup after approval:
 ./scripts/setup-event-platform.sh
 ```
 
-Then set `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real event, and smoke signup + CSV export + Resend contact creation.
+Then set Worker secrets `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real event, and smoke signup + CSV export + Resend contact creation.
 
 ## Content Sources
 
@@ -80,11 +80,11 @@ Event details and sponsorship information are tracked in Skyvault under `1_Proje
 
 ## Architecture
 
-Static site with Cloudflare Worker/Pages API routes:
+Static site with Cloudflare Worker + Assets API routes:
 - Static assets in `public/`
 - `worker.js` routes deployed `/api/*` requests to `functions/api/`
 - Tailwind CSS via CDN
-- Cloudflare Pages/Workers hosting
+- Cloudflare Worker + Assets hosting
 
 ## Brand
 

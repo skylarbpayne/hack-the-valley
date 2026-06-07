@@ -36,7 +36,7 @@
   </nav>
 
   <main>
-    <section class="py-24 bg-bc-dark">
+    <section id="events-hero" class="py-24 bg-bc-dark">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <p class="text-bc-cyan uppercase tracking-[0.35em] text-sm font-bold mb-4">Events</p>
         <h1 class="text-5xl sm:text-6xl font-black mb-6">A growing archive of Valley builders.</h1>
@@ -46,7 +46,7 @@
 
     <section class="pb-20 bg-bc-dark">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="grid lg:grid-cols-[.9fr_1.1fr] gap-8 items-start">
+        <div id="events-overview-grid" class="grid lg:grid-cols-[.9fr_1.1fr] gap-8 items-start">
           <div id="upcoming-events-panel" class="bg-bc-navy border border-slate-700 rounded-3xl p-8">
             <p class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-3">Upcoming</p>
             <h2 class="text-3xl font-black mb-4">Loading upcoming events…</h2>
@@ -69,7 +69,7 @@
 
         <section id="signup-panel" class="hidden mt-10 bg-slate-950 border border-slate-800 rounded-3xl p-6 sm:p-8">
           <div class="mb-6">
-            <p class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-2">Event signup</p>
+            <p id="event-kicker" class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-2">Event signup</p>
             <h2 id="event-title" class="text-3xl font-black mb-2"></h2>
             <img id="event-image" alt="" class="hidden w-full max-h-96 object-cover rounded-2xl border border-slate-800 mb-4">
             <p id="event-description" class="text-slate-300"></p>
@@ -131,7 +131,16 @@
     const params = new URLSearchParams(window.location.search);
     const pathEventMatch = window.location.pathname.match(/^\/events\/([^/]+)\/?$/);
     const requestedSlug = pathEventMatch ? decodeURIComponent(pathEventMatch[1]) : (params.get("event") || params.get("slug"));
+    const isEventDetailPath = Boolean(pathEventMatch);
     const $ = (id) => document.getElementById(id);
+
+    if (isEventDetailPath) {
+      $("events-hero").classList.add("hidden");
+      $("events-overview-grid").classList.add("hidden");
+      $("signup-panel").classList.remove("hidden");
+      $("event-kicker").textContent = "Event page";
+      $("event-title").textContent = "Loading event…";
+    }
 
     function escapeHtml(value) {
       return String(value ?? "")
@@ -191,7 +200,7 @@
         <h2 class="text-3xl font-black mb-4">Upcoming events</h2>
         <div class="space-y-4">
           ${openEvents.map((event) => `
-            <article class="bg-bc-dark border border-slate-700 rounded-2xl overflow-hidden">
+            <article class="event-card bg-bc-dark border border-slate-700 rounded-2xl overflow-hidden cursor-pointer card-hover" data-event-url="/events/${encodeURIComponent(event.slug)}" tabindex="0" role="link" aria-label="Open ${escapeHtml(event.title)} event page">
               ${event.image_url ? `<img src="${escapeHtml(event.image_url)}" alt="${escapeHtml(event.title)}" class="w-full h-48 object-cover">` : ""}
               <div class="p-5">
                 <h3 class="text-2xl font-black mb-2">${escapeHtml(event.title)}</h3>
@@ -200,7 +209,7 @@
                   <p>${escapeHtml(formatDateRange(event))}</p>
                   <p>${escapeHtml(eventLocation(event))}</p>
                 </div>
-                <a href="/events/${encodeURIComponent(event.slug)}" class="inline-flex bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400 transition">Open event page</a>
+                <a href="/events/${encodeURIComponent(event.slug)}#signup" class="signup-cta inline-flex bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400 transition">Sign up</a>
               </div>
             </article>
           `).join("")}
@@ -208,11 +217,20 @@
       `;
     }
 
-    function selectEvent(slug) {
+    function selectEvent(slug, { scroll = true } = {}) {
       const selected = state.events.find((event) => event.slug === slug && event.status !== "archived");
-      if (!selected) return;
+      if (!selected) {
+        if (isEventDetailPath) {
+          $("event-kicker").textContent = "Event not found";
+          $("event-title").textContent = "This event is not available.";
+          $("event-description").textContent = "It may be archived or the link may be wrong.";
+          $("signup-form").classList.add("hidden");
+        }
+        return;
+      }
       state.selected = selected;
       $("signup-panel").classList.remove("hidden");
+      $("event-kicker").textContent = isEventDetailPath ? "Event page" : "Event signup";
       $("event-title").textContent = selected.title;
       const image = $("event-image");
       if (selected.image_url) {
@@ -233,8 +251,11 @@
       $("submit-button").textContent = state.completedSignups.has(selected.slug) ? "You're signed up" : "Sign up";
       $("submit-button").disabled = state.completedSignups.has(selected.slug);
       $("form-message").textContent = state.completedSignups.has(selected.slug) ? "You're already on the list for this event." : "";
-      history.replaceState(null, "", `/events/${encodeURIComponent(slug)}`);
-      $("signup-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+      history.replaceState(null, "", `/events/${encodeURIComponent(slug)}${window.location.hash === "#signup" ? "#signup" : ""}`);
+      if (scroll) {
+        const target = window.location.hash === "#signup" ? $("signup-form") : $("signup-panel");
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     }
 
     async function loadEvents() {
@@ -244,7 +265,7 @@
         const data = await response.json();
         state.events = data.events || [];
         renderUpcomingEvents();
-        if (requestedSlug) selectEvent(requestedSlug);
+        if (requestedSlug) selectEvent(requestedSlug, { scroll: !isEventDetailPath });
       } catch (error) {
         $("upcoming-events-panel").innerHTML = noUpcomingMarkup();
         console.warn(error);
@@ -252,8 +273,18 @@
     }
 
     document.addEventListener("click", (event) => {
-      const trigger = event.target.closest(".signup-trigger");
-      if (trigger) selectEvent(trigger.dataset.eventSlug);
+      const card = event.target.closest(".event-card");
+      if (card && !event.target.closest("a, button")) {
+        window.location.href = card.dataset.eventUrl;
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      const card = event.target.closest?.(".event-card");
+      if (card && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        window.location.href = card.dataset.eventUrl;
+      }
     });
 
     $("signup-form").addEventListener("submit", async (event) => {
@@ -270,7 +301,8 @@
       button.disabled = true;
       message.textContent = "Submitting…";
 
-      const form = new FormData(event.currentTarget);
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
       const payload = Object.fromEntries(form.entries());
       payload.email_list_opt_in = form.get("email_list_opt_in") === "on";
       payload.source = "events-page";
@@ -283,7 +315,7 @@
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Signup failed");
-        event.currentTarget.reset();
+        formElement.reset();
         state.completedSignups.add(state.selected.slug);
         button.textContent = "You're signed up";
         button.disabled = true;

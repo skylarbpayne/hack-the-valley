@@ -1,4 +1,5 @@
 import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
+import * as eventImage from './functions/api/events/[slug]/image.js';
 import * as eventSlug from './functions/api/events/[slug].js';
 import * as eventsIndex from './functions/api/events/index.js';
 import * as media from './functions/api/media.js';
@@ -60,6 +61,11 @@ function matchApiRoute(pathname) {
   const signupMatch = pathname.match(/^\/api\/events\/([^/]+)\/signups\/?$/);
   if (signupMatch) {
     return { routeModule: eventSignups, params: { slug: decodeURIComponent(signupMatch[1]) } };
+  }
+
+  const imageMatch = pathname.match(/^\/api\/events\/([^/]+)\/image\/?$/);
+  if (imageMatch) {
+    return { routeModule: eventImage, params: { slug: decodeURIComponent(imageMatch[1]) } };
   }
 
   const eventMatch = pathname.match(/^\/api\/events\/([^/]+)\/?$/);

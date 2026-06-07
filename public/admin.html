@@ -71,7 +71,12 @@
           <label class="block"><span class="text-sm font-semibold">Title *</span><input name="title" required class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
           <label class="block"><span class="text-sm font-semibold">Slug</span><input name="slug" readonly class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-slate-300" placeholder="auto-generated-from-title"><span class="text-xs text-slate-500">Auto-populates from title. Existing event slugs stay fixed when editing.</span></label>
           <label class="block"><span class="text-sm font-semibold">Description</span><textarea name="description" rows="3" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></textarea></label>
-          <label class="block"><span class="text-sm font-semibold">Event photo URL</span><input name="image_url" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white" placeholder="/images/events/2026/hero.jpg or https://..."></label>
+          <label class="block"><span class="text-sm font-semibold">Event photo</span><input id="event-image-file" type="file" accept="image/*" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"><span class="text-xs text-slate-500">Upload a jpg/png/webp/gif. The uploaded URL is saved into the event when you save.</span></label>
+          <div class="grid sm:grid-cols-[1fr_auto] gap-3 items-end">
+            <label class="block"><span class="text-sm font-semibold">Event photo URL</span><input name="image_url" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white" placeholder="Upload a file, or paste an image URL"></label>
+            <button id="upload-event-image" type="button" class="border border-slate-600 px-5 py-3 rounded-lg font-bold hover:border-bc-cyan">Upload image</button>
+          </div>
+          <img id="event-image-preview" alt="Event image preview" class="hidden w-full max-h-56 object-cover rounded-xl border border-slate-700">
           <div class="grid sm:grid-cols-2 gap-4">
             <label class="block"><span class="text-sm font-semibold">Starts at</span><input name="starts_at" type="datetime-local" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
             <label class="block"><span class="text-sm font-semibold">Ends at</span><input name="ends_at" type="datetime-local" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
@@ -192,6 +197,45 @@
       };
     }
 
+    function currentSlug() {
+      return editingSlug || slugInput.value || slugify(titleInput.value);
+    }
+
+    function updateImagePreview(url) {
+      const preview = $("event-image-preview");
+      if (!url) {
+        preview.removeAttribute("src");
+        preview.classList.add("hidden");
+        return;
+      }
+      preview.src = url;
+      preview.classList.remove("hidden");
+    }
+
+    async function uploadEventImage() {
+      const fileInput = $("event-image-file");
+      const file = fileInput.files?.[0];
+      const slug = currentSlug();
+      if (!slug) throw new Error("Add an event title first so we can name the image path.");
+      if (!file) throw new Error("Choose an image file first.");
+      if (!file.type.startsWith("image/")) throw new Error("Choose an actual image file.");
+
+      const response = await fetch(`/api/events/${encodeURIComponent(slug)}/image?filename=${encodeURIComponent(file.name)}`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${getToken()}`,
+          "Content-Type": file.type,
+          "X-Filename": file.name
+        },
+        body: file
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Image upload failed");
+      eventForm.image_url.value = data.image_url;
+      updateImagePreview(data.image_url);
+      return data;
+    }
+
     async function api(path, options = {}) {
       const response = await fetch(path, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
       const contentType = response.headers.get("Content-Type") || "";
@@ -254,6 +298,7 @@
       eventForm.reset();
       editingSlug = null;
       slugInput.value = "";
+      updateImagePreview("");
     }
 
     function fillForm(event) {
@@ -262,6 +307,7 @@
       eventForm.slug.value = event.slug || "";
       eventForm.description.value = event.description || "";
       eventForm.image_url.value = event.image_url || "";
+      updateImagePreview(event.image_url || "");
       eventForm.starts_at.value = toIsoLocalValue(event.starts_at);
       eventForm.ends_at.value = toIsoLocalValue(event.ends_at);
       eventForm.venue_name.value = event.venue_name || "";
@@ -318,6 +364,7 @@
         form.reset();
         editingSlug = null;
         slugInput.value = "";
+        updateImagePreview("");
         setStatus("Saved event.");
         await loadEvents();
       } catch (error) {
@@ -325,6 +372,17 @@
       }
     });
 
+    $("upload-event-image").addEventListener("click", async () => {
+      try {
+        setStatus("Uploading image…");
+        await uploadEventImage();
+        setStatus("Uploaded image. Save the event to keep it on the event page.");
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    });
+
+    eventForm.image_url.addEventListener("input", () => updateImagePreview(eventForm.image_url.value));
     $("load-events").addEventListener("click", () => loadEvents().catch(() => {}));
     $("new-event").addEventListener("click", resetForm);
     $("logout").addEventListener("click", forgetToken);

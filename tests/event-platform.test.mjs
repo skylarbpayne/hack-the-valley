@@ -212,9 +212,14 @@ test("admin page gates the full UI behind a saved admin login", () => {
   assert.doesNotMatch(html, /Prefill Hack Hours at Panera/);
 });
 
-test("admin event form auto-populates slug and avoids async currentTarget reset bug", () => {
+test("admin event form supports image uploads, auto-populates slug, and avoids async currentTarget reset bug", () => {
   const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
   assert.match(html, /function slugify/);
+  assert.match(html, /id="event-image-file"/);
+  assert.match(html, /accept="image\/\*"/);
+  assert.match(html, /id="upload-event-image"/);
+  assert.match(html, /function uploadEventImage/);
+  assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(slug\)\}\/image/);
   assert.match(html, /name="image_url"/);
   assert.match(html, /name="page_content"/);
   assert.doesNotMatch(html, /name="content_before"/);
@@ -239,12 +244,19 @@ test("event schema has editable page content and a forward cleanup migration", (
   assert.match(migration, /DROP COLUMN content_after/i);
 });
 
-test("public events page links to per-event pages and renders editable page content", () => {
+test("public events page uses clickable cards, signup CTAs, and a true event-detail mode", () => {
   const html = readFileSync(new URL("../public/events/index.html", import.meta.url), "utf8");
   assert.match(html, /event\.image_url/);
+  assert.match(html, /id="events-hero"/);
+  assert.match(html, /id="events-overview-grid"/);
+  assert.match(html, /isEventDetailPath/);
+  assert.match(html, /Event page/);
+  assert.match(html, /event-card/);
+  assert.match(html, /data-event-url="\/events\/\$\{encodeURIComponent\(event\.slug\)\}"/);
+  assert.match(html, /#signup/);
+  assert.match(html, />Sign up<\/a>/);
   assert.match(html, /event-page-content/);
   assert.match(html, /selected\.page_content/);
-  assert.match(html, /\/events\/\$\{encodeURIComponent\(event\.slug\)\}/);
   assert.match(html, /pathEventMatch/);
   assert.doesNotMatch(html, /event-content-before/);
   assert.doesNotMatch(html, /event-content-after/);
@@ -297,4 +309,52 @@ test("worker rewrites per-event URLs to the dynamic events app", async () => {
   assert.equal(response.status, 200);
   assert.equal(await response.text(), "events app");
   assert.deepEqual(seen, ["/events/index.html"]);
+});
+
+test("worker accepts admin event image uploads and serves uploaded event images publicly", async () => {
+  const stored = new Map();
+  const env = {
+    HTV_ADMIN_TOKEN: "secret",
+    MAX_UPLOAD_MB: "1",
+    SUBMISSIONS_MEDIA: {
+      async put(key, body, options) {
+        stored.set(key, { body: await new Response(body).text(), options });
+      },
+      async get(key) {
+        const value = stored.get(key);
+        if (!value) return null;
+        return {
+          body: value.body,
+          httpEtag: "etag-test",
+          customMetadata: value.options.customMetadata,
+          writeHttpMetadata(headers) {
+            headers.set("content-type", value.options.httpMetadata.contentType);
+          }
+        };
+      }
+    }
+  };
+
+  const uploadResponse = await worker.fetch(
+    new Request("https://hackthevalley.org/api/events/hack-hours-panera/image?filename=hero.png", {
+      method: "POST",
+      headers: { Authorization: "Bearer secret", "Content-Type": "image/png", "X-Filename": "hero.png" },
+      body: "fake image"
+    }),
+    env,
+    {}
+  );
+  assert.equal(uploadResponse.status, 200);
+  const upload = await uploadResponse.json();
+  assert.match(upload.image_url, /^\/api\/events\/hack-hours-panera\/image\?key=/);
+  assert.match(upload.image_key, /^event-images\/hack-hours-panera\//);
+
+  const imageResponse = await worker.fetch(
+    new Request(`https://hackthevalley.org${upload.image_url}`, { method: "GET" }),
+    env,
+    {}
+  );
+  assert.equal(imageResponse.status, 200);
+  assert.equal(imageResponse.headers.get("content-type"), "image/png");
+  assert.equal(await imageResponse.text(), "fake image");
 });

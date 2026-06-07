@@ -34,14 +34,13 @@ test("event input validates required fields and statuses", () => {
   assert.match(bad.errors.join(";"), /status/);
 });
 
-test("event input supports optional capacity, photos, page content, and recurrence metadata", () => {
+test("event input supports optional capacity, photos, editable page content, and recurrence metadata", () => {
   const { event, errors } = normalizeEventInput({
     title: "Hack the Valley 2026",
     status: "closed",
     capacity: "",
     image_url: "/images/events/2026/hero.jpg",
-    content_before: "Bring your laptop and check in at 9am.",
-    content_after: "Projects, photos, survey, and sponsor recap live here after the event.",
+    page_content: "Agenda, parking, eligibility, and recap links live here.",
     recurrence_rule: { frequency: "yearly", interval: 1 }
   });
 
@@ -49,8 +48,7 @@ test("event input supports optional capacity, photos, page content, and recurren
   assert.equal(event.slug, "hack-the-valley-2026");
   assert.equal(event.capacity, null);
   assert.equal(event.image_url, "/images/events/2026/hero.jpg");
-  assert.equal(event.content_before, "Bring your laptop and check in at 9am.");
-  assert.equal(event.content_after, "Projects, photos, survey, and sponsor recap live here after the event.");
+  assert.equal(event.page_content, "Agenda, parking, eligibility, and recap links live here.");
   assert.equal(event.recurrence_rule_json, JSON.stringify({ frequency: "yearly", interval: 1 }));
 });
 
@@ -74,8 +72,7 @@ test("upsertEvent persists event page fields", async () => {
             slug: this.args[0],
             title: "Hack the Valley 2026",
             image_url: "/images/events/2026/hero.jpg",
-            content_before: "Before copy",
-            content_after: "After copy",
+            page_content: "Editable event page body",
             recurrence_rule_json: JSON.stringify({ frequency: "yearly" })
           };
         }
@@ -87,18 +84,17 @@ test("upsertEvent persists event page fields", async () => {
   await upsertEvent(db, {
     title: "Hack the Valley 2026",
     image_url: "/images/events/2026/hero.jpg",
-    content_before: "Before copy",
-    content_after: "After copy",
+    page_content: "Editable event page body",
     recurrence_rule: { frequency: "yearly" }
   });
 
   assert.match(prepared[0].sql, /image_url/);
-  assert.match(prepared[0].sql, /content_before/);
-  assert.match(prepared[0].sql, /content_after/);
+  assert.match(prepared[0].sql, /page_content/);
+  assert.doesNotMatch(prepared[0].sql, /content_before/);
+  assert.doesNotMatch(prepared[0].sql, /content_after/);
   assert.match(prepared[0].sql, /recurrence_rule_json/);
   assert.ok(prepared[0].args.includes("/images/events/2026/hero.jpg"));
-  assert.ok(prepared[0].args.includes("Before copy"));
-  assert.ok(prepared[0].args.includes("After copy"));
+  assert.ok(prepared[0].args.includes("Editable event page body"));
   assert.ok(prepared[0].args.includes(JSON.stringify({ frequency: "yearly" })));
 });
 
@@ -220,8 +216,9 @@ test("admin event form auto-populates slug and avoids async currentTarget reset 
   const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
   assert.match(html, /function slugify/);
   assert.match(html, /name="image_url"/);
-  assert.match(html, /name="content_before"/);
-  assert.match(html, /name="content_after"/);
+  assert.match(html, /name="page_content"/);
+  assert.doesNotMatch(html, /name="content_before"/);
+  assert.doesNotMatch(html, /name="content_after"/);
   assert.match(html, /name="recurrence_rule"/);
   assert.match(html, /capacity" type="number"[^>]+placeholder="Leave blank/);
   assert.match(html, /const form = event\.currentTarget/);
@@ -229,20 +226,28 @@ test("admin event form auto-populates slug and avoids async currentTarget reset 
   assert.doesNotMatch(html, /event\.currentTarget\.reset\(\)/);
 });
 
-test("event schema has page fields and a forward migration for existing D1 databases", () => {
+test("event schema has editable page content and a forward cleanup migration", () => {
   const schema = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
-  const migration = readFileSync(new URL("../migrations/0002_event_page_fields.sql", import.meta.url), "utf8");
-  for (const column of ["image_url", "content_before", "content_after", "recurrence_rule_json"]) {
+  const migration = readFileSync(new URL("../migrations/0003_event_page_content.sql", import.meta.url), "utf8");
+  for (const column of ["image_url", "page_content", "recurrence_rule_json"]) {
     assert.match(schema, new RegExp(`${column}\\s+TEXT`));
-    assert.match(migration, new RegExp(`ADD COLUMN ${column} TEXT`, "i"));
   }
+  assert.doesNotMatch(schema, /content_before\s+TEXT/);
+  assert.doesNotMatch(schema, /content_after\s+TEXT/);
+  assert.match(migration, /ADD COLUMN page_content TEXT/i);
+  assert.match(migration, /DROP COLUMN content_before/i);
+  assert.match(migration, /DROP COLUMN content_after/i);
 });
 
-test("public events page can render event photos and before/after page content", () => {
+test("public events page links to per-event pages and renders editable page content", () => {
   const html = readFileSync(new URL("../public/events/index.html", import.meta.url), "utf8");
   assert.match(html, /event\.image_url/);
-  assert.match(html, /event-content-before/);
-  assert.match(html, /event-content-after/);
+  assert.match(html, /event-page-content/);
+  assert.match(html, /selected\.page_content/);
+  assert.match(html, /\/events\/\$\{encodeURIComponent\(event\.slug\)\}/);
+  assert.match(html, /pathEventMatch/);
+  assert.doesNotMatch(html, /event-content-before/);
+  assert.doesNotMatch(html, /event-content-after/);
 });
 
 test("worker routes dynamic event APIs on the deployed Worker surface", async () => {
@@ -266,4 +271,24 @@ test("worker routes dynamic event APIs on the deployed Worker surface", async ()
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.events[0].slug, "hack-hours-panera");
+});
+
+test("worker rewrites per-event URLs to the dynamic events app", async () => {
+  const seen = [];
+  const response = await worker.fetch(
+    new Request("https://hackthevalley.org/events/hack-hours-panera", { method: "GET" }),
+    {
+      ASSETS: {
+        fetch(request) {
+          seen.push(new URL(request.url).pathname);
+          return new Response("events app", { status: 200, headers: { "Content-Type": "text/html" } });
+        }
+      }
+    },
+    {}
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "events app");
+  assert.deepEqual(seen, ["/events/index.html"]);
 });

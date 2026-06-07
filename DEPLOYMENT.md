@@ -89,7 +89,7 @@ Setup after approval:
 ./scripts/setup-hack-the-valley-d1.sh
 ```
 
-Then set Worker secrets `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real Hack Hours event from `/admin`, submit a test signup from `/events?event=<slug>`, export CSV, and confirm the signup row exists in HTV_DB and the opted-in contact was created/updated in Resend.
+Then set Worker secrets `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real Hack Hours event from `/admin`, submit a test signup from `/events/<slug>`, export CSV, and confirm the signup row exists in HTV_DB and the opted-in contact was created/updated in Resend.
 
 ## Existing submissions migration
 

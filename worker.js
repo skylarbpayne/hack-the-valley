@@ -71,6 +71,10 @@ function matchApiRoute(pathname) {
   return routeModule ? { routeModule, params: {} } : null;
 }
 
+function isEventPagePath(pathname) {
+  return /^\/events\/[^/.][^/]*\/?$/.test(pathname);
+}
+
 export default {
   async fetch(request, env = {}, ctx = {}) {
     const url = new URL(request.url);
@@ -81,6 +85,13 @@ export default {
     }
 
     if (env.ASSETS?.fetch) {
+      if (isEventPagePath(url.pathname)) {
+        const rewritten = new URL(request.url);
+        rewritten.pathname = "/events/index.html";
+        rewritten.search = url.search;
+        return env.ASSETS.fetch(new Request(rewritten, request));
+      }
+
       return env.ASSETS.fetch(request);
     }
 

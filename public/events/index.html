@@ -73,12 +73,11 @@
             <h2 id="event-title" class="text-3xl font-black mb-2"></h2>
             <img id="event-image" alt="" class="hidden w-full max-h-96 object-cover rounded-2xl border border-slate-800 mb-4">
             <p id="event-description" class="text-slate-300"></p>
-            <div id="event-content-before" class="hidden mt-4 text-slate-300 space-y-3"></div>
+            <div id="event-page-content" class="hidden mt-6 text-slate-300 space-y-3"></div>
             <div class="mt-4 grid sm:grid-cols-2 gap-3 text-sm text-slate-400">
               <p id="event-when"></p>
               <p id="event-where"></p>
             </div>
-            <div id="event-content-after" class="hidden mt-4 text-slate-300 space-y-3"></div>
           </div>
 
           <form id="signup-form" class="grid sm:grid-cols-2 gap-4">
@@ -130,7 +129,8 @@
   <script>
     const state = { events: [], selected: null, completedSignups: new Set() };
     const params = new URLSearchParams(window.location.search);
-    const requestedSlug = params.get("event") || params.get("slug");
+    const pathEventMatch = window.location.pathname.match(/^\/events\/([^/]+)\/?$/);
+    const requestedSlug = pathEventMatch ? decodeURIComponent(pathEventMatch[1]) : (params.get("event") || params.get("slug"));
     const $ = (id) => document.getElementById(id);
 
     function escapeHtml(value) {
@@ -200,7 +200,7 @@
                   <p>${escapeHtml(formatDateRange(event))}</p>
                   <p>${escapeHtml(eventLocation(event))}</p>
                 </div>
-                <button type="button" data-event-slug="${escapeHtml(event.slug)}" class="signup-trigger bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400 transition">Sign up</button>
+                <a href="/events/${encodeURIComponent(event.slug)}" class="inline-flex bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400 transition">Open event page</a>
               </div>
             </article>
           `).join("")}
@@ -225,16 +225,15 @@
         image.classList.add("hidden");
       }
       $("event-description").textContent = selected.description || "Community builder session.";
-      renderTextBlock($("event-content-before"), selected.content_before);
+      renderTextBlock($("event-page-content"), selected.page_content);
       $("event-when").textContent = formatDateRange(selected);
       $("event-where").textContent = eventLocation(selected);
-      renderTextBlock($("event-content-after"), selected.content_after);
       const signupOpen = selected.status === "open";
       $("signup-form").classList.toggle("hidden", !signupOpen);
       $("submit-button").textContent = state.completedSignups.has(selected.slug) ? "You're signed up" : "Sign up";
       $("submit-button").disabled = state.completedSignups.has(selected.slug);
       $("form-message").textContent = state.completedSignups.has(selected.slug) ? "You're already on the list for this event." : "";
-      history.replaceState(null, "", `/events?event=${encodeURIComponent(slug)}`);
+      history.replaceState(null, "", `/events/${encodeURIComponent(slug)}`);
       $("signup-panel").scrollIntoView({ behavior: "smooth", block: "start" });
     }
 

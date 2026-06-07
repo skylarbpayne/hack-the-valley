@@ -91,8 +91,7 @@ export function normalizeEventInput(input, existing = {}) {
     capacity: input.capacity ?? existing.capacity ?? null,
     status,
     image_url: trimOrNull(input.image_url ?? existing.image_url),
-    content_before: trimOrNull(input.content_before ?? existing.content_before),
-    content_after: trimOrNull(input.content_after ?? existing.content_after),
+    page_content: trimOrNull(input.page_content ?? existing.page_content),
     signup_fields_json: stringifyJson(input.signup_fields ?? input.signup_fields_json ?? existing.signup_fields_json ?? null),
     recurrence_rule_json: stringifyJson(input.recurrence_rule ?? input.recurrence_rule_json ?? existing.recurrence_rule_json ?? null)
   };
@@ -189,8 +188,8 @@ export async function upsertEvent(db, input, existing = {}) {
   await db.prepare(`
     INSERT INTO events (
       slug, title, description, starts_at, ends_at, venue_name, venue_address, capacity, status,
-      image_url, content_before, content_after, signup_fields_json, recurrence_rule_json, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      image_url, page_content, signup_fields_json, recurrence_rule_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(slug) DO UPDATE SET
       title = excluded.title,
       description = excluded.description,
@@ -201,8 +200,7 @@ export async function upsertEvent(db, input, existing = {}) {
       capacity = excluded.capacity,
       status = excluded.status,
       image_url = excluded.image_url,
-      content_before = excluded.content_before,
-      content_after = excluded.content_after,
+      page_content = excluded.page_content,
       signup_fields_json = excluded.signup_fields_json,
       recurrence_rule_json = excluded.recurrence_rule_json,
       updated_at = excluded.updated_at
@@ -217,8 +215,7 @@ export async function upsertEvent(db, input, existing = {}) {
     event.capacity,
     event.status,
     event.image_url,
-    event.content_before,
-    event.content_after,
+    event.page_content,
     event.signup_fields_json,
     event.recurrence_rule_json,
     now,

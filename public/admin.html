@@ -82,8 +82,7 @@
             <label class="block"><span class="text-sm font-semibold">Capacity</span><input name="capacity" type="number" min="1" placeholder="Leave blank for no cap" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
             <label class="block"><span class="text-sm font-semibold">Status</span><select name="status" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"><option>draft</option><option selected>open</option><option>closed</option><option>archived</option></select></label>
           </div>
-          <label class="block"><span class="text-sm font-semibold">Before-event page copy</span><textarea name="content_before" rows="4" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white" placeholder="What people need before the event: schedule, parking, prep, links."></textarea></label>
-          <label class="block"><span class="text-sm font-semibold">After-event page copy</span><textarea name="content_after" rows="4" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white" placeholder="Recap, projects, photos, survey, sponsor notes."></textarea></label>
+          <label class="block"><span class="text-sm font-semibold">Event page content</span><textarea name="page_content" rows="10" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white" placeholder="Write the body of this event page: agenda, parking, eligibility, sponsor notes, recap links, etc."></textarea><span class="text-xs text-slate-500">This content appears on /events/&lt;slug&gt;. Plain text with paragraphs is supported for now.</span></label>
           <label class="block"><span class="text-sm font-semibold">Recurrence rule JSON</span><textarea name="recurrence_rule" rows="3" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white" placeholder='{"frequency":"yearly","interval":1}'></textarea><span class="text-xs text-slate-500">Stored now so recurring events are possible later; no recurrence generation yet.</span></label>
           <div class="flex flex-wrap gap-3">
             <button class="bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400">Save event</button>
@@ -188,8 +187,7 @@
         ends_at: fromLocalDatetime(data.ends_at),
         capacity: data.capacity ? Number(data.capacity) : null,
         image_url: data.image_url || null,
-        content_before: data.content_before || null,
-        content_after: data.content_after || null,
+        page_content: data.page_content || null,
         recurrence_rule: parseJsonOrString(data.recurrence_rule)
       };
     }
@@ -233,7 +231,7 @@
               </div>
               <div class="flex flex-wrap gap-2 sm:justify-end sm:content-start">
                 <button data-edit="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Edit</button>
-                <a href="/events?event=${encodeURIComponent(event.slug)}" target="_blank" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Public</a>
+                <a href="/events/${encodeURIComponent(event.slug)}" target="_blank" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Event page</a>
                 <button data-export="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Export CSV</button>
               </div>
             </div>
@@ -270,8 +268,7 @@
       eventForm.venue_address.value = event.venue_address || "";
       eventForm.capacity.value = event.capacity || "";
       eventForm.status.value = event.status || "draft";
-      eventForm.content_before.value = event.content_before || "";
-      eventForm.content_after.value = event.content_after || "";
+      eventForm.page_content.value = event.page_content || "";
       eventForm.recurrence_rule.value = event.recurrence_rule_json || "";
       eventForm.scrollIntoView({ behavior: "smooth" });
     }

@@ -51,7 +51,7 @@ CI/CD:
 Smoke after deploy:
   1. GET /api/events should return JSON
   2. Create Hack Hours at Panera from /admin
-  3. Open /events?event=hack-hours-panera
+  3. Open /events/hack-hours-panera
   4. Submit a test signup
   5. Export CSV from admin
   6. Confirm the signup row exists in HTV_DB and the opted-in contact exists in Resend

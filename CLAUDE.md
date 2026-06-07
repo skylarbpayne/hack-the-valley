@@ -39,7 +39,7 @@ The project submission flow lives on `/submit` with a private admin review page 
 
 - Uploads go to R2 through `/api/upload`.
 - Submission metadata goes to D1 through `HTV_DB`.
-- Admin media access goes through `/api/media` and requires `SUBMISSIONS_ADMIN_TOKEN`.
+- Admin media access goes through `/api/media` and accepts the shared `HTV_ADMIN_TOKEN`.
 - Full Cloudflare setup/deploy instructions are in `SUBMISSIONS-DEPLOYMENT.md`.
 
 ## Architecture

@@ -138,12 +138,13 @@ test('csvEscape safely quotes commas, quotes, and newlines', () => {
   assert.equal(csvEscape(null), '');
 });
 
-test('isAuthorized accepts bearer, x-admin-token, or token query param', () => {
+test('isAuthorized accepts bearer, x-admin-token, token query param, and shared HTV admin token', () => {
   const env = { SUBMISSIONS_ADMIN_TOKEN: 'secret' };
   assert.equal(isAuthorized(new Request('https://example.com/admin', { headers: { authorization: 'Bearer secret' } }), env), true);
   assert.equal(isAuthorized(new Request('https://example.com/admin', { headers: { 'x-admin-token': 'secret' } }), env), true);
   assert.equal(isAuthorized(new Request('https://example.com/admin?token=secret'), env), true);
   assert.equal(isAuthorized(new Request('https://example.com/admin?token=nope'), env), false);
+  assert.equal(isAuthorized(new Request('https://example.com/admin', { headers: { 'x-admin-token': 'shared' } }), { HTV_ADMIN_TOKEN: 'shared' }), true);
   assert.equal(isAuthorized(new Request('https://example.com/admin'), {}), false);
 });
 

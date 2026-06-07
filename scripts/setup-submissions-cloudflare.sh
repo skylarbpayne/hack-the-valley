@@ -5,7 +5,7 @@ PROJECT_NAME="${PROJECT_NAME:-hack-the-valley}"
 D1_NAME="${D1_NAME:-hack-the-valley}"
 D1_BINDING="${D1_BINDING:-HTV_DB}"
 R2_BUCKET="${R2_BUCKET:-hack-the-valley-submission-media}"
-ADMIN_TOKEN="${SUBMISSIONS_ADMIN_TOKEN:-}"
+ADMIN_TOKEN="${HTV_ADMIN_TOKEN:-${SUBMISSIONS_ADMIN_TOKEN:-}}"
 
 # Prefer a local API-token env file over Wrangler browser OAuth. Browser OAuth is
 # painful from agents/remote shells because Cloudflare redirects to localhost on
@@ -146,7 +146,7 @@ echo "==> Applying D1 migrations"
 npx wrangler d1 migrations apply "${D1_BINDING}" --remote
 
 echo "==> Setting Worker admin-token secret"
-printf '%s' "${ADMIN_TOKEN}" | npx wrangler secret put SUBMISSIONS_ADMIN_TOKEN --name "${PROJECT_NAME}"
+printf '%s' "${ADMIN_TOKEN}" | npx wrangler secret put HTV_ADMIN_TOKEN --name "${PROJECT_NAME}"
 
 echo "==> Deploying Worker ${PROJECT_NAME}"
 npx wrangler deploy --name "${PROJECT_NAME}" --keep-vars

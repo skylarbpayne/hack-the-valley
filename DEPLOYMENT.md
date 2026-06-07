@@ -91,6 +91,22 @@ Setup after approval:
 
 Then set Worker secrets `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real Hack Hours event from `/admin`, submit a test signup from `/events?event=<slug>`, export CSV, and confirm the signup row exists in HTV_DB and the opted-in contact was created/updated in Resend.
 
+## Existing submissions migration
+
+After the new app database exists and before cutting over submissions/admin review, migrate the old project submission rows:
+
+```bash
+./scripts/migrate-submissions-to-app-db.sh        # dry run: exports old rows and builds import SQL only
+./scripts/migrate-submissions-to-app-db.sh --apply
+```
+
+Defaults:
+
+- source DB: `hack-the-valley-submissions`
+- target DB: `hack-the-valley`
+
+The script applies target migrations first, imports with upserts by submission `id`, and verifies every source ID is present in the target. Override with `SOURCE_DB=... TARGET_DB=...` only if Cloudflare names differ.
+
 ## CI/CD
 
 GitHub Actions deploys production from `main`:

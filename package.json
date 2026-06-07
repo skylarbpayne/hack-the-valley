@@ -7,6 +7,7 @@
     "check": "node --check worker.js && node --check functions/_shared/submissions.js && node --check functions/_lib/event-platform.js && node --check functions/api/register.js && node --check functions/api/events/index.js && node --check functions/api/events/[slug].js && node --check functions/api/events/[slug]/signups/index.js && node --check functions/api/subscribe.js",
     "dev": "wrangler dev --port 8788",
     "db:migrate:remote": "wrangler d1 migrations apply HTV_DB --remote",
+    "db:migrate-submissions": "./scripts/migrate-submissions-to-app-db.sh --apply",
     "deploy": "wrangler deploy --keep-vars",
     "deploy:ci": "wrangler deploy --keep-vars"
   },

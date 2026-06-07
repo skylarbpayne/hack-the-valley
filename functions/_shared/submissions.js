@@ -153,13 +153,13 @@ export function validateSubmission(payload = {}) {
 }
 
 export function isAuthorized(request, env = {}) {
-  const expected = env.SUBMISSIONS_ADMIN_TOKEN;
-  if (!expected) return false;
+  const expectedTokens = [env.SUBMISSIONS_ADMIN_TOKEN, env.HTV_ADMIN_TOKEN].filter(Boolean);
+  if (!expectedTokens.length) return false;
   const url = new URL(request.url);
   const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim();
   const headerToken = request.headers.get('x-admin-token');
   const queryToken = url.searchParams.get('token');
-  return [bearer, headerToken, queryToken].some((token) => token === expected);
+  return [bearer, headerToken, queryToken].some((token) => expectedTokens.includes(token));
 }
 
 export function getAppDb(env = {}) {

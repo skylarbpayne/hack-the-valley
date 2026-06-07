@@ -74,6 +74,13 @@ Production setup after approval:
 
 CI/CD applies D1 migrations before each Worker deploy. Then set Worker secrets `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, create the real event, and smoke signup + CSV export + Resend contact creation.
 
+Existing project submissions from the old `hack-the-valley-submissions` D1 database need one explicit data migration into the new app DB:
+
+```bash
+./scripts/migrate-submissions-to-app-db.sh        # dry run
+./scripts/migrate-submissions-to-app-db.sh --apply
+```
+
 ## Content Sources
 
 Event details and sponsorship information are tracked in Skyvault under `1_Projects/Hack the Valley.md` and the current run-of-show Google Doc.

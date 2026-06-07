@@ -79,7 +79,7 @@ The setup script will:
 3. create or reuse the D1 database `hack-the-valley`
 4. write the D1/R2 bindings into `wrangler.toml`
 5. apply D1 migrations from `migrations/`
-6. generate and set Worker secret `SUBMISSIONS_ADMIN_TOKEN`
+6. set or reuse Worker secret `HTV_ADMIN_TOKEN`
 7. deploy the Worker
 8. print the participant/admin URLs and token
 
@@ -125,11 +125,18 @@ Apply schema:
 npx wrangler d1 migrations apply HTV_DB --remote
 ```
 
-Set admin token:
+Migrate existing submissions from the old submissions-named D1 database into the new app database:
+
+```bash
+./scripts/migrate-submissions-to-app-db.sh        # dry run
+./scripts/migrate-submissions-to-app-db.sh --apply
+```
+
+Set admin token, if it is not already present:
 
 ```bash
 openssl rand -hex 24
-npx wrangler secret put SUBMISSIONS_ADMIN_TOKEN --name hack-the-valley
+npx wrangler secret put HTV_ADMIN_TOKEN --name hack-the-valley
 ```
 
 Deploy:
@@ -141,7 +148,7 @@ npx wrangler deploy --name hack-the-valley --keep-vars
 ## Admin usage
 
 1. Open `/admin-submissions`.
-2. Paste the `SUBMISSIONS_ADMIN_TOKEN` printed by setup.
+2. Paste the shared `HTV_ADMIN_TOKEN`.
 3. Click **Load submissions**.
 4. Use **Download CSV** for judging/export.
 5. Open uploaded media links from each submission card.

@@ -1,0 +1,28 @@
+name: Import Resend users into HTV_DB
+
+on:
+  workflow_dispatch:
+
+jobs:
+  import-users:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      RESEND_AUDIENCE_ID: ${{ secrets.RESEND_AUDIENCE_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Import Resend contacts into users
+        run: npm run users:import-resend

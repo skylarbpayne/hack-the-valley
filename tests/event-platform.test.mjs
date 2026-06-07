@@ -362,6 +362,12 @@ test("renderEventPageHtml returns a real event-specific page, not the events lis
   assert.match(html, /Agenda, prizes, venue details, and what to bring/);
   assert.match(html, /<img[^>]+event-hero-image/);
   assert.match(html, /<form[^>]+id="signup-form"/);
+  assert.doesNotMatch(html, /School \/ org/i);
+  assert.doesNotMatch(html, /School \/ organization/i);
+  assert.doesNotMatch(html, /name="school"/);
+  assert.doesNotMatch(html, /Notes/i);
+  assert.doesNotMatch(html, /name="notes"/);
+  assert.doesNotMatch(html, /name="year"/);
   assert.doesNotMatch(html, /id="upcoming-events-panel"/);
 });
 

@@ -504,8 +504,6 @@ export function renderEventPageHtml(event) {
       <h2>Sign up</h2>
       <label>Name <input name="name" required autocomplete="name"></label>
       <label>Email <input name="email" type="email" required autocomplete="email"></label>
-      <label>School / org <input name="school" autocomplete="organization"></label>
-      <label>Notes <textarea name="notes" rows="3"></textarea></label>
       <label class="checkbox"><input name="email_list_opt_in" type="checkbox" checked> Send me Hack the Valley updates</label>
       <button type="submit">Sign up</button>
       <p id="form-message" role="status"></p>

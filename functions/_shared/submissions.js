@@ -162,9 +162,15 @@ export function isAuthorized(request, env = {}) {
   return [bearer, headerToken, queryToken].some((token) => token === expected);
 }
 
+export function getAppDb(env = {}) {
+  const db = env.HTV_DB || env.SUBMISSIONS_DB;
+  if (!db) throw new Error('Missing HTV_DB D1 binding');
+  return db;
+}
+
 export async function ensureTables(env = {}) {
-  if (!env.SUBMISSIONS_DB) throw new Error('Missing SUBMISSIONS_DB D1 binding');
-  await env.SUBMISSIONS_DB.prepare(`
+  const db = getAppDb(env);
+  await db.prepare(`
     CREATE TABLE IF NOT EXISTS submissions (
       id TEXT PRIMARY KEY,
       created_at TEXT NOT NULL,
@@ -181,9 +187,10 @@ export async function ensureTables(env = {}) {
 
 export async function insertSubmission(env, payload, uploads) {
   await ensureTables(env);
+  const db = getAppDb(env);
   const id = randomId('htv');
   const createdAt = new Date().toISOString();
-  await env.SUBMISSIONS_DB.prepare(`
+  await db.prepare(`
     INSERT INTO submissions (
       id, created_at, team_name, project_title, contact_email, track,
       payload_json, uploads_json, status
@@ -204,7 +211,8 @@ export async function insertSubmission(env, payload, uploads) {
 
 export async function listSubmissions(env) {
   await ensureTables(env);
-  const result = await env.SUBMISSIONS_DB.prepare(`
+  const db = getAppDb(env);
+  const result = await db.prepare(`
     SELECT id, created_at, team_name, project_title, contact_email, track, payload_json, uploads_json, status
     FROM submissions
     ORDER BY created_at DESC

@@ -9,9 +9,9 @@ directory = "./public"
 MAX_UPLOAD_MB = "100"
 
 [[d1_databases]]
-binding = "SUBMISSIONS_DB"
-database_name = "hack-the-valley-submissions"
-database_id = "a3e1c803-72b3-4a4b-b629-b24191795f6c"
+binding = "HTV_DB"
+database_name = "hack-the-valley"
+database_id = "${HTV_D1_DATABASE_ID}"
 
 [[r2_buckets]]
 binding = "SUBMISSIONS_MEDIA"

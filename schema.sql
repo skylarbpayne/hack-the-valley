@@ -14,7 +14,6 @@ CREATE INDEX IF NOT EXISTS idx_submissions_created_at ON submissions(created_at 
 CREATE INDEX IF NOT EXISTS idx_submissions_track ON submissions(track);
 CREATE INDEX IF NOT EXISTS idx_submissions_contact_email ON submissions(contact_email);
 
--- Event/signup platform tables live in the same D1 database as submissions.
 CREATE TABLE IF NOT EXISTS events (
   slug TEXT PRIMARY KEY,
   title TEXT NOT NULL,

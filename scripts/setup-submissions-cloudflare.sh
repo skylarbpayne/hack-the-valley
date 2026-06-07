@@ -2,9 +2,9 @@
 set -euo pipefail
 
 PROJECT_NAME="${PROJECT_NAME:-hack-the-valley}"
-D1_NAME="${D1_NAME:-hack-the-valley-submissions}"
+D1_NAME="${D1_NAME:-hack-the-valley}"
+D1_BINDING="${D1_BINDING:-HTV_DB}"
 R2_BUCKET="${R2_BUCKET:-hack-the-valley-submission-media}"
-DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 ADMIN_TOKEN="${SUBMISSIONS_ADMIN_TOKEN:-}"
 
 # Prefer a local API-token env file over Wrangler browser OAuth. Browser OAuth is
@@ -58,7 +58,7 @@ then
   npx wrangler r2 bucket create "${R2_BUCKET}"
 fi
 
-D1_ID="${D1_DATABASE_ID:-}"
+D1_ID="${HTV_D1_DATABASE_ID:-${D1_DATABASE_ID:-}}"
 if [[ -z "${D1_ID}" && -f wrangler.toml ]]; then
   D1_ID="$(python3 - "${D1_NAME}" <<'PY'
 from pathlib import Path
@@ -104,7 +104,7 @@ if [[ -z "${D1_ID}" ]]; then
   echo "If the database already exists, get the ID with:" >&2
   echo "  npx wrangler d1 list" >&2
   echo "Then rerun:" >&2
-  echo "  D1_DATABASE_ID=<id> $0" >&2
+  echo "  HTV_D1_DATABASE_ID=<id> $0" >&2
   exit 1
 fi
 
@@ -119,11 +119,11 @@ path = Path('wrangler.toml')
 text = path.read_text()
 text = re.sub(r'\n# Submissions portal setup:[\s\S]*$', '', text)
 
-# Remove previous generated submissions bindings so the script is rerunnable after
+# Remove previous generated app/submissions bindings so the script is rerunnable after
 # partial setup failures.
 blocks = []
 for block in re.split(r'(?=\n\[\[)', text):
-    if '[[d1_databases]]' in block and 'binding = "SUBMISSIONS_DB"' in block:
+    if '[[d1_databases]]' in block and ('binding = "SUBMISSIONS_DB"' in block or 'binding = "HTV_DB"' in block):
         continue
     if '[[r2_buckets]]' in block and 'binding = "SUBMISSIONS_MEDIA"' in block:
         continue
@@ -131,7 +131,7 @@ for block in re.split(r'(?=\n\[\[)', text):
 text = ''.join(blocks).rstrip() + '\n\n'
 
 text += f'''[[d1_databases]]
-binding = "SUBMISSIONS_DB"
+binding = "HTV_DB"
 database_name = "{d1_name}"
 database_id = "{d1_id}"
 
@@ -142,8 +142,8 @@ bucket_name = "{r2_bucket}"
 path.write_text(text)
 PY
 
-echo "==> Applying schema to remote D1"
-npx wrangler d1 execute "${D1_NAME}" --remote --file=schema.sql
+echo "==> Applying D1 migrations"
+npx wrangler d1 migrations apply "${D1_BINDING}" --remote
 
 echo "==> Setting Worker admin-token secret"
 printf '%s' "${ADMIN_TOKEN}" | npx wrangler secret put SUBMISSIONS_ADMIN_TOKEN --name "${PROJECT_NAME}"

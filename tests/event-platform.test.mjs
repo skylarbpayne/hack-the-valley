@@ -143,7 +143,7 @@ test("worker routes dynamic event APIs on the deployed Worker surface", async ()
 
   const response = await worker.fetch(
     new Request("https://hackthevalley.org/api/events", { method: "GET" }),
-    { SUBMISSIONS_DB: fakeDb, ASSETS: { fetch: () => new Response("static miss", { status: 404 }) } },
+    { HTV_DB: fakeDb, ASSETS: { fetch: () => new Response("static miss", { status: 404 }) } },
     {}
   );
 

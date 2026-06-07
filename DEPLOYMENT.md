@@ -46,7 +46,7 @@ Legacy registration notification fallback:
 - `REGISTRATION_FROM_EMAIL`: Sender email address (default: noreply@hackthevalley.com)
 
 Event signup platform:
-- D1 binding `SUBMISSIONS_DB`: shared app database for submissions, events, and signups
+- D1 binding `HTV_DB`: app database `hack-the-valley` for submissions, events, and signups
 - `HTV_ADMIN_TOKEN`: organizer/admin bearer token
 - `RESEND_API_KEY`: Resend contact sync
 
@@ -86,10 +86,27 @@ Public/admin surfaces:
 Setup after approval:
 
 ```bash
-./scripts/setup-event-platform.sh
+./scripts/setup-hack-the-valley-d1.sh
 ```
 
-Then set Worker secrets `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real Hack Hours event from `/admin`, submit a test signup from `/events?event=<slug>`, export CSV, and confirm the signup row exists in SUBMISSIONS_DB and the opted-in contact was created/updated in Resend.
+Then set Worker secrets `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real Hack Hours event from `/admin`, submit a test signup from `/events?event=<slug>`, export CSV, and confirm the signup row exists in HTV_DB and the opted-in contact was created/updated in Resend.
+
+## CI/CD
+
+GitHub Actions deploys production from `main`:
+
+1. `npm ci`
+2. `npm test`
+3. `npm run check`
+4. `./scripts/setup-hack-the-valley-d1.sh` — creates/reuses D1 database `hack-the-valley`, patches the deploy config in CI, and applies migrations to `HTV_DB`
+5. `npm run deploy:ci` — deploys Worker + Assets with `--keep-vars`
+
+Required repository secrets:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+If those secrets are missing, the workflow still runs tests/checks but skips migration/deploy instead of failing noisily. `HTV_D1_DATABASE_ID` is optional for local/manual runs; the CI workflow resolves the database ID from Cloudflare by name.
 
 ## Current Status
 

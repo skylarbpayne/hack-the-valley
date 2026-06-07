@@ -53,7 +53,7 @@ npm install
 cp .cloudflare.env.example .cloudflare.env
 # fill CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN locally; do not commit it
 ./scripts/check-cloudflare-auth.sh
-./scripts/setup-submissions-cloudflare.sh
+./scripts/setup-hack-the-valley-d1.sh
 ```
 
 ## Event signup platform
@@ -63,16 +63,16 @@ The current `/events` page includes the existing event archive plus dynamic upco
 - Public upcoming events + signup form: `/events`
 - Admin page: `/admin`
 - Event APIs: `/api/events`, `/api/events/:slug`, `/api/events/:slug/signups`
-- Signup storage: shared D1 binding `SUBMISSIONS_DB`
-- Email list sync: Resend via `RESEND_API_KEY`; per-event signup history stays in `SUBMISSIONS_DB`
+- App storage: D1 binding `HTV_DB`, database `hack-the-valley`, with submissions/events/signups tables
+- Email list sync: Resend via `RESEND_API_KEY`; per-event signup history stays in `HTV_DB`
 
 Production setup after approval:
 
 ```bash
-./scripts/setup-event-platform.sh
+./scripts/setup-hack-the-valley-d1.sh
 ```
 
-Then set Worker secrets `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real event, and smoke signup + CSV export + Resend contact creation.
+CI/CD applies D1 migrations before each Worker deploy. Then set Worker secrets `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, create the real event, and smoke signup + CSV export + Resend contact creation.
 
 ## Content Sources
 

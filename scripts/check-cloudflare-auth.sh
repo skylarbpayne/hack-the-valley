@@ -52,4 +52,4 @@ PY
 echo "==> Checking Wrangler sees Cloudflare auth"
 npx wrangler whoami >/dev/null
 
-echo "Cloudflare auth is ready for setup-submissions-cloudflare.sh"
+echo "Cloudflare auth is ready for setup-hack-the-valley-d1.sh"

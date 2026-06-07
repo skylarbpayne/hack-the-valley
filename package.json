@@ -4,9 +4,11 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check worker.js && node --check functions/_lib/event-platform.js && node --check functions/api/register.js && node --check functions/api/events/index.js && node --check functions/api/events/[slug].js && node --check functions/api/events/[slug]/signups/index.js && node --check functions/api/subscribe.js",
+    "check": "node --check worker.js && node --check functions/_shared/submissions.js && node --check functions/_lib/event-platform.js && node --check functions/api/register.js && node --check functions/api/events/index.js && node --check functions/api/events/[slug].js && node --check functions/api/events/[slug]/signups/index.js && node --check functions/api/subscribe.js",
     "dev": "wrangler dev --port 8788",
-    "deploy": "wrangler deploy"
+    "db:migrate:remote": "wrangler d1 migrations apply HTV_DB --remote",
+    "deploy": "wrangler deploy --keep-vars",
+    "deploy:ci": "wrangler deploy --keep-vars"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

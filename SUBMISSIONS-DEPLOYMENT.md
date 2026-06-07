@@ -56,7 +56,7 @@ cp .cloudflare.env.example .cloudflare.env
 chmod 600 .cloudflare.env
 # edit .cloudflare.env locally
 ./scripts/check-cloudflare-auth.sh
-./scripts/setup-submissions-cloudflare.sh
+./scripts/setup-hack-the-valley-d1.sh
 ```
 
 The setup script auto-loads `.cloudflare.env`, so no `wrangler login` is needed.
@@ -69,16 +69,16 @@ From the repo root:
 
 ```bash
 npm install
-./scripts/setup-submissions-cloudflare.sh
+./scripts/setup-hack-the-valley-d1.sh
 ```
 
 The setup script will:
 
 1. verify Cloudflare auth
 2. create/ensure the R2 bucket `hack-the-valley-submission-media`
-3. create or reuse the D1 database `hack-the-valley-submissions`
+3. create or reuse the D1 database `hack-the-valley`
 4. write the D1/R2 bindings into `wrangler.toml`
-5. apply `schema.sql`
+5. apply D1 migrations from `migrations/`
 6. generate and set Worker secret `SUBMISSIONS_ADMIN_TOKEN`
 7. deploy the Worker
 8. print the participant/admin URLs and token
@@ -88,7 +88,7 @@ If you want to avoid deploying, stop after the manual resource/schema steps and 
 If the D1 database already exists and Wrangler does not print its ID, rerun with:
 
 ```bash
-D1_DATABASE_ID=<database-id> ./scripts/setup-submissions-cloudflare.sh
+HTV_D1_DATABASE_ID=<database-id> ./scripts/setup-hack-the-valley-d1.sh
 ```
 
 Get the ID with:
@@ -103,15 +103,15 @@ Create resources:
 
 ```bash
 npx wrangler r2 bucket create hack-the-valley-submission-media
-npx wrangler d1 create hack-the-valley-submissions
+npx wrangler d1 create hack-the-valley
 ```
 
 Add the printed D1 database ID and R2 bucket binding to `wrangler.toml`:
 
 ```toml
 [[d1_databases]]
-binding = "SUBMISSIONS_DB"
-database_name = "hack-the-valley-submissions"
+binding = "HTV_DB"
+database_name = "hack-the-valley"
 database_id = "<database-id>"
 
 [[r2_buckets]]
@@ -122,7 +122,7 @@ bucket_name = "hack-the-valley-submission-media"
 Apply schema:
 
 ```bash
-npx wrangler d1 execute hack-the-valley-submissions --remote --file=schema.sql
+npx wrangler d1 migrations apply HTV_DB --remote
 ```
 
 Set admin token:

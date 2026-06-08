@@ -34,6 +34,29 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_status_starts_at ON events(status, starts_at);
 
+CREATE TABLE IF NOT EXISTS event_instances (
+  id TEXT PRIMARY KEY,
+  event_slug TEXT NOT NULL REFERENCES events(slug) ON DELETE CASCADE,
+  instance_key TEXT NOT NULL,
+  title TEXT,
+  starts_at TEXT,
+  ends_at TEXT,
+  venue_name TEXT,
+  venue_address TEXT,
+  capacity INTEGER,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'open', 'closed', 'archived')),
+  metadata_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(event_slug, instance_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_instances_event_starts_at
+  ON event_instances(event_slug, starts_at);
+
+CREATE INDEX IF NOT EXISTS idx_event_instances_status_starts_at
+  ON event_instances(status, starts_at);
+
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
@@ -52,6 +75,7 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE TABLE IF NOT EXISTS signups (
   id TEXT PRIMARY KEY,
   event_slug TEXT NOT NULL REFERENCES events(slug) ON DELETE CASCADE,
+  event_instance_id TEXT REFERENCES event_instances(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT,
   first_name TEXT,
@@ -67,15 +91,17 @@ CREATE TABLE IF NOT EXISTS signups (
   mailing_list_detail TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  UNIQUE(event_slug, user_id)
+  UNIQUE(event_instance_id, user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_signups_event_created_at ON signups(event_slug, created_at);
+CREATE INDEX IF NOT EXISTS idx_signups_instance_created_at ON signups(event_instance_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_signups_user_id ON signups(user_id);
 
 CREATE TABLE IF NOT EXISTS event_participant_events (
   id TEXT PRIMARY KEY,
   event_slug TEXT NOT NULL REFERENCES events(slug) ON DELETE CASCADE,
+  event_instance_id TEXT REFERENCES event_instances(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   signup_id TEXT REFERENCES signups(id) ON DELETE SET NULL,
   event_type TEXT NOT NULL,
@@ -89,12 +115,16 @@ CREATE TABLE IF NOT EXISTS event_participant_events (
 CREATE INDEX IF NOT EXISTS idx_event_participant_events_participant_time
   ON event_participant_events(event_slug, user_id, occurred_at);
 
+CREATE INDEX IF NOT EXISTS idx_event_participant_events_instance_participant_time
+  ON event_participant_events(event_instance_id, user_id, occurred_at);
+
 CREATE INDEX IF NOT EXISTS idx_event_participant_events_type_time
   ON event_participant_events(event_slug, event_type, occurred_at);
 
 CREATE VIEW IF NOT EXISTS event_participant_current_state AS
 SELECT
   event_slug,
+  event_instance_id,
   user_id,
   MIN(CASE WHEN event_type = 'signed_up' THEN occurred_at END) AS signed_up_at,
   MAX(CASE WHEN event_type = 'checked_in' THEN occurred_at END) AS checked_in_at,
@@ -105,4 +135,4 @@ SELECT
   MAX(CASE WHEN event_type = 'waiver_confirmed' THEN occurred_at END) AS waiver_confirmed_at,
   COUNT(*) AS event_count
 FROM event_participant_events
-GROUP BY event_slug, user_id;
+GROUP BY event_slug, event_instance_id, user_id;

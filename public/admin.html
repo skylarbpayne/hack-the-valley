@@ -381,6 +381,7 @@
                 <h3 class="text-xl font-black mt-1">${escapeHtml(event.title)}</h3>
                 <p class="text-slate-400 text-sm mt-2">${escapeHtml(event.description || "")}</p>
                 <p class="text-slate-500 text-sm mt-2">${escapeHtml(event.starts_at || "Time TBA")} ${event.venue_name ? `• ${escapeHtml(event.venue_name)}` : ""}${event.capacity ? ` • cap ${escapeHtml(event.capacity)}` : " • no cap"}</p>
+                <p class="text-slate-500 text-xs mt-2">${escapeHtml(event.instance_count || 0)} instance${Number(event.instance_count || 0) === 1 ? "" : "s"}${event.active_instance_key ? ` • active ${escapeHtml(event.active_instance_key)}` : ""}</p>
               </div>
               <div class="flex flex-wrap gap-2 sm:justify-end sm:content-start">
                 <button data-edit="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Edit</button>

@@ -8,6 +8,7 @@ import {
   normalizeEventInput,
   normalizeSignupInput,
   renderEventPageHtml,
+  resolveSignupEventInstance,
   signupsToCsv,
   slugify,
   upsertEvent,
@@ -309,7 +310,8 @@ test("event schema has users and user-linked signups instead of email-as-identit
   assert.match(schema, /email TEXT NOT NULL UNIQUE/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS signups/);
   assert.match(schema, /user_id TEXT NOT NULL REFERENCES users\(id\)/);
-  assert.match(schema, /UNIQUE\(event_slug, user_id\)/);
+  assert.match(schema, /event_instance_id TEXT REFERENCES event_instances\(id\)/);
+  assert.match(schema, /UNIQUE\(event_instance_id, user_id\)/);
   assert.doesNotMatch(schema, /UNIQUE\(event_slug, email\)/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS users/);
   assert.match(migration, /INSERT OR IGNORE INTO users/);
@@ -319,6 +321,7 @@ test("event schema has users and user-linked signups instead of email-as-identit
 test("event schema has event-sourced participant state for check-in and future attendance facts", () => {
   const schema = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
   const migration = readFileSync(new URL("../migrations/0005_event_participant_events.sql", import.meta.url), "utf8");
+  const instanceMigration = readFileSync(new URL("../migrations/0006_event_instances_and_clean_hack_hours_slug.sql", import.meta.url), "utf8");
   for (const text of [schema, migration]) {
     assert.match(text, /CREATE TABLE IF NOT EXISTS event_participant_events/);
     assert.match(text, /event_slug TEXT NOT NULL REFERENCES events\(slug\)/);
@@ -329,7 +332,63 @@ test("event schema has event-sourced participant state for check-in and future a
   }
   assert.match(migration, /INSERT OR IGNORE INTO event_participant_events/);
   assert.match(migration, /'signed_up'/);
+  assert.match(schema, /event_instance_id TEXT REFERENCES event_instances\(id\)/);
+  assert.match(instanceMigration, /event_instance_id TEXT REFERENCES event_instances\(id\)/);
   assert.match(schema, /CREATE VIEW IF NOT EXISTS event_participant_current_state/);
+});
+
+test("event schema supports reusable Hack Hours slug with concrete instances and scrubs generated suffix", () => {
+  const schema = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
+  const migration = readFileSync(new URL("../migrations/0006_event_instances_and_clean_hack_hours_slug.sql", import.meta.url), "utf8");
+  const admin = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
+  const publicEvents = readFileSync(new URL("../public/events/index.html", import.meta.url), "utf8");
+
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS event_instances/);
+  assert.match(schema, /event_slug TEXT NOT NULL REFERENCES events\(slug\)/);
+  assert.match(schema, /instance_key TEXT NOT NULL/);
+  assert.match(schema, /UNIQUE\(event_slug, instance_key\)/);
+  assert.match(migration, /'hack-hours', title/);
+  assert.match(migration, /WHERE slug = 'hack-hours' \|\| '-1'/i);
+  assert.match(migration, /DELETE FROM events WHERE slug = 'hack-hours' \|\| '-1'/i);
+  assert.match(migration, /INSERT OR IGNORE INTO event_instances/);
+  const oldSlugPattern = new RegExp("hack-hours" + "-1");
+  assert.doesNotMatch(schema, oldSlugPattern);
+  assert.doesNotMatch(migration, oldSlugPattern);
+  assert.doesNotMatch(admin, oldSlugPattern);
+  assert.doesNotMatch(publicEvents, oldSlugPattern);
+});
+
+test("signup resolution chooses an open concrete event instance for a reusable slug", async () => {
+  const sqls = [];
+  const db = {
+    prepare(sql) {
+      sqls.push(sql);
+      return {
+        bind(...args) {
+          this.args = args;
+          return this;
+        },
+        async first() {
+          assert.equal(this.args[0], "hack-hours");
+          return { id: "inst_hack_hours_20260614", event_slug: "hack-hours", status: "open" };
+        }
+      };
+    }
+  };
+
+  const instance = await resolveSignupEventInstance(db, "hack-hours");
+  assert.equal(instance.id, "inst_hack_hours_20260614");
+  assert.match(sqls.join("\n"), /FROM event_instances/);
+  assert.match(sqls.join("\n"), /status = 'open'/);
+});
+
+test("event signup writes signups and participant events against a concrete instance", () => {
+  const source = readFileSync(new URL("../functions/_lib/event-platform.js", import.meta.url), "utf8");
+  assert.match(source, /event_instance_id/);
+  assert.match(source, /ON CONFLICT\(event_instance_id, user_id\)/);
+  assert.match(source, /INSERT INTO signups/);
+  assert.match(source, /INSERT OR IGNORE INTO event_participant_events/);
+  assert.match(source, /savedSignup\.event_instance_id/);
 });
 
 test("event schema has editable page content and a forward cleanup migration", () => {

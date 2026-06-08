@@ -172,15 +172,90 @@ function stringifyJson(value) {
 }
 
 export async function listEvents(db, { includeArchived = false } = {}) {
+  const baseSelect = `
+    SELECT
+      e.*,
+      (SELECT COUNT(*) FROM event_instances ei WHERE ei.event_slug = e.slug) AS instance_count,
+      (SELECT ei.id FROM event_instances ei WHERE ei.event_slug = e.slug AND ei.status = 'open' ORDER BY ei.starts_at IS NULL, ei.starts_at ASC, ei.created_at ASC LIMIT 1) AS active_instance_id,
+      (SELECT ei.instance_key FROM event_instances ei WHERE ei.event_slug = e.slug AND ei.status = 'open' ORDER BY ei.starts_at IS NULL, ei.starts_at ASC, ei.created_at ASC LIMIT 1) AS active_instance_key
+    FROM events e
+  `;
   const sql = includeArchived
-    ? "SELECT * FROM events ORDER BY COALESCE(starts_at, created_at) DESC"
-    : "SELECT * FROM events WHERE status != 'archived' ORDER BY COALESCE(starts_at, created_at) DESC";
+    ? `${baseSelect} ORDER BY COALESCE(e.starts_at, e.created_at) DESC`
+    : `${baseSelect} WHERE e.status != 'archived' ORDER BY COALESCE(e.starts_at, e.created_at) DESC`;
   const result = await db.prepare(sql).all();
   return result.results || [];
 }
 
 export async function getEvent(db, slug) {
   return await db.prepare("SELECT * FROM events WHERE slug = ?").bind(slug).first();
+}
+
+function instanceKeyFromStartsAt(value) {
+  if (!value) return "unscheduled";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return slugify(value) || "unscheduled";
+  return parsed.toISOString().slice(0, 10);
+}
+
+function instanceIdFor(eventSlug, instanceKey) {
+  return `inst_${String(eventSlug).replaceAll("-", "_")}_${String(instanceKey).replaceAll("-", "_")}`;
+}
+
+export async function upsertEventInstance(db, event) {
+  const instanceKey = instanceKeyFromStartsAt(event.starts_at);
+  const instanceId = instanceIdFor(event.slug, instanceKey);
+  const now = new Date().toISOString();
+  await db.prepare(`
+    INSERT INTO event_instances (
+      id, event_slug, instance_key, title, starts_at, ends_at, venue_name, venue_address, capacity, status,
+      metadata_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(event_slug, instance_key) DO UPDATE SET
+      title = excluded.title,
+      starts_at = excluded.starts_at,
+      ends_at = excluded.ends_at,
+      venue_name = excluded.venue_name,
+      venue_address = excluded.venue_address,
+      capacity = excluded.capacity,
+      status = excluded.status,
+      updated_at = excluded.updated_at
+  `).bind(
+    instanceId,
+    event.slug,
+    instanceKey,
+    event.title,
+    event.starts_at,
+    event.ends_at,
+    event.venue_name,
+    event.venue_address,
+    event.capacity,
+    event.status,
+    null,
+    event.created_at || now,
+    now
+  ).run();
+  return await db.prepare("SELECT * FROM event_instances WHERE id = ?").bind(instanceId).first();
+}
+
+export async function resolveSignupEventInstance(db, eventSlug) {
+  return await db.prepare(`
+    SELECT *
+    FROM event_instances
+    WHERE event_slug = ? AND status = 'open'
+    ORDER BY starts_at IS NULL, starts_at ASC, created_at ASC
+    LIMIT 1
+  `).bind(eventSlug).first();
+}
+
+export async function listEventInstances(db, eventSlug) {
+  const result = await db.prepare(`
+    SELECT *
+    FROM event_instances
+    WHERE event_slug = ?
+    ORDER BY starts_at IS NULL, starts_at ASC, created_at ASC
+  `).bind(eventSlug).all();
+  return result.results || [];
 }
 
 export async function upsertEvent(db, input, existing = {}) {
@@ -227,7 +302,9 @@ export async function upsertEvent(db, input, existing = {}) {
     now
   ).run();
 
-  return await getEvent(db, event.slug);
+  const savedEvent = await getEvent(db, event.slug);
+  await upsertEventInstance(db, savedEvent);
+  return savedEvent;
 }
 
 export async function listUsers(db, { limit = 500 } = {}) {
@@ -254,10 +331,16 @@ export async function listUsers(db, { limit = 500 } = {}) {
   return result.results || [];
 }
 
-export async function listSignups(db, eventSlug) {
-  const result = await db.prepare(`
+export async function listSignups(db, eventSlug, { eventInstanceId = null } = {}) {
+  const where = eventInstanceId
+    ? "s.event_slug = ? AND s.event_instance_id = ?"
+    : "s.event_slug = ?";
+  const statement = db.prepare(`
     SELECT
       s.*,
+      ei.instance_key,
+      ei.starts_at AS instance_starts_at,
+      ei.status AS instance_status,
       u.email,
       COALESCE(s.name, u.name) AS name,
       COALESCE(s.first_name, u.first_name) AS first_name,
@@ -266,9 +349,13 @@ export async function listSignups(db, eventSlug) {
       COALESCE(s.school, u.school) AS school
     FROM signups s
     JOIN users u ON u.id = s.user_id
-    WHERE s.event_slug = ?
-    ORDER BY s.created_at ASC
-  `).bind(eventSlug).all();
+    LEFT JOIN event_instances ei ON ei.id = s.event_instance_id
+    WHERE ${where}
+    ORDER BY COALESCE(ei.starts_at, s.created_at) ASC, s.created_at ASC
+  `);
+  const result = eventInstanceId
+    ? await statement.bind(eventSlug, eventInstanceId).all()
+    : await statement.bind(eventSlug).all();
   return result.results || [];
 }
 
@@ -311,7 +398,7 @@ export async function upsertUser(db, input) {
   return await db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first();
 }
 
-export async function upsertSignup(db, eventSlug, input, mailingListResult) {
+export async function upsertSignup(db, eventSlug, input, mailingListResult, eventInstance = null) {
   const { signup, errors } = normalizeSignupInput(input, eventSlug);
   if (errors.length) {
     throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
@@ -320,13 +407,17 @@ export async function upsertSignup(db, eventSlug, input, mailingListResult) {
   const user = await upsertUser(db, signup);
   const now = new Date().toISOString();
   const signupId = input.id && String(input.id).startsWith("sgn_") ? String(input.id) : generateId("sgn");
+  const resolvedInstance = eventInstance || await resolveSignupEventInstance(db, eventSlug);
+  if (!resolvedInstance) {
+    throw Object.assign(new Error("No open instance is available for this event"), { status: 409 });
+  }
 
   await db.prepare(`
     INSERT INTO signups (
-      id, event_slug, user_id, name, first_name, last_name, phone, school, year, experience, notes,
+      id, event_slug, event_instance_id, user_id, name, first_name, last_name, phone, school, year, experience, notes,
       email_list_opt_in, metadata_json, mailing_list_status, mailing_list_detail, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(event_slug, user_id) DO UPDATE SET
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(event_instance_id, user_id) DO UPDATE SET
       name = excluded.name,
       first_name = excluded.first_name,
       last_name = excluded.last_name,
@@ -343,6 +434,7 @@ export async function upsertSignup(db, eventSlug, input, mailingListResult) {
   `).bind(
     signupId,
     signup.event_slug,
+    resolvedInstance.id,
     user.id,
     signup.name,
     signup.first_name,
@@ -364,16 +456,17 @@ export async function upsertSignup(db, eventSlug, input, mailingListResult) {
     SELECT s.*, u.email
     FROM signups s
     JOIN users u ON u.id = s.user_id
-    WHERE s.event_slug = ? AND s.user_id = ?
-  `).bind(signup.event_slug, user.id).first();
+    WHERE s.event_slug = ? AND s.event_instance_id = ? AND s.user_id = ?
+  `).bind(signup.event_slug, resolvedInstance.id, user.id).first();
 
   await db.prepare(`
     INSERT OR IGNORE INTO event_participant_events (
-      id, event_slug, user_id, signup_id, event_type, actor, source, data_json, occurred_at, created_at
-    ) VALUES (?, ?, ?, ?, 'signed_up', NULL, 'signup-api', NULL, ?, ?)
+      id, event_slug, event_instance_id, user_id, signup_id, event_type, actor, source, data_json, occurred_at, created_at
+    ) VALUES (?, ?, ?, ?, ?, 'signed_up', NULL, 'signup-api', NULL, ?, ?)
   `).bind(
     `evt_${savedSignup.id}_signed_up`,
     savedSignup.event_slug,
+    savedSignup.event_instance_id,
     savedSignup.user_id,
     savedSignup.id,
     savedSignup.created_at || now,
@@ -455,7 +548,7 @@ export function csvEscape(value) {
 
 export function signupsToCsv(signups) {
   const columns = [
-    "created_at", "updated_at", "event_slug", "user_id", "name", "email", "phone", "school", "year",
+    "created_at", "updated_at", "event_slug", "event_instance_id", "instance_key", "user_id", "name", "email", "phone", "school", "year",
     "experience", "notes", "email_list_opt_in", "metadata_json", "mailing_list_status", "mailing_list_detail"
   ];
   return [

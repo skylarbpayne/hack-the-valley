@@ -116,6 +116,28 @@
         <div id="event-signups-list" class="overflow-x-auto text-sm text-slate-300"></div>
       </section>
 
+      <section id="event-checkin" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div>
+            <h2 class="text-2xl font-black">Event check-in</h2>
+            <p id="checkin-status" class="text-sm text-slate-400 mt-1">Pick “Check in” on an event. Search covers all users; signed-up attendees appear first.</p>
+          </div>
+        </div>
+        <div class="grid lg:grid-cols-[1fr_0.9fr] gap-5">
+          <div>
+            <label class="block"><span class="text-sm font-semibold">Search attendee by name or email</span><input id="checkin-search" placeholder="Search name or email…" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
+            <div id="checkin-results" class="mt-4 space-y-2 text-sm text-slate-300"></div>
+          </div>
+          <form id="manual-checkin-form" class="bg-bc-dark border border-slate-700 rounded-xl p-4 space-y-3">
+            <h3 class="font-black text-lg">Manual walk-up check-in</h3>
+            <label class="block"><span class="text-sm font-semibold">Name *</span><input name="name" required autocomplete="name" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"></label>
+            <label class="block"><span class="text-sm font-semibold">Email *</span><input name="email" type="email" required autocomplete="email" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"></label>
+            <label class="flex gap-2 items-center text-sm text-slate-300"><input name="email_list_opt_in" type="checkbox" checked> Add to Resend / Hack the Valley updates</label>
+            <button class="bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400">Create, sign up, check in</button>
+          </form>
+        </div>
+      </section>
+
       <section id="users-admin" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
@@ -138,6 +160,9 @@
     const titleInput = eventForm?.elements.title;
     const slugInput = eventForm?.elements.slug;
     let editingSlug = null;
+    let currentCheckinEvent = null;
+    let currentCheckinInstanceId = null;
+    let checkinSearchTimer = null;
     tokenInput.value = localStorage.getItem("htv_admin_token") || "";
 
     function slugify(value) {
@@ -343,6 +368,76 @@
       }
     }
 
+    function openCheckin(event) {
+      currentCheckinEvent = event;
+      currentCheckinInstanceId = event.active_instance_id || null;
+      $("checkin-search").value = "";
+      $("checkin-results").innerHTML = "";
+      $("checkin-status").className = "text-sm text-slate-400 mt-1";
+      $("checkin-status").textContent = `Checking in for ${event.title || event.slug}${event.active_instance_key ? ` (${event.active_instance_key})` : ""}.`;
+      $("event-checkin").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    async function loadCheckinCandidates() {
+      if (!currentCheckinEvent) return;
+      const query = $("checkin-search").value.trim();
+      const status = $("checkin-status");
+      if (!query) {
+        $("checkin-results").innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">Type a name or email to search all users.</div>`;
+        return;
+      }
+      try {
+        status.textContent = `Searching ${currentCheckinEvent.title || currentCheckinEvent.slug}…`;
+        const params = new URLSearchParams({ query });
+        if (currentCheckinInstanceId) params.set("instance_id", currentCheckinInstanceId);
+        const data = await api(`/api/events/${encodeURIComponent(currentCheckinEvent.slug)}/checkins?${params.toString()}`);
+        currentCheckinInstanceId = data.instance?.id || currentCheckinInstanceId;
+        renderCheckinCandidates(data.candidates || []);
+        status.textContent = `${data.count ?? (data.candidates || []).length} result(s). Signed-up attendees appear first.`;
+      } catch (error) {
+        status.textContent = error.message;
+        status.className = "text-sm text-red-300 mt-1";
+        throw error;
+      }
+    }
+
+    function renderCheckinCandidates(candidates) {
+      const container = $("checkin-results");
+      if (!candidates.length) {
+        container.innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">No matching users. Use manual walk-up check-in.</div>`;
+        return;
+      }
+      container.innerHTML = candidates.map((user) => `
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-slate-700 bg-bc-dark p-3">
+          <div>
+            <div class="font-bold">${escapeHtml(user.name || `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unnamed user")}</div>
+            <div class="text-slate-400">${escapeHtml(user.email || "")}</div>
+            <div class="text-xs mt-1 ${user.is_signed_up ? "text-bc-cyan" : "text-slate-500"}">${user.is_signed_up ? "Signed up" : "Not signed up yet"}${user.checked_in_at ? ` • Checked in ${escapeHtml(user.checked_in_at)}` : ""}</div>
+          </div>
+          <button data-checkin-user="${escapeHtml(user.id)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan ${user.checked_in_at ? "text-green-300" : ""}">${user.checked_in_at ? "Checked in" : "Check in"}</button>
+        </div>
+      `).join("");
+      container.querySelectorAll("[data-checkin-user]").forEach((button) => {
+        button.addEventListener("click", () => checkInUser({ user_id: button.dataset.checkinUser }).catch(() => {}));
+      });
+    }
+
+    async function checkInUser(payload) {
+      if (!currentCheckinEvent) throw new Error("Pick an event before checking in attendees.");
+      const body = { ...payload };
+      if (currentCheckinInstanceId) body.event_instance_id = currentCheckinInstanceId;
+      const data = await api(`/api/events/${encodeURIComponent(currentCheckinEvent.slug)}/checkins`, {
+        method: "POST",
+        body: JSON.stringify(body)
+      });
+      currentCheckinInstanceId = data.instance?.id || currentCheckinInstanceId;
+      $("checkin-status").className = "text-sm text-green-300 mt-1";
+      $("checkin-status").textContent = `Checked in ${data.signup?.name || data.signup?.email || "attendee"}.`;
+      await loadCheckinCandidates();
+      await loadEventSignups(currentCheckinEvent.slug, currentCheckinEvent.title || currentCheckinEvent.slug).catch(() => {});
+      return data;
+    }
+
     function renderEventSignups(event, signups) {
       const container = $("event-signups-list");
       if (!signups.length) {
@@ -351,13 +446,14 @@
       }
       container.innerHTML = `
         <table class="min-w-full border-separate border-spacing-y-2">
-          <thead class="text-left text-xs uppercase tracking-[0.16em] text-slate-500"><tr><th class="pr-4">Name</th><th class="pr-4">Email</th><th class="pr-4">User ID</th><th class="pr-4">Signed up</th></tr></thead>
+          <thead class="text-left text-xs uppercase tracking-[0.16em] text-slate-500"><tr><th class="pr-4">Name</th><th class="pr-4">Email</th><th class="pr-4">User ID</th><th class="pr-4">Checked in</th><th class="pr-4">Signed up</th></tr></thead>
           <tbody>
             ${signups.map((signup) => `
               <tr class="bg-bc-dark border border-slate-700">
                 <td class="p-3 rounded-l-xl font-semibold">${escapeHtml(signup.name || "—")}</td>
                 <td class="p-3">${escapeHtml(signup.email || "")}</td>
                 <td class="p-3 font-mono text-xs text-slate-400">${escapeHtml(signup.user_id || "")}</td>
+                <td class="p-3 ${signup.checked_in_at ? "text-green-300" : "text-slate-500"}">${escapeHtml(signup.checked_in_at || "Not yet")}</td>
                 <td class="p-3 rounded-r-xl text-slate-400">${escapeHtml(signup.created_at || "")}</td>
               </tr>
             `).join("")}
@@ -387,6 +483,7 @@
                 <button data-edit="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Edit</button>
                 <a href="/events/${encodeURIComponent(event.slug)}" target="_blank" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Event page</a>
                 <button data-signups="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">View signups</button>
+                <button data-checkins="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Check in</button>
                 <button data-export="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Export CSV</button>
               </div>
             </div>
@@ -404,6 +501,12 @@
         button.addEventListener("click", () => {
           const event = events.find((candidate) => candidate.slug === button.dataset.signups);
           loadEventSignups(button.dataset.signups, event?.title || button.dataset.signups).catch(() => {});
+        });
+      });
+      container.querySelectorAll("[data-checkins]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const event = events.find((candidate) => candidate.slug === button.dataset.checkins);
+          if (event) openCheckin(event);
         });
       });
       container.querySelectorAll("[data-export]").forEach((button) => {
@@ -502,6 +605,24 @@
     });
 
     eventForm.image_url.addEventListener("input", () => updateImagePreview(eventForm.image_url.value));
+    $("checkin-search").addEventListener("input", () => {
+      clearTimeout(checkinSearchTimer);
+      checkinSearchTimer = setTimeout(() => loadCheckinCandidates().catch(() => {}), 180);
+    });
+    $("manual-checkin-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const data = Object.fromEntries(new FormData(form).entries());
+      data.email_list_opt_in = new FormData(form).get("email_list_opt_in") === "on";
+      try {
+        await checkInUser(data);
+        form.reset();
+        form.email_list_opt_in.checked = true;
+      } catch (error) {
+        $("checkin-status").className = "text-sm text-red-300 mt-1";
+        $("checkin-status").textContent = error.message;
+      }
+    });
     $("load-users").addEventListener("click", () => loadUsers().catch(() => {}));
     $("load-events").addEventListener("click", () => loadEvents().catch(() => {}));
     $("new-event").addEventListener("click", resetForm);

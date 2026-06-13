@@ -346,10 +346,16 @@ export async function listSignups(db, eventSlug, { eventInstanceId = null } = {}
       COALESCE(s.first_name, u.first_name) AS first_name,
       COALESCE(s.last_name, u.last_name) AS last_name,
       COALESCE(s.phone, u.phone) AS phone,
-      COALESCE(s.school, u.school) AS school
+      COALESCE(s.school, u.school) AS school,
+      pcs.signed_up_at,
+      pcs.checked_in_at,
+      pcs.checked_out_at,
+      pcs.cancelled_at
     FROM signups s
     JOIN users u ON u.id = s.user_id
     LEFT JOIN event_instances ei ON ei.id = s.event_instance_id
+    LEFT JOIN event_participant_current_state pcs
+      ON pcs.event_instance_id = s.event_instance_id AND pcs.user_id = s.user_id
     WHERE ${where}
     ORDER BY COALESCE(ei.starts_at, s.created_at) ASC, s.created_at ASC
   `);
@@ -476,6 +482,141 @@ export async function upsertSignup(db, eventSlug, input, mailingListResult, even
   return savedSignup;
 }
 
+export async function getUserById(db, userId) {
+  if (!userId) return null;
+  return await db.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
+}
+
+export async function getEventInstance(db, eventSlug, eventInstanceId) {
+  if (!eventInstanceId) return null;
+  return await db.prepare("SELECT * FROM event_instances WHERE event_slug = ? AND id = ?").bind(eventSlug, eventInstanceId).first();
+}
+
+async function getSignupByInstanceAndUser(db, eventSlug, eventInstanceId, userId) {
+  if (!eventInstanceId || !userId) return null;
+  return await db.prepare(`
+    SELECT
+      s.*,
+      ei.instance_key,
+      ei.starts_at AS instance_starts_at,
+      ei.status AS instance_status,
+      u.email,
+      COALESCE(s.name, u.name) AS name,
+      COALESCE(s.first_name, u.first_name) AS first_name,
+      COALESCE(s.last_name, u.last_name) AS last_name,
+      COALESCE(s.phone, u.phone) AS phone,
+      COALESCE(s.school, u.school) AS school,
+      pcs.signed_up_at,
+      pcs.checked_in_at,
+      pcs.checked_out_at,
+      pcs.cancelled_at
+    FROM signups s
+    JOIN users u ON u.id = s.user_id
+    LEFT JOIN event_instances ei ON ei.id = s.event_instance_id
+    LEFT JOIN event_participant_current_state pcs
+      ON pcs.event_instance_id = s.event_instance_id AND pcs.user_id = s.user_id
+    WHERE s.event_slug = ? AND s.event_instance_id = ? AND s.user_id = ?
+  `).bind(eventSlug, eventInstanceId, userId).first();
+}
+
+export async function searchCheckinCandidates(db, eventSlug, { eventInstanceId, query = "", limit = 25 } = {}) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 25, 100));
+  const trimmed = String(query || "").trim().toLowerCase();
+  if (!eventInstanceId) {
+    throw Object.assign(new Error("event_instance_id is required for check-in search"), { status: 400 });
+  }
+  if (!trimmed) return [];
+  const like = `%${trimmed}%`;
+  const result = await db.prepare(`
+    SELECT
+      u.id,
+      u.email,
+      u.name,
+      u.first_name,
+      u.last_name,
+      u.phone,
+      s.id AS signup_id,
+      s.event_slug,
+      s.event_instance_id,
+      s.email_list_opt_in,
+      CASE WHEN s.id IS NULL THEN 0 ELSE 1 END AS is_signed_up,
+      pcs.checked_in_at
+    FROM users u
+    LEFT JOIN signups s
+      ON s.user_id = u.id AND s.event_instance_id = ?
+    LEFT JOIN event_participant_current_state pcs
+      ON pcs.event_instance_id = s.event_instance_id AND pcs.user_id = u.id
+    WHERE lower(u.email) LIKE ?
+       OR lower(COALESCE(u.name, '')) LIKE ?
+       OR lower(trim(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, ''))) LIKE ?
+    ORDER BY is_signed_up DESC, pcs.checked_in_at IS NULL DESC, lower(COALESCE(u.name, u.email)) ASC
+    LIMIT ${safeLimit}
+  `).bind(eventInstanceId, like, like, like).all();
+  return result.results || [];
+}
+
+export async function checkInAttendee(db, event, input, { eventInstance = null, actor = "admin", source = "admin-checkin", syncEmailList = null } = {}) {
+  const resolvedInstance = eventInstance || await resolveSignupEventInstance(db, event.slug);
+  if (!resolvedInstance) {
+    throw Object.assign(new Error("No open instance is available for this event"), { status: 409 });
+  }
+
+  let userInput = { ...input };
+  if (input.user_id && (!input.email || !input.name)) {
+    const existingUser = await getUserById(db, input.user_id);
+    if (!existingUser) throw Object.assign(new Error("User not found"), { status: 404 });
+    userInput = {
+      ...existingUser,
+      ...input,
+      email: input.email || existingUser.email,
+      name: input.name || existingUser.name || `${existingUser.first_name || ""} ${existingUser.last_name || ""}`.trim(),
+      first_name: input.first_name || existingUser.first_name,
+      last_name: input.last_name || existingUser.last_name,
+      phone: input.phone || existingUser.phone,
+      school: input.school || existingUser.school
+    };
+  }
+
+  let savedSignup = input.user_id
+    ? await getSignupByInstanceAndUser(db, event.slug, resolvedInstance.id, input.user_id)
+    : null;
+
+  if (!savedSignup) {
+    const { signup, errors } = normalizeSignupInput(userInput, event.slug);
+    if (errors.length) throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
+    const mailingListResult = syncEmailList
+      ? await syncEmailList(signup)
+      : { status: "skipped_not_configured", detail: "No email-list sync callback configured" };
+    savedSignup = await upsertSignup(db, event.slug, userInput, mailingListResult, resolvedInstance);
+  }
+
+  const now = new Date().toISOString();
+  await db.prepare(`
+    INSERT OR IGNORE INTO event_participant_events (
+      id, event_slug, event_instance_id, user_id, signup_id, event_type, actor, source, data_json, occurred_at, created_at
+    ) VALUES (?, ?, ?, ?, ?, 'checked_in', ?, ?, ?, ?, ?)
+  `).bind(
+    `evt_${resolvedInstance.id}_${savedSignup.user_id}_checked_in`,
+    event.slug,
+    resolvedInstance.id,
+    savedSignup.user_id,
+    savedSignup.id,
+    actor,
+    source,
+    stringifyJson({ manual: true }),
+    now,
+    now
+  ).run();
+
+  const refreshed = await getSignupByInstanceAndUser(db, event.slug, resolvedInstance.id, savedSignup.user_id);
+  return {
+    event,
+    instance: resolvedInstance,
+    signup: refreshed || { ...savedSignup, checked_in_at: now },
+    checked_in_at: refreshed?.checked_in_at || now
+  };
+}
+
 export async function addSignupToEmailList(env, signup, event) {
   if (!signup.email_list_opt_in) {
     return { status: "skipped_opt_out", detail: "Registrant opted out of community email list" };
@@ -549,7 +690,7 @@ export function csvEscape(value) {
 export function signupsToCsv(signups) {
   const columns = [
     "created_at", "updated_at", "event_slug", "event_instance_id", "instance_key", "user_id", "name", "email", "phone", "school", "year",
-    "experience", "notes", "email_list_opt_in", "metadata_json", "mailing_list_status", "mailing_list_detail"
+    "experience", "notes", "email_list_opt_in", "signed_up_at", "checked_in_at", "checked_out_at", "cancelled_at", "metadata_json", "mailing_list_status", "mailing_list_detail"
   ];
   return [
     columns.join(","),

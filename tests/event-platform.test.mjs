@@ -317,6 +317,36 @@ test("check-in search ranks signed-up attendees first while searching all users"
   assert.equal(candidates[1].id, "usr_global");
 });
 
+test("check-in search defaults to all signups for the selected event instance", async () => {
+  const db = {
+    prepare(sql) {
+      assert.match(sql, /FROM signups s/);
+      assert.match(sql, /JOIN users u ON u\.id = s\.user_id/);
+      assert.match(sql, /WHERE s\.event_slug = \? AND s\.event_instance_id = \?/);
+      assert.doesNotMatch(sql, /lower\(u\.email\) LIKE/);
+      return {
+        bind(eventSlug, eventInstanceId) {
+          assert.equal(eventSlug, "hack-hours");
+          assert.equal(eventInstanceId, "inst_hack_hours_20260613");
+          return this;
+        },
+        async all() {
+          return {
+            results: [
+              { id: "usr_signed_a", email: "ada@example.com", name: "Ada Signed", is_signed_up: 1, signup_id: "sgn_1", checked_in_at: null },
+              { id: "usr_signed_b", email: "grace@example.com", name: "Grace Signed", is_signed_up: 1, signup_id: "sgn_2", checked_in_at: "2026-06-13T16:00:00.000Z" }
+            ]
+          };
+        }
+      };
+    }
+  };
+
+  const candidates = await searchCheckinCandidates(db, "hack-hours", { eventInstanceId: "inst_hack_hours_20260613", query: "" });
+  assert.deepEqual(candidates.map((candidate) => candidate.id), ["usr_signed_a", "usr_signed_b"]);
+  assert.equal(candidates.every((candidate) => candidate.is_signed_up === 1), true);
+});
+
 test("manual attendee check-in can create/signup/check in and stores a checked_in participant event", () => {
   const source = readFileSync(new URL("../functions/_lib/event-platform.js", import.meta.url), "utf8");
   assert.match(source, /export async function checkInAttendee/);
@@ -329,10 +359,15 @@ test("manual attendee check-in can create/signup/check in and stores a checked_i
 test("admin portal exposes event check-in search and manual walk-up form", () => {
   const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
   assert.match(html, /id="event-checkin"/);
+  assert.match(html, /id="checkin-event-title"/);
+  assert.match(html, /currentCheckinEvent\.title/);
   assert.match(html, /id="checkin-search"/);
   assert.match(html, /placeholder="Search name or email/);
   assert.match(html, /id="manual-checkin-form"/);
   assert.match(html, /function loadCheckinCandidates/);
+  assert.doesNotMatch(html, /if \(!query\) \{/);
+  assert.match(html, /No signups match yet/);
+  assert.match(html, /loadCheckinCandidates\(\)\.catch/);
   assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(currentCheckinEvent\.slug\)\}\/checkins/);
   assert.match(html, /data-checkin-user=/);
 });

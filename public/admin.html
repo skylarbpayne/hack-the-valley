@@ -120,6 +120,7 @@
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
             <h2 class="text-2xl font-black">Event check-in</h2>
+            <p id="checkin-event-title" class="text-lg font-bold text-white mt-2">No event selected</p>
             <p id="checkin-status" class="text-sm text-slate-400 mt-1">Pick “Check in” on an event. Search covers all users; signed-up attendees appear first.</p>
           </div>
         </div>
@@ -373,8 +374,10 @@
       currentCheckinInstanceId = event.active_instance_id || null;
       $("checkin-search").value = "";
       $("checkin-results").innerHTML = "";
+      $("checkin-event-title").textContent = currentCheckinEvent.title || currentCheckinEvent.slug;
       $("checkin-status").className = "text-sm text-slate-400 mt-1";
-      $("checkin-status").textContent = `Checking in for ${event.title || event.slug}${event.active_instance_key ? ` (${event.active_instance_key})` : ""}.`;
+      $("checkin-status").textContent = `Showing signups for ${event.title || event.slug}${event.active_instance_key ? ` (${event.active_instance_key})` : ""}. Type to search all users.`;
+      loadCheckinCandidates().catch(() => {});
       $("event-checkin").scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
@@ -382,18 +385,17 @@
       if (!currentCheckinEvent) return;
       const query = $("checkin-search").value.trim();
       const status = $("checkin-status");
-      if (!query) {
-        $("checkin-results").innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">Type a name or email to search all users.</div>`;
-        return;
-      }
       try {
-        status.textContent = `Searching ${currentCheckinEvent.title || currentCheckinEvent.slug}…`;
-        const params = new URLSearchParams({ query });
+        status.textContent = query ? `Searching ${currentCheckinEvent.title || currentCheckinEvent.slug}…` : `Showing signups for ${currentCheckinEvent.title || currentCheckinEvent.slug}…`;
+        const params = new URLSearchParams();
+        if (query) params.set("query", query);
         if (currentCheckinInstanceId) params.set("instance_id", currentCheckinInstanceId);
         const data = await api(`/api/events/${encodeURIComponent(currentCheckinEvent.slug)}/checkins?${params.toString()}`);
         currentCheckinInstanceId = data.instance?.id || currentCheckinInstanceId;
         renderCheckinCandidates(data.candidates || []);
-        status.textContent = `${data.count ?? (data.candidates || []).length} result(s). Signed-up attendees appear first.`;
+        status.textContent = query
+          ? `${data.count ?? (data.candidates || []).length} result(s). Signed-up attendees appear first.`
+          : `${data.count ?? (data.candidates || []).length} signup(s) for this event. Type to search all users.`;
       } catch (error) {
         status.textContent = error.message;
         status.className = "text-sm text-red-300 mt-1";
@@ -404,7 +406,7 @@
     function renderCheckinCandidates(candidates) {
       const container = $("checkin-results");
       if (!candidates.length) {
-        container.innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">No matching users. Use manual walk-up check-in.</div>`;
+        container.innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">No signups match yet. Type a name or email to search all users, or use manual walk-up check-in.</div>`;
         return;
       }
       container.innerHTML = candidates.map((user) => `

@@ -525,7 +525,31 @@ export async function searchCheckinCandidates(db, eventSlug, { eventInstanceId, 
   if (!eventInstanceId) {
     throw Object.assign(new Error("event_instance_id is required for check-in search"), { status: 400 });
   }
-  if (!trimmed) return [];
+  if (!trimmed) {
+    const result = await db.prepare(`
+      SELECT
+        u.id,
+        u.email,
+        COALESCE(s.name, u.name) AS name,
+        COALESCE(s.first_name, u.first_name) AS first_name,
+        COALESCE(s.last_name, u.last_name) AS last_name,
+        COALESCE(s.phone, u.phone) AS phone,
+        s.id AS signup_id,
+        s.event_slug,
+        s.event_instance_id,
+        s.email_list_opt_in,
+        1 AS is_signed_up,
+        pcs.checked_in_at
+      FROM signups s
+      JOIN users u ON u.id = s.user_id
+      LEFT JOIN event_participant_current_state pcs
+        ON pcs.event_instance_id = s.event_instance_id AND pcs.user_id = u.id
+      WHERE s.event_slug = ? AND s.event_instance_id = ?
+      ORDER BY pcs.checked_in_at IS NULL DESC, lower(COALESCE(s.name, u.name, u.email)) ASC
+      LIMIT ${safeLimit}
+    `).bind(eventSlug, eventInstanceId).all();
+    return result.results || [];
+  }
   const like = `%${trimmed}%`;
   const result = await db.prepare(`
     SELECT

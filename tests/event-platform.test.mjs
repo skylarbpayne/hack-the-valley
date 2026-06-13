@@ -4,11 +4,13 @@ import { readFileSync } from "node:fs";
 
 import {
   addSignupToEmailList,
+  checkInAttendee,
   csvEscape,
   normalizeEventInput,
   normalizeSignupInput,
   renderEventPageHtml,
   resolveSignupEventInstance,
+  searchCheckinCandidates,
   signupsToCsv,
   slugify,
   upsertEvent,
@@ -233,6 +235,7 @@ test("CSV export includes metadata for event-specific hackathon fields", () => {
     metadata_json: JSON.stringify({ major: "CS", dietary: "vegetarian", tshirt: "M", coc: true })
   }]);
   assert.match(csv, /metadata_json/);
+  assert.match(csv, /checked_in_at/);
   assert.match(csv, /"line\nbreak"/);
   assert.match(csv, /"{""major"":""CS"",""dietary"":""vegetarian"",""tshirt"":""M"",""coc"":true}"/);
 });
@@ -278,6 +281,60 @@ test("public event signup form keeps only name, email, and mailing list opt-in",
   assert.doesNotMatch(html, /name="school"/);
   assert.doesNotMatch(html, /name="notes"/);
   assert.doesNotMatch(html, /Anything we should know/);
+});
+
+test("check-in search ranks signed-up attendees first while searching all users", async () => {
+  const db = {
+    prepare(sql) {
+      assert.match(sql, /FROM users u/);
+      assert.match(sql, /LEFT JOIN signups s/);
+      assert.match(sql, /s\.event_instance_id = \?/);
+      assert.match(sql, /lower\(u\.email\) LIKE \?/);
+      assert.match(sql, /ORDER BY is_signed_up DESC/);
+      return {
+        bind(eventInstanceId, likeA, likeB, likeC) {
+          assert.equal(eventInstanceId, "inst_hack_hours_20260613");
+          assert.equal(likeA, "%ada%");
+          assert.equal(likeB, "%ada%");
+          assert.equal(likeC, "%ada%");
+          return this;
+        },
+        async all() {
+          return {
+            results: [
+              { id: "usr_signed", email: "ada@example.com", name: "Ada Signed", is_signed_up: 1, signup_id: "sgn_1", checked_in_at: null },
+              { id: "usr_global", email: "admiral@example.com", name: "Admiral Global", is_signed_up: 0, signup_id: null, checked_in_at: null }
+            ]
+          };
+        }
+      };
+    }
+  };
+
+  const candidates = await searchCheckinCandidates(db, "hack-hours", { eventInstanceId: "inst_hack_hours_20260613", query: "ada" });
+  assert.equal(candidates[0].id, "usr_signed");
+  assert.equal(candidates[0].is_signed_up, 1);
+  assert.equal(candidates[1].id, "usr_global");
+});
+
+test("manual attendee check-in can create/signup/check in and stores a checked_in participant event", () => {
+  const source = readFileSync(new URL("../functions/_lib/event-platform.js", import.meta.url), "utf8");
+  assert.match(source, /export async function checkInAttendee/);
+  assert.match(source, /await upsertSignup\(/);
+  assert.match(source, /'checked_in'/);
+  assert.match(source, /INSERT OR IGNORE INTO event_participant_events/);
+  assert.match(source, /event_instance_id/);
+});
+
+test("admin portal exposes event check-in search and manual walk-up form", () => {
+  const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
+  assert.match(html, /id="event-checkin"/);
+  assert.match(html, /id="checkin-search"/);
+  assert.match(html, /placeholder="Search name or email/);
+  assert.match(html, /id="manual-checkin-form"/);
+  assert.match(html, /function loadCheckinCandidates/);
+  assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(currentCheckinEvent\.slug\)\}\/checkins/);
+  assert.match(html, /data-checkin-user=/);
 });
 
 test("admin event form supports image uploads, auto-populates slug, and avoids async currentTarget reset bug", () => {

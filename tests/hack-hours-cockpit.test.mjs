@@ -42,6 +42,20 @@ test("participant login page requests a code, verifies it, and reads /api/me", (
   assert.doesNotMatch(html, /admin password|HTV_ADMIN_TOKEN/i);
 });
 
+test("participant dashboard shows profile, attendance, projects, and badges from /api/me", () => {
+  const html = read("public/me/index.html");
+  assert.match(html, /id="participant-dashboard"/);
+  assert.match(html, /id="profile-card"/);
+  assert.match(html, /id="attendance-list"/);
+  assert.match(html, /id="project-list"/);
+  assert.match(html, /id="badge-list"/);
+  assert.match(html, /\/api\/me/);
+  assert.match(html, /\/login\//);
+  assert.match(html, /Your projects/);
+  assert.match(html, /Badges/);
+  assert.doesNotMatch(html, /HTV_ADMIN_TOKEN|data-award-badge/i);
+});
+
 test("schema and migrations add passwordless user login sessions without passwords", () => {
   const schema = read("schema.sql");
   const migration = read("migrations/0010_passwordless_login.sql");
@@ -70,6 +84,7 @@ test("passwordless login creates a code, verifies it, and resolves current user 
           if (/SELECT \* FROM users WHERE email/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
           if (/FROM auth_login_codes/.test(sql)) return { id: "alc_1", user_id: "usr_maya", code_hash: this.args[1], expires_at: "2999-01-01T00:00:00.000Z" };
           if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
           if (/FROM user_sessions/.test(sql)) return { id: "ses_1", user_id: "usr_maya", expires_at: "2999-01-01T00:00:00.000Z" };
           return null;
         },
@@ -149,6 +164,7 @@ test("worker exposes passwordless auth request, verify, and /api/me", async () =
           if (/SELECT \* FROM users WHERE email/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
           if (/FROM auth_login_codes/.test(sql)) return { id: "alc_1", user_id: "usr_maya", code_hash: this.args[1], expires_at: "2999-01-01T00:00:00.000Z" };
           if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
           if (/FROM user_sessions/.test(sql)) return { id: "ses_1", user_id: "usr_maya", expires_at: "2999-01-01T00:00:00.000Z" };
           return null;
         },
@@ -183,6 +199,40 @@ test("worker exposes passwordless auth request, verify, and /api/me", async () =
   assert.equal(meResponse.status, 200);
   const me = await meResponse.json();
   assert.equal(me.user.email, "maya@example.com");
+});
+
+test("/api/me returns participant community state for the signed-in user", async () => {
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          return null;
+        },
+        async all() {
+          if (/FROM roles/.test(sql)) return { results: [] };
+          if (/FROM event_participant_events/.test(sql)) return { results: [{ event_slug: "hack-hours", event_instance_id: "inst_1", event_type: "checked_in", occurred_at: "2026-06-20T15:05:00.000Z" }] };
+          if (/FROM user_badges/.test(sql)) return { results: [{ slug: "first-attendance", name: "First Attendance", badge_type: "attendance", awarded_at: "2026-06-20T15:05:00.000Z" }] };
+          if (/FROM event_project_submissions/.test(sql)) return { results: [{ project_id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep", submission_id: "sub_1", event_slug: "hack-the-valley-2026", status: "accepted" }] };
+          return { results: [] };
+        }
+      };
+    }
+  };
+
+  const response = await worker.fetch(new Request("https://hackthevalley.org/api/me", {
+    headers: { Cookie: "htv_session=test-session-token" }
+  }), { HTV_DB: fakeDb }, {});
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.user.email, "maya@example.com");
+  assert.deepEqual(body.attendance.map((event) => event.event_slug), ["hack-hours"]);
+  assert.deepEqual(body.badges.map((badge) => badge.slug), ["first-attendance"]);
+  assert.deepEqual(body.projects.map((project) => project.title), ["Valley SAT Prep"]);
 });
 
 test("schema and migrations add project submission links and badge awards", () => {

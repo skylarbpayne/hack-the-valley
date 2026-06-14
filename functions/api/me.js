@@ -1,6 +1,7 @@
 import {
   getCurrentUserFromSession,
   getDb,
+  getUserCommunityState,
   handleErrors,
   jsonResponse,
   methodNotAllowed
@@ -14,10 +15,20 @@ function cookieValue(request, name) {
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
+    const db = getDb(context.env);
     const token = cookieValue(context.request, "htv_session") || context.request.headers.get("x-htv-session") || "";
-    const user = await getCurrentUserFromSession(getDb(context.env), token);
+    const user = await getCurrentUserFromSession(db, token);
     if (!user) return jsonResponse({ ok: false, error: "Not signed in" }, { status: 401 });
-    return jsonResponse({ ok: true, user });
+    const state = await getUserCommunityState(db, user.id);
+    return jsonResponse({
+      ok: true,
+      ...state,
+      user: {
+        ...state.user,
+        session_id: user.session_id,
+        session_expires_at: user.session_expires_at
+      }
+    });
   });
 }
 

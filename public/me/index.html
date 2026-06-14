@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Hack the Valley | Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = { theme: { extend: { colors: { "bc-cyan": "#06b6d4", "bc-navy": "#1e293b", "bc-dark": "#0f172a", "bc-orange": "#f59e0b" }, fontFamily: { sans: ["Inter", "sans-serif"] } } } };
+  </script>
+</head>
+<body class="min-h-screen bg-bc-dark text-slate-100 font-sans">
+  <main id="participant-dashboard" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <nav class="flex items-center justify-between gap-4">
+      <a href="/" class="font-black text-white">Hack the Valley</a>
+      <div class="flex items-center gap-4 text-sm">
+        <a href="/events" class="text-slate-300 hover:text-bc-cyan">Events</a>
+        <a href="/login/" class="text-bc-cyan hover:text-cyan-300">Login</a>
+      </div>
+    </nav>
+
+    <header class="mt-10 grid lg:grid-cols-[1.2fr_0.8fr] gap-6 items-stretch">
+      <section class="rounded-3xl border border-slate-700 bg-bc-navy p-6 sm:p-8">
+        <p class="text-bc-cyan uppercase tracking-[0.22em] text-xs font-black">Participant dashboard</p>
+        <h1 class="text-4xl sm:text-5xl font-black mt-3">Your Hack the Valley home base</h1>
+        <p class="text-slate-300 text-lg mt-4 max-w-2xl">Track your event history, projects, and badges. This is the participant-facing loop — no admin controls, no awkward spreadsheet goblinry.</p>
+      </section>
+      <section id="profile-card" class="rounded-3xl border border-slate-700 bg-slate-950 p-6 sm:p-8">
+        <p class="text-slate-400">Loading your profile…</p>
+      </section>
+    </header>
+
+    <div id="dashboard-error" class="hidden mt-6 rounded-2xl border border-red-500/40 bg-red-950/40 p-5 text-red-100"></div>
+
+    <section class="grid lg:grid-cols-3 gap-5 mt-6">
+      <article class="rounded-3xl border border-slate-700 bg-bc-navy p-6">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-2xl font-black">Attendance</h2>
+          <span id="attendance-count" class="text-xs font-black uppercase tracking-[0.16em] text-bc-cyan">0 events</span>
+        </div>
+        <ul id="attendance-list" class="mt-4 space-y-3 text-slate-300"></ul>
+      </article>
+
+      <article class="rounded-3xl border border-slate-700 bg-bc-navy p-6">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-2xl font-black">Your projects</h2>
+          <span id="project-count" class="text-xs font-black uppercase tracking-[0.16em] text-bc-cyan">0 projects</span>
+        </div>
+        <ul id="project-list" class="mt-4 space-y-3 text-slate-300"></ul>
+      </article>
+
+      <article class="rounded-3xl border border-slate-700 bg-bc-navy p-6">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-2xl font-black">Badges</h2>
+          <span id="badge-count" class="text-xs font-black uppercase tracking-[0.16em] text-bc-cyan">0 badges</span>
+        </div>
+        <ul id="badge-list" class="mt-4 space-y-3 text-slate-300"></ul>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
+    }
+
+    function prettyDate(value) {
+      if (!value) return "Date pending";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    }
+
+    function emptyItem(copy) {
+      return `<li class="rounded-2xl border border-dashed border-slate-600 bg-slate-950/40 p-4 text-sm text-slate-400">${escapeHtml(copy)}</li>`;
+    }
+
+    function renderProfile(user) {
+      $("profile-card").innerHTML = `
+        <p class="text-xs uppercase tracking-[0.16em] text-bc-cyan font-black">Signed in</p>
+        <h2 class="mt-2 text-2xl font-black text-white">${escapeHtml(user?.name || user?.email || "Participant")}</h2>
+        <p class="text-slate-400">${escapeHtml(user?.email || "")}</p>
+        <p class="mt-4 text-sm text-slate-500">Session expires ${escapeHtml(prettyDate(user?.session_expires_at))}</p>
+      `;
+    }
+
+    function renderAttendance(events = []) {
+      $("attendance-count").textContent = `${events.length} event${events.length === 1 ? "" : "s"}`;
+      $("attendance-list").innerHTML = events.length ? events.map((event) => `
+        <li class="rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
+          <div class="font-bold text-white">${escapeHtml(event.event_slug || "Event")}</div>
+          <div class="text-sm text-slate-400">${escapeHtml(event.event_type || "participated")} · ${escapeHtml(prettyDate(event.occurred_at))}</div>
+        </li>
+      `).join("") : emptyItem("No attendance yet. Show up and this starts filling in.");
+    }
+
+    function renderProjects(projects = []) {
+      $("project-count").textContent = `${projects.length} project${projects.length === 1 ? "" : "s"}`;
+      $("project-list").innerHTML = projects.length ? projects.map((project) => `
+        <li class="rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
+          <div class="font-bold text-white">${escapeHtml(project.title || "Untitled project")}</div>
+          <div class="text-sm text-slate-400">${escapeHtml(project.event_slug || "event pending")} · ${escapeHtml(project.status || "submitted")}</div>
+        </li>
+      `).join("") : emptyItem("No linked projects yet. Project claiming/editing is the next slice.");
+    }
+
+    function renderBadges(badges = []) {
+      $("badge-count").textContent = `${badges.length} badge${badges.length === 1 ? "" : "s"}`;
+      $("badge-list").innerHTML = badges.length ? badges.map((badge) => `
+        <li class="rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
+          <div class="font-bold text-white">🏅 ${escapeHtml(badge.name || badge.slug || "Badge")}</div>
+          <div class="text-sm text-slate-400">${escapeHtml(badge.description || badge.badge_type || "earned")}</div>
+        </li>
+      `).join("") : emptyItem("No badges yet. The first one should not be a sad empty div.");
+    }
+
+    async function loadDashboard() {
+      try {
+        const response = await fetch("/api/me", { headers: { "Accept": "application/json" } });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+          window.location.href = "/login/?next=/me/";
+          return;
+        }
+        if (!response.ok) throw new Error(data.error || "Could not load dashboard");
+        renderProfile(data.user || {});
+        renderAttendance(data.attendance || []);
+        renderProjects(data.projects || []);
+        renderBadges(data.badges || []);
+      } catch (error) {
+        const box = $("dashboard-error");
+        box.classList.remove("hidden");
+        box.textContent = error.message || "Could not load dashboard.";
+      }
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>

@@ -89,6 +89,15 @@
               <span class="text-sm font-semibold text-slate-200">Email *</span>
               <input name="email" type="email" required class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
             </label>
+            <label class="block sm:col-span-2">
+              <span class="text-sm font-semibold text-slate-200">Emergency contact name *</span>
+              <input name="emergency_contact_name" required class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
+            </label>
+            <label class="block sm:col-span-2">
+              <span class="text-sm font-semibold text-slate-200">Emergency contact phone *</span>
+              <input name="emergency_contact_phone" required autocomplete="tel" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
+              <span class="block text-xs text-slate-500 mt-1">Used only if organizers need a safety contact during the event.</span>
+            </label>
             <label class="sm:col-span-2 flex gap-3 items-start text-sm text-slate-300">
               <input name="email_list_opt_in" type="checkbox" checked class="mt-1 accent-bc-cyan">
               <span>Add me to the Hack the Valley email list for event updates.</span>
@@ -236,7 +245,7 @@
       $("event-where").textContent = eventLocation(selected);
       const signupOpen = selected.status === "open";
       $("signup-form").classList.toggle("hidden", !signupOpen);
-      $("submit-button").textContent = state.completedSignups.has(selected.slug) ? "You're signed up" : "Sign up";
+      $("submit-button").textContent = state.completedSignups.has(selected.slug) ? "You're signed up" : "Save my spot";
       $("submit-button").disabled = state.completedSignups.has(selected.slug);
       $("form-message").textContent = state.completedSignups.has(selected.slug) ? "You're already on the list for this event." : "";
       history.replaceState(null, "", `/events/${encodeURIComponent(slug)}${window.location.hash === "#signup" ? "#signup" : ""}`);
@@ -307,7 +316,7 @@
         state.completedSignups.add(state.selected.slug);
         button.textContent = "You're signed up";
         button.disabled = true;
-        message.textContent = "You're on the list. We'll email updates before the event.";
+        message.textContent = "You're on the list. Emergency contact saved. Organizers can check you in by search when you arrive.";
       } catch (error) {
         button.disabled = false;
         message.textContent = error.message;

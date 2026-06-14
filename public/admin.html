@@ -40,6 +40,49 @@
         <button id="logout" class="border border-slate-600 px-4 py-2 rounded-lg text-sm hover:border-bc-cyan">Forget password</button>
       </div>
 
+      <section id="event-cockpit" class="bg-bc-navy border-2 border-bc-cyan/60 rounded-3xl p-6 mb-8 shadow-2xl shadow-cyan-950/20">
+        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
+          <div>
+            <p class="text-bc-cyan uppercase tracking-[0.22em] text-xs font-black">Organizer cockpit</p>
+            <h2 class="text-3xl font-black mt-2">Hack Hours live roster</h2>
+            <p id="cockpit-event-context" class="text-slate-400 mt-2">Loads the active Hack Hours instance first. Search, resolve safety info, check people in, and attach event photos from here.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button id="refresh-cockpit" class="bg-bc-cyan text-bc-dark px-4 py-2 rounded-lg text-sm font-black hover:bg-cyan-400">Refresh cockpit</button>
+            <a href="#events-admin" class="border border-slate-600 px-4 py-2 rounded-lg text-sm hover:border-bc-cyan">Event settings</a>
+          </div>
+        </div>
+        <div id="cockpit-summary" class="grid sm:grid-cols-5 gap-3 mt-6 text-sm"></div>
+        <div class="grid lg:grid-cols-[1.4fr_0.8fr] gap-5 mt-6">
+          <section>
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+              <h3 class="text-xl font-black">Roster + check-in</h3>
+              <label class="block sm:w-72"><span class="sr-only">Search cockpit roster</span><input id="cockpit-search" placeholder="Search name or email…" class="w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
+            </div>
+            <div id="cockpit-roster" class="space-y-2 text-sm text-slate-300"></div>
+          </section>
+          <aside class="space-y-4">
+            <form id="cockpit-contact-form" class="bg-bc-dark border border-slate-700 rounded-2xl p-4 space-y-3">
+              <h3 class="font-black text-lg">Add emergency contact</h3>
+              <input name="user_id" type="hidden">
+              <label class="block"><span class="text-sm font-semibold">Emergency contact name</span><input name="emergency_contact_name" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"></label>
+              <label class="block"><span class="text-sm font-semibold">Emergency contact phone</span><input name="emergency_contact_phone" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"></label>
+              <label class="block"><span class="text-sm font-semibold">Relationship</span><input name="emergency_contact_relationship" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"></label>
+              <button class="w-full border border-bc-cyan text-bc-cyan px-4 py-3 rounded-lg font-black hover:bg-bc-cyan hover:text-bc-dark">Update emergency contact</button>
+              <p id="cockpit-contact-status" class="text-sm text-slate-400"></p>
+            </form>
+            <form id="event-photo-upload" class="bg-bc-dark border border-slate-700 rounded-2xl p-4 space-y-3">
+              <h3 class="font-black text-lg">Event photos</h3>
+              <p class="text-sm text-slate-400">Admin-only event photo/video uploads attach to this event instance.</p>
+              <input name="event_photo_file" type="file" accept="image/*,video/mp4,video/quicktime,video/webm" class="w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white">
+              <button class="w-full bg-bc-cyan text-bc-dark px-4 py-3 rounded-lg font-black hover:bg-cyan-400">Upload event photo</button>
+              <p id="event-photo-status" class="text-sm text-slate-400"></p>
+              <div id="event-photo-list" class="space-y-2 text-sm text-slate-300"></div>
+            </form>
+          </aside>
+        </div>
+      </section>
+
       <section class="grid md:grid-cols-4 gap-4 mb-8">
         <a href="#events-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Events</div>
@@ -133,6 +176,8 @@
             <h3 class="font-black text-lg">Manual walk-up check-in</h3>
             <label class="block"><span class="text-sm font-semibold">Name *</span><input name="name" required autocomplete="name" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"></label>
             <label class="block"><span class="text-sm font-semibold">Email *</span><input name="email" type="email" required autocomplete="email" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"></label>
+            <label class="block"><span class="text-sm font-semibold">Emergency contact name *</span><input name="emergency_contact_name" required class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"></label>
+            <label class="block"><span class="text-sm font-semibold">Emergency contact phone *</span><input name="emergency_contact_phone" required autocomplete="tel" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"></label>
             <label class="flex gap-2 items-center text-sm text-slate-300"><input name="email_list_opt_in" type="checkbox" checked> Add to Resend / Hack the Valley updates</label>
             <button class="bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400">Create, sign up, check in</button>
           </form>
@@ -163,6 +208,9 @@
     let editingSlug = null;
     let currentCheckinEvent = null;
     let currentCheckinInstanceId = null;
+    let currentCockpitEvent = null;
+    let currentCockpitInstanceId = null;
+    let currentCockpitRoster = [];
     let checkinSearchTimer = null;
     tokenInput.value = localStorage.getItem("htv_admin_token") || "";
 
@@ -306,11 +354,131 @@
       return data;
     }
 
+    function cockpitSummaryCard(label, value, tone = "text-white") {
+      return `<div class="rounded-2xl border border-slate-700 bg-bc-dark p-4"><div class="text-xs uppercase tracking-[0.16em] text-slate-500">${label}</div><div class="text-2xl font-black ${tone}">${escapeHtml(value)}</div></div>`;
+    }
+
+    function openCockpit(event) {
+      currentCockpitEvent = event;
+      currentCockpitInstanceId = event.active_instance_id || currentCockpitInstanceId;
+      currentCheckinEvent = event;
+      currentCheckinInstanceId = currentCockpitInstanceId;
+      loadEventCockpit(event.slug, currentCockpitInstanceId).catch(() => {});
+      $("event-cockpit").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    async function loadEventCockpit(slug = currentCockpitEvent?.slug || "hack-hours", instanceId = currentCockpitInstanceId) {
+      const context = $("cockpit-event-context");
+      try {
+        if (!instanceId) {
+          const eventsData = await api("/api/events?include_archived=1");
+          const event = (eventsData.events || []).find((candidate) => candidate.slug === slug) || (eventsData.events || []).find((candidate) => candidate.active_instance_id);
+          if (!event?.active_instance_id) throw new Error("No active event instance is available for cockpit.");
+          currentCockpitEvent = event;
+          currentCockpitInstanceId = event.active_instance_id;
+          instanceId = event.active_instance_id;
+        }
+        context.textContent = `Loading cockpit for ${slug}…`;
+        const data = await api(`/api/events/${encodeURIComponent(slug)}/instances/${encodeURIComponent(instanceId)}/cockpit`);
+        currentCockpitEvent = data.event;
+        currentCockpitInstanceId = data.instance?.id || instanceId;
+        currentCheckinEvent = data.event;
+        currentCheckinInstanceId = currentCockpitInstanceId;
+        currentCockpitRoster = data.roster || [];
+        renderCockpit(data);
+        context.textContent = `${data.event?.title || slug} • ${data.instance?.instance_key || data.instance?.starts_at || currentCockpitInstanceId}`;
+        return data;
+      } catch (error) {
+        context.textContent = error.message;
+        context.className = "text-red-300 mt-2";
+        throw error;
+      }
+    }
+
+    function renderCockpit(data) {
+      const summary = data.summary || {};
+      $("cockpit-summary").innerHTML = [
+        cockpitSummaryCard("Signed up", summary.signed_up_count ?? 0),
+        cockpitSummaryCard("Checked in", summary.checked_in_count ?? 0, "text-green-300"),
+        cockpitSummaryCard("Missing contact", summary.missing_emergency_contact_count ?? 0, summary.missing_emergency_contact_count ? "text-amber-300" : "text-green-300"),
+        cockpitSummaryCard("Repeat", summary.repeat_attendee_count ?? 0),
+        cockpitSummaryCard("Event photos", summary.event_photo_count ?? 0)
+      ].join("");
+      renderCockpitRoster();
+      renderEventPhotos(data.photos?.recent || []);
+    }
+
+    function renderCockpitRoster() {
+      const query = $("cockpit-search").value.trim().toLowerCase();
+      const rows = currentCockpitRoster.filter((row) => !query || String(row.name || "").toLowerCase().includes(query) || String(row.email || "").toLowerCase().includes(query));
+      const container = $("cockpit-roster");
+      if (!rows.length) {
+        container.innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">Empty roster. New RSVPs will appear here.</div>`;
+        return;
+      }
+      container.innerHTML = rows.map((row) => `
+        <article class="rounded-xl border ${row.emergency_contact_present ? "border-slate-700" : "border-amber-500/70"} bg-bc-dark p-4">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <div class="font-black text-white">${escapeHtml(row.name || "Unnamed attendee")}</div>
+              <div class="text-slate-400">${escapeHtml(row.email || "")}</div>
+              <div class="flex flex-wrap gap-2 mt-2 text-xs">
+                <span class="rounded-full px-2 py-1 ${row.checked_in_at ? "bg-green-400/15 text-green-300" : "bg-slate-700 text-slate-300"}">${row.checked_in_at ? "Checked in" : "Not checked in"}</span>
+                <span class="rounded-full px-2 py-1 ${row.emergency_contact_present ? "bg-green-400/15 text-green-300" : "bg-amber-400/15 text-amber-300"}">${row.emergency_contact_present ? "Emergency contact present" : "Missing emergency contact"}</span>
+                ${(row.progression_labels || []).map((label) => `<span class="rounded-full bg-cyan-400/10 px-2 py-1 text-bc-cyan">${escapeHtml(label)}</span>`).join("")}
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              ${row.emergency_contact_present ? "" : `<button data-contact-user="${escapeHtml(row.user_id)}" class="border border-amber-400 text-amber-300 px-3 py-2 rounded-lg text-sm hover:bg-amber-400 hover:text-bc-dark">Add emergency contact</button>`}
+              <button data-cockpit-checkin="${escapeHtml(row.user_id)}" class="bg-bc-cyan text-bc-dark px-3 py-2 rounded-lg text-sm font-black hover:bg-cyan-400">${row.checked_in_at ? "Already checked in" : "Check in"}</button>
+            </div>
+          </div>
+        </article>`).join("");
+      container.querySelectorAll("[data-contact-user]").forEach((button) => {
+        button.addEventListener("click", () => {
+          $("cockpit-contact-form").elements.user_id.value = button.dataset.contactUser;
+          $("cockpit-contact-status").textContent = "Add emergency contact, then submit before normal check-in.";
+        });
+      });
+      container.querySelectorAll("[data-cockpit-checkin]").forEach((button) => {
+        button.addEventListener("click", () => checkInUser({ user_id: button.dataset.cockpitCheckin }).catch((error) => {
+          $("cockpit-event-context").textContent = error.message;
+        }));
+      });
+    }
+
+    function renderEventPhotos(photos) {
+      const list = $("event-photo-list");
+      if (!photos.length) {
+        list.innerHTML = `<div class="text-slate-500">No event photos uploaded yet.</div>`;
+        return;
+      }
+      list.innerHTML = photos.map((photo) => `<div class="rounded-lg border border-slate-700 p-2"><span class="font-semibold">${escapeHtml(photo.kind)}</span> ${escapeHtml(photo.original_filename || photo.storage_key)}</div>`).join("");
+    }
+
+    async function uploadCockpitEventPhoto(file) {
+      if (!currentCockpitEvent || !currentCockpitInstanceId) throw new Error("Load a cockpit before uploading event photos.");
+      const kind = file.type.startsWith("video/") ? "video" : "photo";
+      const data = await api(`/api/events/${encodeURIComponent(currentCockpitEvent.slug)}/instances/${encodeURIComponent(currentCockpitInstanceId)}/photos?filename=${encodeURIComponent(file.name)}&kind=${encodeURIComponent(kind)}`, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file
+      });
+      await loadEventCockpit(currentCockpitEvent.slug, currentCockpitInstanceId);
+      return data;
+    }
+
     async function loadEvents() {
       try {
         setStatus("Loading…");
         const data = await api("/api/events?include_archived=1");
         renderEvents(data.events || []);
+        const hackHours = (data.events || []).find((event) => event.slug === "hack-hours") || (data.events || []).find((event) => event.active_instance_id);
+        if (hackHours?.active_instance_id && !currentCockpitInstanceId) {
+          currentCockpitEvent = hackHours;
+          currentCockpitInstanceId = hackHours.active_instance_id;
+          loadEventCockpit(hackHours.slug, hackHours.active_instance_id).catch(() => {});
+        }
         setStatus("Loaded events.");
       } catch (error) {
         setStatus(error.message, true);
@@ -434,8 +602,11 @@
       });
       currentCheckinInstanceId = data.instance?.id || currentCheckinInstanceId;
       $("checkin-status").className = "text-sm text-green-300 mt-1";
-      $("checkin-status").textContent = `Checked in ${data.signup?.name || data.signup?.email || "attendee"}.`;
+      $("checkin-status").textContent = data.signup?.already_checked_in
+        ? `${data.signup?.name || data.signup?.email || "Attendee"} was already checked in.`
+        : `Checked in ${data.signup?.name || data.signup?.email || "attendee"}.`;
       await loadCheckinCandidates();
+      if (currentCockpitEvent && currentCockpitInstanceId) await loadEventCockpit(currentCockpitEvent.slug, currentCockpitInstanceId).catch(() => {});
       await loadEventSignups(currentCheckinEvent.slug, currentCheckinEvent.title || currentCheckinEvent.slug).catch(() => {});
       return data;
     }
@@ -482,6 +653,7 @@
                 <p class="text-slate-500 text-xs mt-2">${escapeHtml(event.instance_count || 0)} instance${Number(event.instance_count || 0) === 1 ? "" : "s"}${event.active_instance_key ? ` • active ${escapeHtml(event.active_instance_key)}` : ""}</p>
               </div>
               <div class="flex flex-wrap gap-2 sm:justify-end sm:content-start">
+                <button data-cockpit="${escapeHtml(event.slug)}" class="bg-bc-cyan text-bc-dark px-3 py-2 rounded-lg text-sm font-black hover:bg-cyan-400">Open cockpit</button>
                 <button data-edit="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Edit</button>
                 <a href="/events/${encodeURIComponent(event.slug)}" target="_blank" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Event page</a>
                 <button data-signups="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">View signups</button>
@@ -493,6 +665,12 @@
         </article>
       `).join("");
 
+      container.querySelectorAll("[data-cockpit]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const event = events.find((candidate) => candidate.slug === button.dataset.cockpit);
+          if (event) openCockpit(event);
+        });
+      });
       container.querySelectorAll("[data-edit]").forEach((button) => {
         button.addEventListener("click", () => {
           const event = events.find((candidate) => candidate.slug === button.dataset.edit);
@@ -607,6 +785,43 @@
     });
 
     eventForm.image_url.addEventListener("input", () => updateImagePreview(eventForm.image_url.value));
+    $("refresh-cockpit").addEventListener("click", () => loadEventCockpit(currentCockpitEvent?.slug || "hack-hours", currentCockpitInstanceId).catch(() => {}));
+    $("cockpit-search").addEventListener("input", renderCockpitRoster);
+    $("cockpit-contact-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const userId = form.elements.user_id.value;
+      if (!userId) {
+        $("cockpit-contact-status").textContent = "Pick a missing-contact attendee first.";
+        return;
+      }
+      const payload = Object.fromEntries(new FormData(form).entries());
+      try {
+        await checkInUser(payload);
+        form.reset();
+        $("cockpit-contact-status").textContent = "Emergency contact updated and attendee checked in.";
+      } catch (error) {
+        $("cockpit-contact-status").textContent = error.message;
+      }
+    });
+    $("event-photo-upload").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const file = form.elements.event_photo_file.files?.[0];
+      const status = $("event-photo-status");
+      if (!file) {
+        status.textContent = "Choose a photo or video first.";
+        return;
+      }
+      try {
+        status.textContent = "Uploading event photo…";
+        await uploadCockpitEventPhoto(file);
+        form.reset();
+        status.textContent = "Uploaded event photo.";
+      } catch (error) {
+        status.textContent = error.message;
+      }
+    });
     $("checkin-search").addEventListener("input", () => {
       clearTimeout(checkinSearchTimer);
       checkinSearchTimer = setTimeout(() => loadCheckinCandidates().catch(() => {}), 180);

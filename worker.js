@@ -1,5 +1,7 @@
 import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
 import * as eventCheckins from './functions/api/events/[slug]/checkins/index.js';
+import * as eventCockpit from './functions/api/events/[slug]/instances/[instanceId]/cockpit/index.js';
+import * as eventPhotos from './functions/api/events/[slug]/instances/[instanceId]/photos/index.js';
 import * as eventImage from './functions/api/events/[slug]/image.js';
 import * as eventSlug from './functions/api/events/[slug].js';
 import * as eventsIndex from './functions/api/events/index.js';
@@ -70,6 +72,16 @@ function matchApiRoute(pathname) {
   const checkinMatch = pathname.match(/^\/api\/events\/([^/]+)\/checkins\/?$/);
   if (checkinMatch) {
     return { routeModule: eventCheckins, params: { slug: decodeURIComponent(checkinMatch[1]) } };
+  }
+
+  const cockpitMatch = pathname.match(/^\/api\/events\/([^/]+)\/instances\/([^/]+)\/cockpit\/?$/);
+  if (cockpitMatch) {
+    return { routeModule: eventCockpit, params: { slug: decodeURIComponent(cockpitMatch[1]), instanceId: decodeURIComponent(cockpitMatch[2]) } };
+  }
+
+  const photosMatch = pathname.match(/^\/api\/events\/([^/]+)\/instances\/([^/]+)\/photos\/?$/);
+  if (photosMatch) {
+    return { routeModule: eventPhotos, params: { slug: decodeURIComponent(photosMatch[1]), instanceId: decodeURIComponent(photosMatch[2]) } };
   }
 
   const imageMatch = pathname.match(/^\/api\/events\/([^/]+)\/image\/?$/);

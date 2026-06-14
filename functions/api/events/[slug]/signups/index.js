@@ -72,7 +72,8 @@ export async function onRequestPost(context) {
         user_id: savedSignup.user_id,
         name: savedSignup.name,
         email: savedSignup.email,
-        mailing_list_status: savedSignup.mailing_list_status
+        mailing_list_status: savedSignup.mailing_list_status,
+        emergency_contact_present: true
       }
     }, { status: 201 });
   });

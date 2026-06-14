@@ -148,6 +148,8 @@ test("signup input normalizes email and legacy school field", () => {
     name: "Ada Lovelace",
     email: " ADA@example.COM ",
     university: "CSUB",
+    emergency_contact_name: "Charles Babbage",
+    emergency_contact_phone: "661-555-0100",
     email_list_opt_in: true
   }, "hack-hours-panera");
 
@@ -275,8 +277,10 @@ test("admin page can list users and per-event signups without school/org or note
   assert.doesNotMatch(html, /signup\.notes/);
 });
 
-test("public event signup form keeps only name, email, and mailing list opt-in", () => {
+test("public event signup form collects name, email, emergency contact, and mailing list opt-in only", () => {
   const html = readFileSync(new URL("../public/events/index.html", import.meta.url), "utf8");
+  assert.match(html, /name="emergency_contact_name"/);
+  assert.match(html, /name="emergency_contact_phone"/);
   assert.doesNotMatch(html, /School \/ organization/);
   assert.doesNotMatch(html, /name="school"/);
   assert.doesNotMatch(html, /name="notes"/);

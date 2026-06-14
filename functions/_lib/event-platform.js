@@ -45,6 +45,14 @@ export function requireAdmin(request, env) {
   }
 }
 
+export function requireOrganizerAccess(request, env) {
+  return requireAdmin(request, env);
+}
+
+export function requireSuperAdminAccess(request, env) {
+  return requireAdmin(request, env);
+}
+
 export function getDb(env) {
   const db = env.HTV_DB || env.SUBMISSIONS_DB || env.DB;
   if (!db) {
@@ -108,6 +116,19 @@ export function normalizeEventInput(input, existing = {}) {
   return { event, errors };
 }
 
+export function normalizeEmergencyContactInput(input = {}) {
+  const nested = input.emergency_contact && typeof input.emergency_contact === "object" ? input.emergency_contact : {};
+  const contact = {
+    name: trimOrNull(input.emergency_contact_name ?? nested.name),
+    phone: trimOrNull(input.emergency_contact_phone ?? nested.phone),
+    relationship: trimOrNull(input.emergency_contact_relationship ?? nested.relationship)
+  };
+  const errors = [];
+  if (!contact.name) errors.push("emergency contact name is required");
+  if (!contact.phone) errors.push("emergency contact phone is required");
+  return { contact, errors };
+}
+
 export function normalizeSignupInput(input, eventSlug) {
   const email = normalizeEmail(input.email);
   const name = String(input.name || `${input.first_name || ""} ${input.last_name || ""}`).trim();
@@ -115,6 +136,7 @@ export function normalizeSignupInput(input, eventSlug) {
   const firstName = String(input.first_name || nameParts.firstName).trim();
   const lastName = String(input.last_name || nameParts.lastName).trim();
   const wantsEmailList = input.email_list_opt_in !== false;
+  const emergency = normalizeEmergencyContactInput(input);
 
   const signup = {
     event_slug: eventSlug,
@@ -128,13 +150,15 @@ export function normalizeSignupInput(input, eventSlug) {
     experience: trimOrNull(input.experience),
     notes: trimOrNull(input.notes || input.message),
     email_list_opt_in: wantsEmailList ? 1 : 0,
-    metadata_json: stringifyJson(input.metadata || buildLegacyMetadata(input))
+    metadata_json: stringifyJson(input.metadata || buildLegacyMetadata(input)),
+    emergency_contact: emergency.contact
   };
 
   const errors = [];
   if (!signup.event_slug) errors.push("event slug is required");
   if (!signup.name) errors.push("name is required");
   if (!EMAIL_RE.test(email)) errors.push("valid email is required");
+  errors.push(...emergency.errors);
 
   return { signup, errors };
 }
@@ -465,6 +489,14 @@ export async function upsertSignup(db, eventSlug, input, mailingListResult, even
     WHERE s.event_slug = ? AND s.event_instance_id = ? AND s.user_id = ?
   `).bind(signup.event_slug, resolvedInstance.id, user.id).first();
 
+  await upsertEmergencyContact(db, {
+    eventInstanceId: resolvedInstance.id,
+    userId: user.id,
+    signupId: savedSignup.id,
+    contact: signup.emergency_contact,
+    source: "signup"
+  });
+
   await db.prepare(`
     INSERT OR IGNORE INTO event_participant_events (
       id, event_slug, event_instance_id, user_id, signup_id, event_type, actor, source, data_json, occurred_at, created_at
@@ -480,6 +512,201 @@ export async function upsertSignup(db, eventSlug, input, mailingListResult, even
   ).run();
 
   return savedSignup;
+}
+
+export async function upsertEmergencyContact(db, { eventInstanceId, userId, signupId = null, contact, source = "signup" }) {
+  const { contact: normalized, errors } = normalizeEmergencyContactInput({ emergency_contact: contact || {} });
+  if (errors.length) {
+    throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
+  }
+  if (!eventInstanceId || !userId) {
+    throw Object.assign(new Error("event_instance_id and user_id are required for emergency contact"), { status: 400 });
+  }
+  const now = new Date().toISOString();
+  const id = generateId("emc");
+  await db.prepare(`
+    INSERT INTO emergency_contacts (
+      id, event_instance_id, user_id, signup_id, name, relationship, phone, source, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(event_instance_id, user_id) DO UPDATE SET
+      signup_id = COALESCE(excluded.signup_id, emergency_contacts.signup_id),
+      name = excluded.name,
+      relationship = excluded.relationship,
+      phone = excluded.phone,
+      source = excluded.source,
+      updated_at = excluded.updated_at
+  `).bind(
+    id,
+    eventInstanceId,
+    userId,
+    signupId,
+    normalized.name,
+    normalized.relationship,
+    normalized.phone,
+    source,
+    now,
+    now
+  ).run();
+  return await getEmergencyContactStatus(db, eventInstanceId, userId);
+}
+
+export async function getEmergencyContactStatus(db, eventInstanceId, userId) {
+  if (!eventInstanceId || !userId) return { present: false, contact: null };
+  const contact = await db.prepare(`
+    SELECT id, event_instance_id, user_id, signup_id, name, relationship, phone, source, created_at, updated_at
+    FROM emergency_contacts
+    WHERE event_instance_id = ? AND user_id = ?
+  `).bind(eventInstanceId, userId).first();
+  const present = Boolean(contact && String(contact.name || "").trim() && String(contact.phone || "").trim());
+  return { present, contact: contact || null };
+}
+
+function progressionLabels(attendanceCount) {
+  const count = Number(attendanceCount || 0);
+  if (count >= 3) return ["repeat", "3x attendee"];
+  if (count >= 2) return ["repeat"];
+  return ["first-time"];
+}
+
+export async function listEventPhotos(db, eventSlug, eventInstanceId, { limit = 20 } = {}) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
+  const result = await db.prepare(`
+    SELECT id, event_slug, event_instance_id, uploaded_by, kind, status, storage_key, public_url,
+      original_filename, content_type, bytes, caption, created_at, updated_at
+    FROM event_photos
+    WHERE event_slug = ? AND event_instance_id = ?
+    ORDER BY created_at DESC
+    LIMIT ${safeLimit}
+  `).bind(eventSlug, eventInstanceId).all();
+  return result.results || [];
+}
+
+export async function countEventPhotos(db, eventSlug, eventInstanceId) {
+  const row = await db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM event_photos
+    WHERE event_slug = ? AND event_instance_id = ?
+  `).bind(eventSlug, eventInstanceId).first();
+  return Number(row?.count || 0);
+}
+
+export async function createEventPhotoRecord(db, input) {
+  const now = new Date().toISOString();
+  const id = input.id || generateId("pho");
+  await db.prepare(`
+    INSERT INTO event_photos (
+      id, event_slug, event_instance_id, uploaded_by, kind, status, storage_key, public_url,
+      original_filename, content_type, bytes, caption, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    id,
+    input.eventSlug,
+    input.eventInstanceId,
+    input.uploadedBy || null,
+    input.kind,
+    input.status || "uploaded",
+    input.storageKey,
+    input.publicUrl || null,
+    input.originalFilename || null,
+    input.contentType || null,
+    input.bytes || null,
+    input.caption || null,
+    now,
+    now
+  ).run();
+  return {
+    id,
+    event_slug: input.eventSlug,
+    event_instance_id: input.eventInstanceId,
+    uploaded_by: input.uploadedBy || null,
+    kind: input.kind,
+    status: input.status || "uploaded",
+    storage_key: input.storageKey,
+    public_url: input.publicUrl || null,
+    original_filename: input.originalFilename || null,
+    content_type: input.contentType || null,
+    bytes: input.bytes || null,
+    caption: input.caption || null,
+    created_at: now,
+    updated_at: now
+  };
+}
+
+export async function getEventCockpit(db, eventSlug, eventInstanceId) {
+  const instance = await getEventInstance(db, eventSlug, eventInstanceId);
+  if (!instance) {
+    throw Object.assign(new Error("Event instance not found"), { status: 404 });
+  }
+  const event = await getEvent(db, eventSlug);
+  if (!event) {
+    throw Object.assign(new Error("Event not found"), { status: 404 });
+  }
+  const [photoRows, eventPhotoCount] = await Promise.all([
+    listEventPhotos(db, eventSlug, eventInstanceId, { limit: 8 }),
+    countEventPhotos(db, eventSlug, eventInstanceId)
+  ]);
+  const rosterResult = await db.prepare(`
+    SELECT
+      u.id AS user_id,
+      s.id AS signup_id,
+      s.event_instance_id,
+      COALESCE(s.name, u.name) AS name,
+      u.email,
+      1 AS is_signed_up,
+      COALESCE(pcs.signed_up_at, s.created_at) AS signed_up_at,
+      pcs.checked_in_at,
+      CASE WHEN ec.id IS NOT NULL AND length(trim(COALESCE(ec.name, ''))) > 0 AND length(trim(COALESCE(ec.phone, ''))) > 0 THEN 1 ELSE 0 END AS emergency_contact_present,
+      (
+        SELECT COUNT(DISTINCT epe.event_instance_id)
+        FROM event_participant_events epe
+        WHERE epe.user_id = u.id AND epe.event_type = 'checked_in'
+      ) AS attendance_count
+    FROM signups s
+    JOIN users u ON u.id = s.user_id
+    LEFT JOIN event_participant_current_state pcs
+      ON pcs.event_instance_id = s.event_instance_id AND pcs.user_id = s.user_id
+    LEFT JOIN emergency_contacts ec
+      ON ec.event_instance_id = s.event_instance_id AND ec.user_id = s.user_id
+    WHERE s.event_slug = ? AND s.event_instance_id = ?
+    ORDER BY pcs.checked_in_at IS NULL DESC, lower(COALESCE(s.name, u.name, u.email)) ASC
+  `).bind(eventSlug, eventInstanceId).all();
+  const roster = (rosterResult.results || []).map((row) => {
+    const attendanceCount = Number(row.attendance_count || 0);
+    return {
+      user_id: row.user_id,
+      signup_id: row.signup_id,
+      event_instance_id: row.event_instance_id,
+      name: row.name,
+      email: row.email,
+      is_signed_up: Boolean(row.is_signed_up),
+      signed_up_at: row.signed_up_at,
+      checked_in_at: row.checked_in_at,
+      emergency_contact_present: Boolean(row.emergency_contact_present),
+      attendance_count: attendanceCount,
+      progression_labels: progressionLabels(attendanceCount)
+    };
+  });
+  const summary = {
+    signed_up_count: roster.length,
+    checked_in_count: roster.filter((row) => row.checked_in_at).length,
+    missing_emergency_contact_count: roster.filter((row) => !row.emergency_contact_present).length,
+    event_photo_count: eventPhotoCount,
+    repeat_attendee_count: roster.filter((row) => row.attendance_count >= 2).length
+  };
+  return {
+    event: { slug: event.slug, title: event.title },
+    instance: {
+      id: instance.id,
+      instance_key: instance.instance_key,
+      starts_at: instance.starts_at,
+      ends_at: instance.ends_at,
+      status: instance.status,
+      title: instance.title
+    },
+    summary,
+    roster,
+    photos: { count: eventPhotoCount, recent: photoRows }
+  };
 }
 
 export async function getUserById(db, userId) {
@@ -539,11 +766,14 @@ export async function searchCheckinCandidates(db, eventSlug, { eventInstanceId, 
         s.event_instance_id,
         s.email_list_opt_in,
         1 AS is_signed_up,
-        pcs.checked_in_at
+        pcs.checked_in_at,
+        CASE WHEN ec.id IS NOT NULL AND length(trim(COALESCE(ec.name, ''))) > 0 AND length(trim(COALESCE(ec.phone, ''))) > 0 THEN 1 ELSE 0 END AS emergency_contact_present
       FROM signups s
       JOIN users u ON u.id = s.user_id
       LEFT JOIN event_participant_current_state pcs
         ON pcs.event_instance_id = s.event_instance_id AND pcs.user_id = u.id
+      LEFT JOIN emergency_contacts ec
+        ON ec.event_instance_id = s.event_instance_id AND ec.user_id = u.id
       WHERE s.event_slug = ? AND s.event_instance_id = ?
       ORDER BY pcs.checked_in_at IS NULL DESC, lower(COALESCE(s.name, u.name, u.email)) ASC
       LIMIT ${safeLimit}
@@ -564,12 +794,15 @@ export async function searchCheckinCandidates(db, eventSlug, { eventInstanceId, 
       s.event_instance_id,
       s.email_list_opt_in,
       CASE WHEN s.id IS NULL THEN 0 ELSE 1 END AS is_signed_up,
-      pcs.checked_in_at
+      pcs.checked_in_at,
+      CASE WHEN ec.id IS NOT NULL AND length(trim(COALESCE(ec.name, ''))) > 0 AND length(trim(COALESCE(ec.phone, ''))) > 0 THEN 1 ELSE 0 END AS emergency_contact_present
     FROM users u
     LEFT JOIN signups s
       ON s.user_id = u.id AND s.event_instance_id = ?
     LEFT JOIN event_participant_current_state pcs
       ON pcs.event_instance_id = s.event_instance_id AND pcs.user_id = u.id
+    LEFT JOIN emergency_contacts ec
+      ON ec.event_instance_id = s.event_instance_id AND ec.user_id = u.id
     WHERE lower(u.email) LIKE ?
        OR lower(COALESCE(u.name, '')) LIKE ?
        OR lower(trim(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, ''))) LIKE ?
@@ -612,32 +845,52 @@ export async function checkInAttendee(db, event, input, { eventInstance = null, 
       ? await syncEmailList(signup)
       : { status: "skipped_not_configured", detail: "No email-list sync callback configured" };
     savedSignup = await upsertSignup(db, event.slug, userInput, mailingListResult, resolvedInstance);
+  } else if (input.emergency_contact_name || input.emergency_contact_phone || input.emergency_contact?.name || input.emergency_contact?.phone) {
+    const { contact, errors } = normalizeEmergencyContactInput(input);
+    if (errors.length) throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
+    await upsertEmergencyContact(db, {
+      eventInstanceId: resolvedInstance.id,
+      userId: savedSignup.user_id,
+      signupId: savedSignup.id,
+      contact,
+      source: "admin-checkin"
+    });
   }
 
-  const now = new Date().toISOString();
-  await db.prepare(`
-    INSERT OR IGNORE INTO event_participant_events (
-      id, event_slug, event_instance_id, user_id, signup_id, event_type, actor, source, data_json, occurred_at, created_at
-    ) VALUES (?, ?, ?, ?, ?, 'checked_in', ?, ?, ?, ?, ?)
-  `).bind(
-    `evt_${resolvedInstance.id}_${savedSignup.user_id}_checked_in`,
-    event.slug,
-    resolvedInstance.id,
-    savedSignup.user_id,
-    savedSignup.id,
-    actor,
-    source,
-    stringifyJson({ manual: true }),
-    now,
-    now
-  ).run();
+  const emergency = await getEmergencyContactStatus(db, resolvedInstance.id, savedSignup.user_id);
+  if (!emergency.present) {
+    throw Object.assign(new Error("Emergency contact is required before check-in."), { status: 409, code: "missing_emergency_contact" });
+  }
+
+  const alreadyCheckedIn = Boolean(savedSignup.checked_in_at);
+  if (!alreadyCheckedIn) {
+    const now = new Date().toISOString();
+    await db.prepare(`
+      INSERT OR IGNORE INTO event_participant_events (
+        id, event_slug, event_instance_id, user_id, signup_id, event_type, actor, source, data_json, occurred_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, 'checked_in', ?, ?, ?, ?, ?)
+    `).bind(
+      `evt_${resolvedInstance.id}_${savedSignup.user_id}_checked_in`,
+      event.slug,
+      resolvedInstance.id,
+      savedSignup.user_id,
+      savedSignup.id,
+      actor,
+      source,
+      stringifyJson({ manual: true }),
+      now,
+      now
+    ).run();
+  }
 
   const refreshed = await getSignupByInstanceAndUser(db, event.slug, resolvedInstance.id, savedSignup.user_id);
+  const checkedInAt = refreshed?.checked_in_at || savedSignup.checked_in_at || new Date().toISOString();
   return {
     event,
     instance: resolvedInstance,
-    signup: refreshed || { ...savedSignup, checked_in_at: now },
-    checked_in_at: refreshed?.checked_in_at || now
+    signup: refreshed || { ...savedSignup, checked_in_at: checkedInAt },
+    checked_in_at: checkedInAt,
+    already_checked_in: alreadyCheckedIn
   };
 }
 
@@ -759,11 +1012,14 @@ export function renderEventPageHtml(event) {
   const when = escapeHtml(formatEventDate(event.starts_at));
   const signupForm = signupOpen ? `
     <form id="signup-form" class="signup-card">
-      <h2>Sign up</h2>
+      <h2>Save your Hack Hours spot</h2>
+      <p class="signup-help">Emergency contact is for event safety only — not profile enrichment.</p>
       <label>Name <input name="name" required autocomplete="name"></label>
       <label>Email <input name="email" type="email" required autocomplete="email"></label>
+      <label>Emergency contact name <input name="emergency_contact_name" required autocomplete="off"></label>
+      <label>Emergency contact phone <input name="emergency_contact_phone" required autocomplete="tel"></label>
       <label class="checkbox"><input name="email_list_opt_in" type="checkbox" checked> Send me Hack the Valley updates</label>
-      <button type="submit">Sign up</button>
+      <button type="submit">Save my spot</button>
       <p id="form-message" role="status"></p>
     </form>
     <script>
@@ -787,7 +1043,7 @@ export function renderEventPageHtml(event) {
           if (!response.ok) throw new Error(data.error || "Signup failed");
           form.reset();
           button.textContent = "You're signed up";
-          message.textContent = "You're on the list.";
+          message.textContent = "You're on the list. Emergency contact saved. Check-in QR/token support is coming; organizers can check you in by search today.";
         } catch (error) {
           button.disabled = false;
           message.textContent = error.message;
@@ -827,6 +1083,6 @@ export async function handleErrors(fn) {
   } catch (error) {
     const status = error.status || 500;
     if (status >= 500) console.error(error);
-    return jsonResponse({ error: error.message || "Internal server error", errors: error.errors }, { status });
+    return jsonResponse({ error: error.message || "Internal server error", errors: error.errors, code: error.code }, { status });
   }
 }

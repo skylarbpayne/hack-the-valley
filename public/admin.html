@@ -79,6 +79,16 @@
               <p id="event-photo-status" class="text-sm text-slate-400"></p>
               <div id="event-photo-list" class="space-y-2 text-sm text-slate-300"></div>
             </form>
+            <section id="followup-packet" class="bg-bc-dark border border-slate-700 rounded-2xl p-4 space-y-3">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <h3 class="font-black text-lg">Follow-up packet</h3>
+                  <p class="text-sm text-slate-400">Builds attended/no-show/repeat segments and a draft. Nothing sends from here.</p>
+                </div>
+                <button id="load-followup-packet" type="button" class="border border-bc-cyan text-bc-cyan px-3 py-2 rounded-lg text-sm font-black hover:bg-bc-cyan hover:text-bc-dark">Build</button>
+              </div>
+              <div id="followup-packet-output" class="space-y-2 text-sm text-slate-300"></div>
+            </section>
           </aside>
         </div>
       </section>
@@ -456,6 +466,48 @@
       list.innerHTML = photos.map((photo) => `<div class="rounded-lg border border-slate-700 p-2"><span class="font-semibold">${escapeHtml(photo.kind)}</span> ${escapeHtml(photo.original_filename || photo.storage_key)}</div>`).join("");
     }
 
+    async function loadFollowupPacket(slug = currentCockpitEvent?.slug || "hack-hours", instanceId = currentCockpitInstanceId) {
+      const output = $("followup-packet-output");
+      if (!instanceId) {
+        output.innerHTML = `<div class="rounded-lg border border-amber-500/50 p-3 text-amber-300">Load a cockpit instance first.</div>`;
+        return null;
+      }
+      output.innerHTML = `<div class="text-slate-400">Building follow-up packet…</div>`;
+      const data = await api(`/api/events/${encodeURIComponent(slug)}/instances/${encodeURIComponent(instanceId)}/followup`);
+      renderFollowupPacket(data);
+      return data;
+    }
+
+    function renderFollowupPacket(data) {
+      const output = $("followup-packet-output");
+      const summary = data.summary || {};
+      const segments = data.segments || {};
+      const draft = data.followup_draft || {};
+      const segmentLine = [
+        `attended ${segments.attended?.length || 0}`,
+        `no-show ${segments.no_show?.length || 0}`,
+        `first-time ${segments.first_time?.length || 0}`,
+        `repeat ${segments.repeat?.length || 0}`
+      ].join(" • ");
+      output.innerHTML = `
+        <div class="grid grid-cols-2 gap-2">
+          ${cockpitSummaryCard("Attended", summary.checked_in_count ?? 0, "text-green-300")}
+          ${cockpitSummaryCard("No-show", summary.no_show_count ?? 0, "text-amber-300")}
+        </div>
+        <div class="rounded-xl border border-slate-700 p-3">
+          <div class="text-xs uppercase tracking-[0.16em] text-slate-500">Segments</div>
+          <div class="mt-1 text-white font-semibold">${escapeHtml(segmentLine)}</div>
+        </div>
+        <div class="rounded-xl border border-slate-700 p-3">
+          <div class="text-xs uppercase tracking-[0.16em] text-slate-500">Draft status</div>
+          <div class="mt-1 text-white font-semibold">${escapeHtml(draft.status || "needs_review")} ${draft.requires_approval ? "• approval required" : ""}</div>
+          <div class="mt-1 text-slate-400">${escapeHtml(draft.subject || "")}</div>
+        </div>
+        <label class="block"><span class="text-xs uppercase tracking-[0.16em] text-slate-500">Attended CSV</span><textarea readonly rows="4" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-700 p-3 text-xs text-slate-200">${escapeHtml(data.segment_csv?.attended || "")}</textarea></label>
+        <label class="block"><span class="text-xs uppercase tracking-[0.16em] text-slate-500">No-show CSV</span><textarea readonly rows="4" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-700 p-3 text-xs text-slate-200">${escapeHtml(data.segment_csv?.no_show || "")}</textarea></label>
+      `;
+    }
+
     async function uploadCockpitEventPhoto(file) {
       if (!currentCockpitEvent || !currentCockpitInstanceId) throw new Error("Load a cockpit before uploading event photos.");
       const kind = file.type.startsWith("video/") ? "video" : "photo";
@@ -786,6 +838,9 @@
 
     eventForm.image_url.addEventListener("input", () => updateImagePreview(eventForm.image_url.value));
     $("refresh-cockpit").addEventListener("click", () => loadEventCockpit(currentCockpitEvent?.slug || "hack-hours", currentCockpitInstanceId).catch(() => {}));
+    $("load-followup-packet").addEventListener("click", () => loadFollowupPacket(currentCockpitEvent?.slug || "hack-hours", currentCockpitInstanceId).catch((error) => {
+      $("followup-packet-output").innerHTML = `<div class="rounded-lg border border-red-500/50 p-3 text-red-300">${escapeHtml(error.message)}</div>`;
+    }));
     $("cockpit-search").addEventListener("input", renderCockpitRoster);
     $("cockpit-contact-form").addEventListener("submit", async (event) => {
       event.preventDefault();

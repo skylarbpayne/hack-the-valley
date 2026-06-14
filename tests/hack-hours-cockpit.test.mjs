@@ -328,14 +328,19 @@ test("event photo route validates auth, R2, MIME, filename, and event-photo stor
   assert.equal(stored.size, 1);
 });
 
-test("admin page defaults to Hack Hours cockpit with roster, contact resolution, and event photo upload", () => {
+test("admin page defaults to Hack Hours cockpit with roster, contact resolution, event photo upload, and follow-up packet", () => {
   const html = read("public/admin.html");
   assert.match(html, /id="event-cockpit"/);
   assert.match(html, /id="cockpit-roster"/);
   assert.match(html, /id="cockpit-summary"/);
   assert.match(html, /id="event-photo-upload"/);
+  assert.match(html, /id="followup-packet"/);
+  assert.match(html, /id="load-followup-packet"/);
+  assert.match(html, /id="followup-packet-output"/);
   assert.match(html, /function loadEventCockpit/);
+  assert.match(html, /function loadFollowupPacket/);
   assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(slug\)\}\/instances\/\$\{encodeURIComponent\(instanceId\)\}\/cockpit/);
+  assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(slug\)\}\/instances\/\$\{encodeURIComponent\(instanceId\)\}\/followup/);
   assert.match(html, /name="emergency_contact_name"/);
   assert.match(html, /name="emergency_contact_phone"/);
   assert.match(html, /Add emergency contact|Update emergency contact/);

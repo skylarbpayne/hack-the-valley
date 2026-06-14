@@ -3,24 +3,180 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  awardBadge,
   checkInAttendee,
   countEventPhotos,
   createEventPhotoRecord,
   getEventCockpit,
   getEventFollowupPacket,
+  getUserCommunityState,
+  linkProjectSubmission,
   listEventPhotos,
+  listEventProjectSubmissions,
   normalizeEmergencyContactInput,
+  normalizeProjectInput,
   normalizeSignupInput,
   renderEventPageHtml,
   requireOrganizerAccess,
   requireSuperAdminAccess,
   upsertEmergencyContact,
+  upsertProjectFromSubmission,
   upsertSignup
 } from "../functions/_lib/event-platform.js";
 import worker from "../worker.js";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), "utf8");
+
+test("schema and migrations add project submission links and badge awards", () => {
+  const schema = read("schema.sql");
+  const migration = read("migrations/0009_projects_and_badges.sql");
+  for (const text of [schema, migration]) {
+    assert.match(text, /CREATE TABLE IF NOT EXISTS projects/);
+    assert.match(text, /canonical_submission_id TEXT REFERENCES submissions\(id\)/);
+    assert.match(text, /CREATE TABLE IF NOT EXISTS project_members/);
+    assert.match(text, /CREATE TABLE IF NOT EXISTS event_project_submissions/);
+    assert.match(text, /event_instance_id TEXT REFERENCES event_instances\(id\)/);
+    assert.match(text, /submission_id TEXT REFERENCES submissions\(id\)/);
+    assert.match(text, /CREATE TABLE IF NOT EXISTS badges/);
+    assert.match(text, /CREATE TABLE IF NOT EXISTS user_badges/);
+    assert.match(text, /UNIQUE\(user_id, badge_id, event_instance_id\)/);
+  }
+});
+
+test("project helpers create a durable project and link it as an event submission", async () => {
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM submissions/.test(sql)) return {
+            id: "sub_1",
+            project_title: "Valley SAT Prep",
+            team_name: "Sequoia Sasquatches",
+            track: "Education | AI",
+            payload_json: JSON.stringify({ description: "SAT prep insight tool", repoLink: "https://github.com/example/sat", demoLink: "https://sat.example.com" })
+          };
+          if (/FROM projects/.test(sql)) return { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+      return statement;
+    }
+  };
+
+  const normalized = normalizeProjectInput({ title: "Valley SAT Prep", team_name: "Sequoia Sasquatches" });
+  assert.deepEqual(normalized.errors, []);
+  assert.equal(normalized.project.slug, "valley-sat-prep");
+
+  const project = await upsertProjectFromSubmission(db, "sub_1", { eventSlug: "hack-the-valley-2026", eventInstanceId: "inst_htv_2026" });
+  assert.equal(project.id, "prj_valley_sat_prep");
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO projects/);
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO event_project_submissions/);
+
+  await linkProjectSubmission(db, {
+    eventSlug: "hack-the-valley-2026",
+    eventInstanceId: "inst_htv_2026",
+    projectId: "prj_valley_sat_prep",
+    submissionId: "sub_1",
+    status: "accepted"
+  });
+  const link = statements.find((s) => /INSERT INTO event_project_submissions/.test(s.sql) && s.args.includes("accepted"));
+  assert.ok(link);
+});
+
+test("badge helpers award badges idempotently with event provenance", async () => {
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM badges/.test(sql)) return { id: "bdg_first_attendance", slug: "first-attendance", name: "First Attendance", badge_type: "attendance" };
+          if (/FROM user_badges/.test(sql)) return { id: "ubg_usr_maya_bdg_first_attendance_inst_1", user_id: "usr_maya", badge_id: "bdg_first_attendance", event_instance_id: "inst_1" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+      return statement;
+    }
+  };
+
+  const award = await awardBadge(db, {
+    userId: "usr_maya",
+    badgeSlug: "first-attendance",
+    eventInstanceId: "inst_1",
+    source: "admin",
+    awardedBy: "organizer@example.com"
+  });
+  assert.equal(award.badge.slug, "first-attendance");
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO badges/);
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT OR IGNORE INTO user_badges/);
+  assert.ok(statements.some((s) => s.args.includes("usr_maya") && s.args.includes("inst_1")));
+});
+
+test("user community state includes roles, attendance, badges, and submitted projects", async () => {
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async first() {
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          return null;
+        },
+        async all() {
+          if (/FROM roles/.test(sql)) return { results: [{ role: "organizer", scope_type: "event", scope_id: "hack-hours" }] };
+          if (/FROM event_participant_events/.test(sql)) return { results: [{ event_slug: "hack-hours", event_instance_id: "inst_1", event_type: "checked_in", occurred_at: "2026-06-20T15:05:00.000Z" }] };
+          if (/FROM user_badges/.test(sql)) return { results: [{ slug: "first-attendance", name: "First Attendance", event_instance_id: "inst_1" }] };
+          if (/FROM event_project_submissions/.test(sql)) return { results: [{ project_id: "prj_valley_sat_prep", title: "Valley SAT Prep", submission_id: "sub_1", event_slug: "hack-the-valley-2026" }] };
+          return { results: [] };
+        }
+      };
+    }
+  };
+
+  const state = await getUserCommunityState(db, "usr_maya");
+  assert.equal(state.user.email, "maya@example.com");
+  assert.deepEqual(state.roles.map((role) => role.role), ["organizer"]);
+  assert.deepEqual(state.badges.map((badge) => badge.slug), ["first-attendance"]);
+  assert.deepEqual(state.projects.map((project) => project.title), ["Valley SAT Prep"]);
+  assert.equal(state.attendance.length, 1);
+});
+
+test("listEventProjectSubmissions returns event-linked projects without private contact fields", async () => {
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async all() {
+          return { results: [{
+            event_slug: "hack-the-valley-2026",
+            event_instance_id: "inst_htv_2026",
+            project_id: "prj_calcguide",
+            submission_id: "sub_calcguide",
+            title: "CalcGuide",
+            team_name: "NewtonsNewts",
+            status: "accepted",
+            contact_email: "private@example.com"
+          }] };
+        }
+      };
+    }
+  };
+
+  const projects = await listEventProjectSubmissions(db, "hack-the-valley-2026", "inst_htv_2026");
+  assert.equal(projects[0].title, "CalcGuide");
+  assert.equal(projects[0].submission_id, "sub_calcguide");
+  assert.equal(Object.hasOwn(projects[0], "contact_email"), false);
+});
 
 test("schema and migration add Hack Hours cockpit tables without scope creep", () => {
   const schema = read("schema.sql");
@@ -35,9 +191,10 @@ test("schema and migration add Hack Hours cockpit tables without scope creep", (
     assert.match(text, /CREATE TABLE IF NOT EXISTS roles/);
     assert.match(text, /scope_id TEXT NOT NULL DEFAULT '\*'/);
     assert.match(text, /WHERE revoked_at IS NULL/);
-    assert.doesNotMatch(text, /event_photos[\s\S]*project_id/);
-    assert.doesNotMatch(text, /event_photos[\s\S]*submission_id/);
-    assert.doesNotMatch(text, /event_photos[\s\S]*participant_user_id/);
+    const eventPhotosTable = text.match(/CREATE TABLE IF NOT EXISTS event_photos \([\s\S]*?\n\);/)?.[0] || "";
+    assert.doesNotMatch(eventPhotosTable, /project_id/);
+    assert.doesNotMatch(eventPhotosTable, /submission_id/);
+    assert.doesNotMatch(eventPhotosTable, /participant_user_id/);
   }
 });
 
@@ -45,7 +202,11 @@ test("package check script covers all event cockpit route modules", () => {
   const pkg = JSON.parse(read("package.json"));
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/checkins\/index\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/cockpit\/index\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/followup\/index\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/projects\/index\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/photos\/index\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/users\/\[id\]\/state\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/users\/\[id\]\/badges\.js/);
 });
 
 test("emergency contact input is required for public signups and ignores school/org", () => {
@@ -193,6 +354,78 @@ test("follow-up packet builds approval-gated draft and safe segments without eme
   assert.doesNotMatch(packet.segment_csv.attended, /emergency|phone|contact/i);
 });
 
+test("worker routes event project submissions API and requires admin", async () => {
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM submissions/.test(sql)) return { id: "sub_1", project_title: "CalcGuide", team_name: "NewtonsNewts", track: "Education", payload_json: JSON.stringify({ description: "Calculus tutor" }) };
+          if (/FROM projects/.test(sql)) return { id: "prj_calcguide", slug: "calcguide", title: "CalcGuide" };
+          return null;
+        },
+        async all() {
+          return { results: [{ event_slug: "hack-the-valley-2026", event_instance_id: "inst_2026", project_id: "prj_calcguide", submission_id: "sub_1", title: "CalcGuide", team_name: "NewtonsNewts", status: "accepted", contact_email: "private@example.com" }] };
+        }
+      };
+    }
+  };
+  const url = "https://hackthevalley.org/api/events/hack-the-valley-2026/instances/inst_2026/projects";
+  const unauthorized = await worker.fetch(new Request(url), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(unauthorized.status, 401);
+  const create = await worker.fetch(new Request(url, {
+    method: "POST",
+    headers: { Authorization: "Bearer secret", "Content-Type": "application/json" },
+    body: JSON.stringify({ submission_id: "sub_1", status: "accepted" })
+  }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(create.status, 200);
+  const created = await create.json();
+  assert.equal(created.project.title, "CalcGuide");
+  const list = await worker.fetch(new Request(url, { headers: { Authorization: "Bearer secret" } }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(list.status, 200);
+  const listed = await list.json();
+  assert.equal(listed.projects[0].title, "CalcGuide");
+  assert.equal(Object.hasOwn(listed.projects[0], "contact_email"), false);
+});
+
+test("worker routes user state and badge award APIs behind admin auth", async () => {
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          if (/FROM badges/.test(sql)) return { id: "bdg_shared_demo", slug: "shared-demo", name: "Shared a Demo", badge_type: "demo" };
+          if (/FROM user_badges/.test(sql)) return { id: "ubg_1", user_id: "usr_maya", badge_id: "bdg_shared_demo", event_instance_id: "inst_1" };
+          return null;
+        },
+        async all() {
+          if (/FROM user_badges/.test(sql)) return { results: [{ slug: "shared-demo", name: "Shared a Demo", event_instance_id: "inst_1" }] };
+          return { results: [] };
+        }
+      };
+    }
+  };
+  const stateUrl = "https://hackthevalley.org/api/users/usr_maya/state";
+  assert.equal((await worker.fetch(new Request(stateUrl), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {})).status, 401);
+  const stateResponse = await worker.fetch(new Request(stateUrl, { headers: { Authorization: "Bearer secret" } }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(stateResponse.status, 200);
+  const state = await stateResponse.json();
+  assert.equal(state.user.email, "maya@example.com");
+
+  const badgeUrl = "https://hackthevalley.org/api/users/usr_maya/badges";
+  const badgeResponse = await worker.fetch(new Request(badgeUrl, {
+    method: "POST",
+    headers: { Authorization: "Bearer secret", "Content-Type": "application/json" },
+    body: JSON.stringify({ badge_slug: "shared-demo", event_instance_id: "inst_1", source: "admin" })
+  }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(badgeResponse.status, 200);
+  const awarded = await badgeResponse.json();
+  assert.equal(awarded.badge.slug, "shared-demo");
+});
+
 test("worker routes follow-up packet API and requires admin", async () => {
   const fakeDb = {
     prepare(sql) {
@@ -328,7 +561,7 @@ test("event photo route validates auth, R2, MIME, filename, and event-photo stor
   assert.equal(stored.size, 1);
 });
 
-test("admin page defaults to Hack Hours cockpit with roster, contact resolution, event photo upload, and follow-up packet", () => {
+test("admin page defaults to Hack Hours cockpit with roster, participant state, badges, projects, contact resolution, event photo upload, and follow-up packet", () => {
   const html = read("public/admin.html");
   assert.match(html, /id="event-cockpit"/);
   assert.match(html, /id="cockpit-roster"/);
@@ -345,12 +578,21 @@ test("admin page defaults to Hack Hours cockpit with roster, contact resolution,
   assert.match(html, /name="emergency_contact_phone"/);
   assert.match(html, /Add emergency contact|Update emergency contact/);
   assert.match(html, /Event photos/);
+  assert.match(html, /id="participant-state"/);
+  assert.match(html, /id="participant-state-output"/);
+  assert.match(html, /data-view-state/);
+  assert.match(html, /data-award-badge/);
+  assert.match(html, /function loadParticipantState/);
+  assert.match(html, /function awardParticipantBadge/);
+  assert.match(html, /\/api\/users\/\$\{encodeURIComponent\(userId\)\}\/state/);
+  assert.match(html, /\/api\/users\/\$\{encodeURIComponent\(userId\)\}\/badges/);
+  assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(slug\)\}\/instances\/\$\{encodeURIComponent\(instanceId\)\}\/projects/);
+  assert.match(html, /Project submissions/);
+  assert.match(html, /Award demo badge/);
   assert.ok(html.indexOf("id=\"event-cockpit\"") < html.indexOf("id=\"event-form\""));
   const cockpit = html.slice(html.indexOf("id=\"event-cockpit\""), html.indexOf("id=\"events-admin\""));
   assert.doesNotMatch(cockpit, /School/);
   assert.doesNotMatch(cockpit, /Notes/);
   assert.doesNotMatch(cockpit, /Waiver/);
-  assert.doesNotMatch(cockpit, /Project upload/);
-  assert.doesNotMatch(cockpit, /projects? or submissions?/i);
   assert.doesNotMatch(cockpit, /participant upload/i);
 });

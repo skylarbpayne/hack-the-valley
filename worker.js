@@ -2,6 +2,7 @@ import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
 import * as eventCheckins from './functions/api/events/[slug]/checkins/index.js';
 import * as eventCockpit from './functions/api/events/[slug]/instances/[instanceId]/cockpit/index.js';
 import * as eventFollowup from './functions/api/events/[slug]/instances/[instanceId]/followup/index.js';
+import * as eventProjects from './functions/api/events/[slug]/instances/[instanceId]/projects/index.js';
 import * as eventPhotos from './functions/api/events/[slug]/instances/[instanceId]/photos/index.js';
 import * as eventImage from './functions/api/events/[slug]/image.js';
 import * as eventSlug from './functions/api/events/[slug].js';
@@ -13,6 +14,8 @@ import * as subscribe from './functions/api/subscribe.js';
 import { getDb, getEvent, handleErrors, renderEventPageHtml } from './functions/_lib/event-platform.js';
 import * as upload from './functions/api/upload.js';
 import * as users from './functions/api/users/index.js';
+import * as userBadges from './functions/api/users/[id]/badges.js';
+import * as userState from './functions/api/users/[id]/state.js';
 import { corsHeaders } from './functions/_shared/submissions.js';
 
 const API_ROUTES = {
@@ -85,6 +88,11 @@ function matchApiRoute(pathname) {
     return { routeModule: eventFollowup, params: { slug: decodeURIComponent(followupMatch[1]), instanceId: decodeURIComponent(followupMatch[2]) } };
   }
 
+  const projectsMatch = pathname.match(/^\/api\/events\/([^/]+)\/instances\/([^/]+)\/projects\/?$/);
+  if (projectsMatch) {
+    return { routeModule: eventProjects, params: { slug: decodeURIComponent(projectsMatch[1]), instanceId: decodeURIComponent(projectsMatch[2]) } };
+  }
+
   const photosMatch = pathname.match(/^\/api\/events\/([^/]+)\/instances\/([^/]+)\/photos\/?$/);
   if (photosMatch) {
     return { routeModule: eventPhotos, params: { slug: decodeURIComponent(photosMatch[1]), instanceId: decodeURIComponent(photosMatch[2]) } };
@@ -93,6 +101,16 @@ function matchApiRoute(pathname) {
   const imageMatch = pathname.match(/^\/api\/events\/([^/]+)\/image\/?$/);
   if (imageMatch) {
     return { routeModule: eventImage, params: { slug: decodeURIComponent(imageMatch[1]) } };
+  }
+
+  const userStateMatch = pathname.match(/^\/api\/users\/([^/]+)\/state\/?$/);
+  if (userStateMatch) {
+    return { routeModule: userState, params: { id: decodeURIComponent(userStateMatch[1]) } };
+  }
+
+  const userBadgesMatch = pathname.match(/^\/api\/users\/([^/]+)\/badges\/?$/);
+  if (userBadgesMatch) {
+    return { routeModule: userBadges, params: { id: decodeURIComponent(userBadgesMatch[1]) } };
   }
 
   const eventMatch = pathname.match(/^\/api\/events\/([^/]+)\/?$/);

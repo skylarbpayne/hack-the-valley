@@ -71,6 +71,20 @@
               <button class="w-full border border-bc-cyan text-bc-cyan px-4 py-3 rounded-lg font-black hover:bg-bc-cyan hover:text-bc-dark">Update emergency contact</button>
               <p id="cockpit-contact-status" class="text-sm text-slate-400"></p>
             </form>
+            <section id="participant-state" class="bg-bc-dark border border-slate-700 rounded-2xl p-4 space-y-3">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <h3 class="font-black text-lg">Participant state</h3>
+                  <p class="text-sm text-slate-400">Select someone from the roster to see roles, attendance, badges, and linked projects.</p>
+                </div>
+              </div>
+              <div id="participant-state-output" class="space-y-2 text-sm text-slate-300">No participant selected.</div>
+            </section>
+            <section id="event-project-submissions" class="bg-bc-dark border border-slate-700 rounded-2xl p-4 space-y-3">
+              <h3 class="font-black text-lg">Project submissions</h3>
+              <p class="text-sm text-slate-400">Projects linked to this event instance. Use the private submissions table for media review.</p>
+              <div id="event-project-list" class="space-y-2 text-sm text-slate-300">Load a cockpit to see linked projects.</div>
+            </section>
             <form id="event-photo-upload" class="bg-bc-dark border border-slate-700 rounded-2xl p-4 space-y-3">
               <h3 class="font-black text-lg">Event photos</h3>
               <p class="text-sm text-slate-400">Admin-only event photo/video uploads attach to this event instance.</p>
@@ -416,6 +430,31 @@
       ].join("");
       renderCockpitRoster();
       renderEventPhotos(data.photos?.recent || []);
+      loadEventProjects(data.event?.slug, data.instance?.id).catch((error) => {
+        $("event-project-list").innerHTML = `<div class="text-amber-300">${escapeHtml(error.message)}</div>`;
+      });
+    }
+
+    async function loadEventProjects(slug = currentCockpitEvent?.slug, instanceId = currentCockpitInstanceId) {
+      const list = $("event-project-list");
+      if (!slug || !instanceId) {
+        list.innerHTML = `<div class="text-slate-500">Load a cockpit instance first.</div>`;
+        return [];
+      }
+      const data = await api(`/api/events/${encodeURIComponent(slug)}/instances/${encodeURIComponent(instanceId)}/projects`);
+      const projects = data.projects || [];
+      if (!projects.length) {
+        list.innerHTML = `<div class="text-slate-500">No projects linked to this event instance yet.</div>`;
+        return [];
+      }
+      list.innerHTML = projects.map((project) => `
+        <div class="rounded-lg border border-slate-700 p-3">
+          <div class="font-bold text-white">${escapeHtml(project.title || "Untitled project")}</div>
+          <div class="text-slate-400">${escapeHtml(project.team_name || "Team TBA")} • ${escapeHtml(project.status || "submitted")}</div>
+          ${project.submission_id ? `<div class="font-mono text-xs text-slate-500 mt-1">submission ${escapeHtml(project.submission_id)}</div>` : ""}
+        </div>
+      `).join("");
+      return projects;
     }
 
     function renderCockpitRoster() {
@@ -440,6 +479,8 @@
             </div>
             <div class="flex flex-wrap gap-2">
               ${row.emergency_contact_present ? "" : `<button data-contact-user="${escapeHtml(row.user_id)}" class="border border-amber-400 text-amber-300 px-3 py-2 rounded-lg text-sm hover:bg-amber-400 hover:text-bc-dark">Add emergency contact</button>`}
+              <button data-view-state="${escapeHtml(row.user_id)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">View state</button>
+              <button data-award-badge="${escapeHtml(row.user_id)}" class="border border-purple-400 text-purple-300 px-3 py-2 rounded-lg text-sm hover:bg-purple-400 hover:text-bc-dark">Award demo badge</button>
               <button data-cockpit-checkin="${escapeHtml(row.user_id)}" class="bg-bc-cyan text-bc-dark px-3 py-2 rounded-lg text-sm font-black hover:bg-cyan-400">${row.checked_in_at ? "Already checked in" : "Check in"}</button>
             </div>
           </div>
@@ -455,6 +496,54 @@
           $("cockpit-event-context").textContent = error.message;
         }));
       });
+      container.querySelectorAll("[data-view-state]").forEach((button) => {
+        button.addEventListener("click", () => loadParticipantState(button.dataset.viewState).catch((error) => {
+          $("participant-state-output").innerHTML = `<div class="text-red-300">${escapeHtml(error.message)}</div>`;
+        }));
+      });
+      container.querySelectorAll("[data-award-badge]").forEach((button) => {
+        button.addEventListener("click", () => awardParticipantBadge(button.dataset.awardBadge, "shared-demo").catch((error) => {
+          $("participant-state-output").innerHTML = `<div class="text-red-300">${escapeHtml(error.message)}</div>`;
+        }));
+      });
+    }
+
+    async function loadParticipantState(userId) {
+      const output = $("participant-state-output");
+      output.innerHTML = `<div class="text-slate-400">Loading participant state…</div>`;
+      const state = await api(`/api/users/${encodeURIComponent(userId)}/state`);
+      renderParticipantState(state);
+      return state;
+    }
+
+    function renderParticipantState(state) {
+      const output = $("participant-state-output");
+      const badges = state.badges || [];
+      const attendance = state.attendance || [];
+      const roles = state.roles || [];
+      const projects = state.projects || [];
+      output.innerHTML = `
+        <div class="rounded-lg border border-slate-700 p-3">
+          <div class="font-black text-white">${escapeHtml(state.user?.name || state.user?.email || "Participant")}</div>
+          <div class="text-slate-400">${escapeHtml(state.user?.email || "")}</div>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          ${cockpitSummaryCard("Roles", roles.length)}
+          ${cockpitSummaryCard("Badges", badges.length, badges.length ? "text-purple-300" : "text-white")}
+          ${cockpitSummaryCard("Projects", projects.length)}
+        </div>
+        <div class="rounded-lg border border-slate-700 p-3"><div class="text-xs uppercase tracking-[0.16em] text-slate-500">Badges</div><div class="mt-1">${badges.length ? badges.map((badge) => escapeHtml(badge.name || badge.slug)).join(" • ") : "None yet"}</div></div>
+        <div class="rounded-lg border border-slate-700 p-3"><div class="text-xs uppercase tracking-[0.16em] text-slate-500">Attendance</div><div class="mt-1">${attendance.length ? attendance.slice(0, 4).map((event) => `${escapeHtml(event.event_slug || "event")} ${escapeHtml(event.event_type || "")}`).join(" • ") : "No attendance history yet"}</div></div>
+        <div class="rounded-lg border border-slate-700 p-3"><div class="text-xs uppercase tracking-[0.16em] text-slate-500">Projects</div><div class="mt-1">${projects.length ? projects.map((project) => escapeHtml(project.title || project.slug)).join(" • ") : "No linked projects yet"}</div></div>
+      `;
+    }
+
+    async function awardParticipantBadge(userId, badgeSlug) {
+      await api(`/api/users/${encodeURIComponent(userId)}/badges`, {
+        method: "POST",
+        body: JSON.stringify({ badge_slug: badgeSlug, event_instance_id: currentCockpitInstanceId, source: "admin" })
+      });
+      return loadParticipantState(userId);
     }
 
     function renderEventPhotos(photos) {

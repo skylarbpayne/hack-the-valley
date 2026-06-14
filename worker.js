@@ -1,4 +1,7 @@
 import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
+import * as authRequestCode from './functions/api/auth/request-code.js';
+import * as authVerifyCode from './functions/api/auth/verify-code.js';
+import * as me from './functions/api/me.js';
 import * as eventCheckins from './functions/api/events/[slug]/checkins/index.js';
 import * as eventCockpit from './functions/api/events/[slug]/instances/[instanceId]/cockpit/index.js';
 import * as eventFollowup from './functions/api/events/[slug]/instances/[instanceId]/followup/index.js';
@@ -20,6 +23,7 @@ import { corsHeaders } from './functions/_shared/submissions.js';
 
 const API_ROUTES = {
   '/api/media': media,
+  '/api/me': me,
   '/api/register': register,
   '/api/submissions': submissions,
   '/api/subscribe': subscribe,
@@ -66,6 +70,14 @@ async function routeApiRequest(request, env, ctx, routeModule, params = {}) {
 function matchApiRoute(pathname) {
   if (pathname === '/api/events') {
     return { routeModule: eventsIndex, params: {} };
+  }
+
+  if (pathname === '/api/auth/request-code') {
+    return { routeModule: authRequestCode, params: {} };
+  }
+
+  if (pathname === '/api/auth/verify-code') {
+    return { routeModule: authVerifyCode, params: {} };
   }
 
   const signupMatch = pathname.match(/^\/api\/events\/([^/]+)\/signups\/?$/);

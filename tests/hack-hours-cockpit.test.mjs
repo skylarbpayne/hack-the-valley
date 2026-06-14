@@ -8,6 +8,7 @@ import {
   countEventPhotos,
   createEventPhotoRecord,
   getEventCockpit,
+  getCurrentUserFromSession,
   getEventFollowupPacket,
   getUserCommunityState,
   linkProjectSubmission,
@@ -16,17 +17,121 @@ import {
   normalizeEmergencyContactInput,
   normalizeProjectInput,
   normalizeSignupInput,
+  requestLoginCode,
   renderEventPageHtml,
   requireOrganizerAccess,
   requireSuperAdminAccess,
   upsertEmergencyContact,
   upsertProjectFromSubmission,
-  upsertSignup
+  upsertSignup,
+  verifyLoginCode
 } from "../functions/_lib/event-platform.js";
 import worker from "../worker.js";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), "utf8");
+
+test("schema and migrations add passwordless user login sessions without passwords", () => {
+  const schema = read("schema.sql");
+  const migration = read("migrations/0010_passwordless_login.sql");
+  for (const text of [schema, migration]) {
+    assert.match(text, /CREATE TABLE IF NOT EXISTS auth_login_codes/);
+    assert.match(text, /code_hash TEXT NOT NULL/);
+    assert.match(text, /expires_at TEXT NOT NULL/);
+    assert.match(text, /consumed_at TEXT/);
+    assert.match(text, /CREATE TABLE IF NOT EXISTS user_sessions/);
+    assert.match(text, /token_hash TEXT NOT NULL UNIQUE/);
+    assert.match(text, /expires_at TEXT NOT NULL/);
+    assert.doesNotMatch(text, /password_hash|oauth_secret|refresh_token/i);
+  }
+});
+
+test("passwordless login creates a code, verifies it, and resolves current user from a session", async () => {
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/SELECT \* FROM users WHERE email/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          if (/FROM auth_login_codes/.test(sql)) return { id: "alc_1", user_id: "usr_maya", code_hash: this.args[1], expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM user_sessions/.test(sql)) return { id: "ses_1", user_id: "usr_maya", expires_at: "2999-01-01T00:00:00.000Z" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+      return statement;
+    }
+  };
+
+  const request = await requestLoginCode(db, { email: "MAYA@example.com", name: "Maya R." }, { HTV_AUTH_DEV_CODES: "1" });
+  assert.equal(request.ok, true);
+  assert.equal(request.email, "maya@example.com");
+  assert.match(request.dev_code, /^\d{6}$/);
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO auth_login_codes/);
+  assert.ok(statements.some((s) => s.args.includes("usr_maya")));
+
+  const verified = await verifyLoginCode(db, { email: "maya@example.com", code: request.dev_code });
+  assert.equal(verified.user.email, "maya@example.com");
+  assert.match(verified.session.token, /^htvs_/);
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO user_sessions/);
+  assert.match(statements.map((s) => s.sql).join("\n"), /UPDATE auth_login_codes/);
+
+  const current = await getCurrentUserFromSession(db, verified.session.token);
+  assert.equal(current.email, "maya@example.com");
+});
+
+test("worker exposes passwordless auth request, verify, and /api/me", async () => {
+  let lastSessionToken = null;
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/SELECT \* FROM users WHERE email/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          if (/FROM auth_login_codes/.test(sql)) return { id: "alc_1", user_id: "usr_maya", code_hash: this.args[1], expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM user_sessions/.test(sql)) return { id: "ses_1", user_id: "usr_maya", expires_at: "2999-01-01T00:00:00.000Z" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+    }
+  };
+
+  const requestResponse = await worker.fetch(new Request("https://hackthevalley.org/api/auth/request-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "maya@example.com", name: "Maya R." })
+  }), { HTV_DB: fakeDb, HTV_AUTH_DEV_CODES: "1" }, {});
+  assert.equal(requestResponse.status, 200);
+  const requested = await requestResponse.json();
+  assert.match(requested.dev_code, /^\d{6}$/);
+
+  const verifyResponse = await worker.fetch(new Request("https://hackthevalley.org/api/auth/verify-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "maya@example.com", code: requested.dev_code })
+  }), { HTV_DB: fakeDb }, {});
+  assert.equal(verifyResponse.status, 200);
+  const setCookie = verifyResponse.headers.get("set-cookie") || "";
+  assert.match(setCookie, /htv_session=/);
+  lastSessionToken = setCookie.match(/htv_session=([^;]+)/)?.[1];
+  assert.ok(lastSessionToken);
+
+  const meResponse = await worker.fetch(new Request("https://hackthevalley.org/api/me", {
+    headers: { Cookie: `htv_session=${lastSessionToken}` }
+  }), { HTV_DB: fakeDb }, {});
+  assert.equal(meResponse.status, 200);
+  const me = await meResponse.json();
+  assert.equal(me.user.email, "maya@example.com");
+});
 
 test("schema and migrations add project submission links and badge awards", () => {
   const schema = read("schema.sql");
@@ -200,6 +305,9 @@ test("schema and migration add Hack Hours cockpit tables without scope creep", (
 
 test("package check script covers all event cockpit route modules", () => {
   const pkg = JSON.parse(read("package.json"));
+  assert.match(pkg.scripts.check, /functions\/api\/auth\/request-code\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/auth\/verify-code\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/me\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/checkins\/index\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/cockpit\/index\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/followup\/index\.js/);

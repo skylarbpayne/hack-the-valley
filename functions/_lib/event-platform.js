@@ -444,6 +444,126 @@ export async function getUserCommunityState(db, userId) {
   };
 }
 
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(String(value));
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function randomDigits(length = 6) {
+  const array = new Uint32Array(length);
+  globalThis.crypto.getRandomValues(array);
+  return [...array].map((value) => String(value % 10)).join("");
+}
+
+function randomToken(prefix = "htvs") {
+  const raw = new Uint8Array(24);
+  globalThis.crypto.getRandomValues(raw);
+  const token = btoa(String.fromCharCode(...raw)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return `${prefix}_${token}`;
+}
+
+function addMinutes(date, minutes) {
+  return new Date(date.getTime() + minutes * 60 * 1000).toISOString();
+}
+
+function addDays(date, days) {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+export async function requestLoginCode(db, input = {}, env = {}) {
+  const email = normalizeEmail(input.email);
+  if (!EMAIL_RE.test(email)) throw Object.assign(new Error("valid email is required"), { status: 400 });
+  const user = await upsertUser(db, {
+    email,
+    name: input.name,
+    first_name: input.first_name,
+    last_name: input.last_name,
+    phone: input.phone
+  });
+  const code = input.code && /^\d{6}$/.test(String(input.code)) ? String(input.code) : randomDigits(6);
+  const now = new Date();
+  const createdAt = now.toISOString();
+  const expiresAt = addMinutes(now, Number(env.HTV_AUTH_CODE_TTL_MINUTES || 15));
+  const codeHash = await sha256Hex(`${user.id}:${email}:${code}`);
+  const id = generateId("alc");
+  await db.prepare(`
+    INSERT INTO auth_login_codes (
+      id, user_id, email, code_hash, purpose, created_at, expires_at, consumed_at, attempt_count
+    ) VALUES (?, ?, ?, ?, 'login', ?, ?, NULL, 0)
+  `).bind(id, user.id, email, codeHash, createdAt, expiresAt).run();
+  const response = {
+    ok: true,
+    user_id: user.id,
+    email,
+    delivery: env.RESEND_API_KEY ? "email_not_sent_requires_integration" : "not_configured",
+    expires_at: expiresAt
+  };
+  if (env.HTV_AUTH_DEV_CODES === "1") response.dev_code = code;
+  return response;
+}
+
+export async function verifyLoginCode(db, input = {}, env = {}) {
+  const email = normalizeEmail(input.email);
+  const code = String(input.code || "").trim();
+  if (!EMAIL_RE.test(email)) throw Object.assign(new Error("valid email is required"), { status: 400 });
+  if (!/^\d{6}$/.test(code)) throw Object.assign(new Error("six digit code is required"), { status: 400 });
+  const user = await db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first();
+  if (!user) throw Object.assign(new Error("Invalid or expired login code"), { status: 401 });
+  const codeHash = await sha256Hex(`${user.id}:${email}:${code}`);
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const loginCode = await db.prepare(`
+    SELECT *
+    FROM auth_login_codes
+    WHERE user_id = ? AND code_hash = ? AND consumed_at IS NULL AND expires_at > ?
+    ORDER BY created_at DESC
+    LIMIT 1
+  `).bind(user.id, codeHash, nowIso).first();
+  if (!loginCode) throw Object.assign(new Error("Invalid or expired login code"), { status: 401 });
+  await db.prepare("UPDATE auth_login_codes SET consumed_at = ? WHERE id = ?").bind(nowIso, loginCode.id).run();
+  const token = randomToken("htvs");
+  const tokenHash = await sha256Hex(token);
+  const sessionId = generateId("ses");
+  const expiresAt = addDays(now, Number(env.HTV_AUTH_SESSION_DAYS || 30));
+  await db.prepare(`
+    INSERT INTO user_sessions (
+      id, user_id, token_hash, created_at, expires_at, revoked_at, user_agent, ip_hint
+    ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+  `).bind(sessionId, user.id, tokenHash, nowIso, expiresAt, input.user_agent || null, input.ip_hint || null).run();
+  return {
+    ok: true,
+    user,
+    session: {
+      id: sessionId,
+      token,
+      expires_at: expiresAt
+    }
+  };
+}
+
+export async function getCurrentUserFromSession(db, token) {
+  const sessionToken = String(token || "").trim();
+  if (!sessionToken) return null;
+  const tokenHash = await sha256Hex(sessionToken);
+  const nowIso = new Date().toISOString();
+  return await db.prepare(`
+    SELECT
+      u.*,
+      us.id AS session_id,
+      us.expires_at AS session_expires_at
+    FROM user_sessions us
+    JOIN users u ON u.id = us.user_id
+    WHERE us.token_hash = ? AND us.revoked_at IS NULL AND us.expires_at > ?
+    LIMIT 1
+  `).bind(tokenHash, nowIso).first();
+}
+
+export function sessionCookie(token, expiresAt) {
+  const maxAge = Math.max(60, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+  return `htv_session=${encodeURIComponent(token)}; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax; Path=/`;
+}
+
 export async function listEvents(db, { includeArchived = false } = {}) {
   const baseSelect = `
     SELECT

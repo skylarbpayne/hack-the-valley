@@ -709,6 +709,60 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
   };
 }
 
+export async function getEventFollowupPacket(db, eventSlug, eventInstanceId) {
+  const cockpit = await getEventCockpit(db, eventSlug, eventInstanceId);
+  const attended = cockpit.roster.filter((row) => row.checked_in_at);
+  const noShow = cockpit.roster.filter((row) => !row.checked_in_at);
+  const firstTime = attended.filter((row) => Number(row.attendance_count || 0) <= 1);
+  const repeat = attended.filter((row) => Number(row.attendance_count || 0) >= 2);
+  const toSegmentRows = (rows, segment) => rows.map((row) => ({
+    email: row.email,
+    name: row.name,
+    segment,
+    checked_in_at: row.checked_in_at || null,
+    attendance_count: Number(row.attendance_count || 0)
+  }));
+  const segmentCsv = (rows, segment) => {
+    const columns = ["email", "name", "segment", "checked_in_at", "attendance_count"];
+    return [
+      columns.join(","),
+      ...toSegmentRows(rows, segment).map((row) => columns.map((column) => csvEscape(row[column])).join(","))
+    ].join("\n");
+  };
+  const summary = {
+    ...cockpit.summary,
+    no_show_count: noShow.length,
+    first_time_attendee_count: firstTime.length,
+    repeat_attendee_count: repeat.length
+  };
+  const title = cockpit.event.title || "Hack Hours";
+  return {
+    event: cockpit.event,
+    instance: cockpit.instance,
+    summary,
+    segments: {
+      attended: toSegmentRows(attended, "attended"),
+      no_show: toSegmentRows(noShow, "no_show"),
+      first_time: toSegmentRows(firstTime, "first_time"),
+      repeat: toSegmentRows(repeat, "repeat")
+    },
+    segment_csv: {
+      attended: segmentCsv(attended, "attended"),
+      no_show: segmentCsv(noShow, "no_show"),
+      first_time: segmentCsv(firstTime, "first_time"),
+      repeat: segmentCsv(repeat, "repeat")
+    },
+    followup_draft: {
+      status: "needs_review",
+      requires_approval: true,
+      channel: "resend_or_copy",
+      subject: `Thanks for coming to ${title}`,
+      preview_text: `Draft only: thank attendees, share next Hack Hours, and invite no-shows to the next session. No send occurs from this endpoint.`,
+      audience_segments: ["attended", "no_show", "first_time", "repeat"]
+    }
+  };
+}
+
 export async function getUserById(db, userId) {
   if (!userId) return null;
   return await db.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
@@ -959,7 +1013,8 @@ async function safeText(response) {
 }
 
 export function csvEscape(value) {
-  const str = value === undefined || value === null ? "" : String(value);
+  let str = value === undefined || value === null ? "" : String(value);
+  if (/^[=+\-@]/.test(str)) str = `'${str}`;
   if (/[",\n\r]/.test(str)) return `"${str.replaceAll('"', '""')}"`;
   return str;
 }

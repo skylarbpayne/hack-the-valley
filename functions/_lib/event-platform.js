@@ -195,6 +195,423 @@ function stringifyJson(value) {
   return JSON.stringify(value);
 }
 
+function parseJsonObject(value, fallback = {}) {
+  if (!value) return fallback;
+  if (typeof value === "object") return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeTracks(value) {
+  if (Array.isArray(value)) return value.map((track) => String(track).trim()).filter(Boolean);
+  if (typeof value === "string") return value.split(/[|,]/).map((track) => track.trim()).filter(Boolean);
+  return [];
+}
+
+function firstPresent(...values) {
+  for (const value of values) {
+    const trimmed = trimOrNull(value);
+    if (trimmed) return trimmed;
+  }
+  return null;
+}
+
+export function normalizeProjectInput(input = {}, existing = {}) {
+  const title = firstPresent(input.title, input.project_title, input.projectTitle, existing.title);
+  const slug = firstPresent(input.slug, existing.slug, slugify(title));
+  const tracks = normalizeTracks(input.tracks ?? input.track ?? existing.tracks_json);
+  const project = {
+    slug,
+    title,
+    team_name: firstPresent(input.team_name, input.teamName, input.team, existing.team_name),
+    description: firstPresent(input.description, input.summary, existing.description),
+    repo_url: firstPresent(input.repo_url, input.repoLink, input.repository_url, input.repository, existing.repo_url),
+    demo_url: firstPresent(input.demo_url, input.demoLink, input.demo, existing.demo_url),
+    tracks_json: stringifyJson(tracks),
+    canonical_submission_id: firstPresent(input.canonical_submission_id, input.submission_id, existing.canonical_submission_id)
+  };
+  const errors = [];
+  if (!project.title) errors.push("project title is required");
+  if (!project.slug || !SLUG_RE.test(project.slug)) errors.push("project slug must use lowercase letters, numbers, and hyphens");
+  return { project, errors };
+}
+
+const DEFAULT_BADGES = {
+  "first-attendance": { id: "bdg_first_attendance", name: "First Attendance", description: "Showed up to a Hack the Valley event.", badge_type: "attendance" },
+  "repeat-attendee": { id: "bdg_repeat_attendee", name: "Repeat Attendee", description: "Came back for another Hack the Valley event.", badge_type: "attendance" },
+  "three-time-attendee": { id: "bdg_three_time_attendee", name: "3x Attendee", description: "Attended three Hack the Valley sessions.", badge_type: "attendance" },
+  "shared-demo": { id: "bdg_shared_demo", name: "Shared a Demo", description: "Shared a project or demo with the community.", badge_type: "demo" },
+  "helped-mentor": { id: "bdg_helped_mentor", name: "Helped or Mentored", description: "Helped another builder, mentored, or organized.", badge_type: "contribution" }
+};
+
+function defaultBadgeForSlug(slug) {
+  return DEFAULT_BADGES[slug] || {
+    id: `bdg_${slug.replace(/-/g, "_")}`,
+    name: slug.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" "),
+    description: null,
+    badge_type: "community"
+  };
+}
+
+function sanitizeProjectRow(row = {}) {
+  const { contact_email, payload_json, uploads_json, ...safe } = row;
+  return safe;
+}
+
+export async function upsertProject(db, input = {}) {
+  const { project, errors } = normalizeProjectInput(input);
+  if (errors.length) throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
+  const now = new Date().toISOString();
+  const id = input.id && String(input.id).startsWith("prj_") ? String(input.id) : `prj_${project.slug.replace(/-/g, "_")}`;
+  await db.prepare(`
+    INSERT INTO projects (
+      id, slug, title, team_name, description, repo_url, demo_url, tracks_json, canonical_submission_id, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(slug) DO UPDATE SET
+      title = excluded.title,
+      team_name = COALESCE(excluded.team_name, projects.team_name),
+      description = COALESCE(excluded.description, projects.description),
+      repo_url = COALESCE(excluded.repo_url, projects.repo_url),
+      demo_url = COALESCE(excluded.demo_url, projects.demo_url),
+      tracks_json = COALESCE(excluded.tracks_json, projects.tracks_json),
+      canonical_submission_id = COALESCE(excluded.canonical_submission_id, projects.canonical_submission_id),
+      updated_at = excluded.updated_at
+  `).bind(
+    id,
+    project.slug,
+    project.title,
+    project.team_name,
+    project.description,
+    project.repo_url,
+    project.demo_url,
+    project.tracks_json,
+    project.canonical_submission_id,
+    now,
+    now
+  ).run();
+  return await db.prepare("SELECT * FROM projects WHERE slug = ?").bind(project.slug).first();
+}
+
+export async function linkProjectSubmission(db, { eventSlug, eventInstanceId = null, projectId, submissionId = null, status = "submitted", source = "submission_portal" } = {}) {
+  if (!eventSlug) throw Object.assign(new Error("eventSlug is required"), { status: 400 });
+  if (!projectId) throw Object.assign(new Error("projectId is required"), { status: 400 });
+  const now = new Date().toISOString();
+  const id = `eps_${eventSlug}_${eventInstanceId || "event"}_${projectId}_${submissionId || "manual"}`.replace(/[^a-zA-Z0-9_]+/g, "_");
+  await db.prepare(`
+    INSERT INTO event_project_submissions (
+      id, event_slug, event_instance_id, project_id, submission_id, status, source, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(event_slug, event_instance_id, project_id, submission_id) DO UPDATE SET
+      status = excluded.status,
+      source = excluded.source,
+      updated_at = excluded.updated_at
+  `).bind(id, eventSlug, eventInstanceId, projectId, submissionId, status, source, now, now).run();
+  return { id, event_slug: eventSlug, event_instance_id: eventInstanceId, project_id: projectId, submission_id: submissionId, status, source };
+}
+
+export async function upsertProjectFromSubmission(db, submissionId, { eventSlug = "hack-the-valley-2026", eventInstanceId = null, status = "submitted" } = {}) {
+  const submission = await db.prepare("SELECT * FROM submissions WHERE id = ?").bind(submissionId).first();
+  if (!submission) throw Object.assign(new Error("Submission not found"), { status: 404 });
+  const payload = parseJsonObject(submission.payload_json, {});
+  const project = await upsertProject(db, {
+    title: submission.project_title,
+    team_name: submission.team_name,
+    description: payload.description,
+    repo_url: payload.repoLink || payload.repo_url || payload.repository,
+    demo_url: payload.demoLink || payload.demo_url || payload.demo,
+    tracks: payload.tracks || submission.track,
+    canonical_submission_id: submission.id
+  });
+  await linkProjectSubmission(db, { eventSlug, eventInstanceId, projectId: project.id, submissionId: submission.id, status });
+  return project;
+}
+
+export async function listEventProjectSubmissions(db, eventSlug, eventInstanceId = null, { includeHidden = false } = {}) {
+  const statusFilter = includeHidden ? "" : "AND eps.status != 'hidden'";
+  const instanceFilter = eventInstanceId ? "AND eps.event_instance_id = ?" : "";
+  const args = eventInstanceId ? [eventSlug, eventInstanceId] : [eventSlug];
+  const result = await db.prepare(`
+    SELECT
+      eps.event_slug,
+      eps.event_instance_id,
+      eps.status,
+      eps.source,
+      eps.created_at,
+      p.id AS project_id,
+      p.slug,
+      p.title,
+      p.team_name,
+      p.description,
+      p.repo_url,
+      p.demo_url,
+      p.tracks_json,
+      s.id AS submission_id
+    FROM event_project_submissions eps
+    JOIN projects p ON p.id = eps.project_id
+    LEFT JOIN submissions s ON s.id = eps.submission_id
+    WHERE eps.event_slug = ? ${instanceFilter} ${statusFilter}
+    ORDER BY lower(p.title) ASC
+  `).bind(...args).all();
+  return (result.results || []).map(sanitizeProjectRow);
+}
+
+export async function ensureBadge(db, { slug, name, description = null, badge_type = "community", rule_json = null } = {}) {
+  const safeSlug = slugify(slug || name);
+  if (!safeSlug) throw Object.assign(new Error("badge slug is required"), { status: 400 });
+  const defaults = defaultBadgeForSlug(safeSlug);
+  const now = new Date().toISOString();
+  await db.prepare(`
+    INSERT INTO badges (id, slug, name, description, badge_type, rule_json, active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+    ON CONFLICT(slug) DO UPDATE SET
+      name = COALESCE(excluded.name, badges.name),
+      description = COALESCE(excluded.description, badges.description),
+      badge_type = COALESCE(excluded.badge_type, badges.badge_type),
+      rule_json = COALESCE(excluded.rule_json, badges.rule_json),
+      active = 1,
+      updated_at = excluded.updated_at
+  `).bind(
+    defaults.id,
+    safeSlug,
+    name || defaults.name,
+    description ?? defaults.description,
+    badge_type || defaults.badge_type,
+    stringifyJson(rule_json),
+    now,
+    now
+  ).run();
+  return await db.prepare("SELECT * FROM badges WHERE slug = ?").bind(safeSlug).first();
+}
+
+export async function awardBadge(db, { userId, badgeSlug, badge = null, eventInstanceId = null, projectId = null, source = "admin", awardedBy = null } = {}) {
+  if (!userId) throw Object.assign(new Error("userId is required"), { status: 400 });
+  const ensuredBadge = await ensureBadge(db, badge || { slug: badgeSlug });
+  if (!ensuredBadge) throw Object.assign(new Error("Badge could not be created"), { status: 500 });
+  const now = new Date().toISOString();
+  const id = `ubg_${userId}_${ensuredBadge.id}_${eventInstanceId || "global"}`.replace(/[^a-zA-Z0-9_]+/g, "_");
+  await db.prepare(`
+    INSERT OR IGNORE INTO user_badges (
+      id, user_id, badge_id, event_instance_id, project_id, source, awarded_by, awarded_at, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(id, userId, ensuredBadge.id, eventInstanceId, projectId, source, awardedBy, now, now).run();
+  const award = await db.prepare("SELECT * FROM user_badges WHERE user_id = ? AND badge_id = ? AND event_instance_id IS ?").bind(userId, ensuredBadge.id, eventInstanceId).first();
+  return { badge: ensuredBadge, award: award || { id, user_id: userId, badge_id: ensuredBadge.id, event_instance_id: eventInstanceId, project_id: projectId, source, awarded_by: awardedBy, awarded_at: now } };
+}
+
+export async function getUserCommunityState(db, userId) {
+  const user = await getUserById(db, userId);
+  if (!user) throw Object.assign(new Error("User not found"), { status: 404 });
+  const [roles, attendance, badges, projects] = await Promise.all([
+    db.prepare(`
+      SELECT role, scope_type, scope_id, created_at, revoked_at
+      FROM roles
+      WHERE user_id = ? AND revoked_at IS NULL
+      ORDER BY role ASC
+    `).bind(userId).all(),
+    db.prepare(`
+      SELECT event_slug, event_instance_id, signup_id, event_type, actor, source, occurred_at
+      FROM event_participant_events
+      WHERE user_id = ?
+      ORDER BY occurred_at DESC
+      LIMIT 100
+    `).bind(userId).all(),
+    db.prepare(`
+      SELECT b.slug, b.name, b.description, b.badge_type, ub.event_instance_id, ub.project_id, ub.source, ub.awarded_by, ub.awarded_at
+      FROM user_badges ub
+      JOIN badges b ON b.id = ub.badge_id
+      WHERE ub.user_id = ?
+      ORDER BY ub.awarded_at DESC
+    `).bind(userId).all(),
+    db.prepare(`
+      SELECT p.id AS project_id, p.slug, p.title, p.team_name, eps.event_slug, eps.event_instance_id, eps.submission_id, eps.status
+      FROM event_project_submissions eps
+      JOIN projects p ON p.id = eps.project_id
+      LEFT JOIN project_members pm ON pm.project_id = p.id
+      WHERE pm.user_id = ?
+      ORDER BY lower(p.title) ASC
+    `).bind(userId).all()
+  ]);
+  return {
+    user,
+    roles: roles.results || [],
+    attendance: attendance.results || [],
+    badges: badges.results || [],
+    projects: (projects.results || []).map(sanitizeProjectRow)
+  };
+}
+
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(String(value));
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function randomDigits(length = 6) {
+  const array = new Uint32Array(length);
+  globalThis.crypto.getRandomValues(array);
+  return [...array].map((value) => String(value % 10)).join("");
+}
+
+function randomToken(prefix = "htvs") {
+  const raw = new Uint8Array(24);
+  globalThis.crypto.getRandomValues(raw);
+  const token = btoa(String.fromCharCode(...raw)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return `${prefix}_${token}`;
+}
+
+function addMinutes(date, minutes) {
+  return new Date(date.getTime() + minutes * 60 * 1000).toISOString();
+}
+
+function addDays(date, days) {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+async function sendLoginCodeWithResend({ email, name, code, expiresAt, env = {}, fetcher = fetch }) {
+  const apiKey = String(env.RESEND_API_KEY || "").trim();
+  if (!apiKey) return null;
+  const from = String(env.HTV_LOGIN_FROM_EMAIL || env.RESEND_LOGIN_FROM_EMAIL || env.RESEND_FROM_EMAIL || "Hack the Valley <updates@hackthevalley.org>").trim();
+  const displayName = String(name || email).trim();
+  const subject = "Your Hack the Valley login code";
+  const text = [
+    `Your Hack the Valley login code is ${code}.`,
+    "",
+    `It expires at ${expiresAt}.`,
+    "If you did not request this, you can ignore this email."
+  ].join("\n");
+  const html = `
+    <div style="font-family: Inter, Arial, sans-serif; color: #0f172a; line-height: 1.5;">
+      <p>Hi ${escapeHtml(displayName)},</p>
+      <p>Your Hack the Valley login code is:</p>
+      <p style="font-size: 32px; font-weight: 800; letter-spacing: 0.24em; margin: 24px 0;">${escapeHtml(code)}</p>
+      <p>This code expires at ${escapeHtml(expiresAt)}.</p>
+      <p style="color: #64748b; font-size: 14px;">If you did not request this, you can ignore this email.</p>
+    </div>
+  `;
+  const response = await fetcher("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from,
+      to: [email],
+      subject,
+      text,
+      html
+    })
+  });
+  const bodyText = await safeText(response);
+  if (!response.ok) {
+    const error = new Error(`Resend login code send failed with HTTP ${response.status}: ${bodyText}`.slice(0, 500));
+    error.status = 502;
+    throw error;
+  }
+  let body = {};
+  try { body = bodyText ? JSON.parse(bodyText) : {}; } catch { body = {}; }
+  return { id: body.id || null };
+}
+
+export async function requestLoginCode(db, input = {}, env = {}, fetcher = fetch) {
+  const email = normalizeEmail(input.email);
+  if (!EMAIL_RE.test(email)) throw Object.assign(new Error("valid email is required"), { status: 400 });
+  const user = await upsertUser(db, {
+    email,
+    name: input.name,
+    first_name: input.first_name,
+    last_name: input.last_name,
+    phone: input.phone
+  });
+  const code = input.code && /^\d{6}$/.test(String(input.code)) ? String(input.code) : randomDigits(6);
+  const now = new Date();
+  const createdAt = now.toISOString();
+  const expiresAt = addMinutes(now, Number(env.HTV_AUTH_CODE_TTL_MINUTES || 15));
+  const codeHash = await sha256Hex(`${user.id}:${email}:${code}`);
+  const id = generateId("alc");
+  await db.prepare(`
+    INSERT INTO auth_login_codes (
+      id, user_id, email, code_hash, purpose, created_at, expires_at, consumed_at, attempt_count
+    ) VALUES (?, ?, ?, ?, 'login', ?, ?, NULL, 0)
+  `).bind(id, user.id, email, codeHash, createdAt, expiresAt).run();
+  const delivery = await sendLoginCodeWithResend({ email, name: user.name || input.name, code, expiresAt, env, fetcher });
+  const response = {
+    ok: true,
+    user_id: user.id,
+    email,
+    delivery: delivery ? "email_sent" : "not_configured",
+    expires_at: expiresAt
+  };
+  if (delivery?.id) response.resend_email_id = delivery.id;
+  if (env.HTV_AUTH_DEV_CODES === "1") response.dev_code = code;
+  return response;
+}
+
+export async function verifyLoginCode(db, input = {}, env = {}) {
+  const email = normalizeEmail(input.email);
+  const code = String(input.code || "").trim();
+  if (!EMAIL_RE.test(email)) throw Object.assign(new Error("valid email is required"), { status: 400 });
+  if (!/^\d{6}$/.test(code)) throw Object.assign(new Error("six digit code is required"), { status: 400 });
+  const user = await db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first();
+  if (!user) throw Object.assign(new Error("Invalid or expired login code"), { status: 401 });
+  const codeHash = await sha256Hex(`${user.id}:${email}:${code}`);
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const loginCode = await db.prepare(`
+    SELECT *
+    FROM auth_login_codes
+    WHERE user_id = ? AND code_hash = ? AND consumed_at IS NULL AND expires_at > ?
+    ORDER BY created_at DESC
+    LIMIT 1
+  `).bind(user.id, codeHash, nowIso).first();
+  if (!loginCode) throw Object.assign(new Error("Invalid or expired login code"), { status: 401 });
+  await db.prepare("UPDATE auth_login_codes SET consumed_at = ? WHERE id = ?").bind(nowIso, loginCode.id).run();
+  const token = randomToken("htvs");
+  const tokenHash = await sha256Hex(token);
+  const sessionId = generateId("ses");
+  const expiresAt = addDays(now, Number(env.HTV_AUTH_SESSION_DAYS || 30));
+  await db.prepare(`
+    INSERT INTO user_sessions (
+      id, user_id, token_hash, created_at, expires_at, revoked_at, user_agent, ip_hint
+    ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+  `).bind(sessionId, user.id, tokenHash, nowIso, expiresAt, input.user_agent || null, input.ip_hint || null).run();
+  return {
+    ok: true,
+    user,
+    session: {
+      id: sessionId,
+      token,
+      expires_at: expiresAt
+    }
+  };
+}
+
+export async function getCurrentUserFromSession(db, token) {
+  const sessionToken = String(token || "").trim();
+  if (!sessionToken) return null;
+  const tokenHash = await sha256Hex(sessionToken);
+  const nowIso = new Date().toISOString();
+  return await db.prepare(`
+    SELECT
+      u.*,
+      us.id AS session_id,
+      us.expires_at AS session_expires_at
+    FROM user_sessions us
+    JOIN users u ON u.id = us.user_id
+    WHERE us.token_hash = ? AND us.revoked_at IS NULL AND us.expires_at > ?
+    LIMIT 1
+  `).bind(tokenHash, nowIso).first();
+}
+
+export function sessionCookie(token, expiresAt) {
+  const maxAge = Math.max(60, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+  return `htv_session=${encodeURIComponent(token)}; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax; Path=/`;
+}
+
 export async function listEvents(db, { includeArchived = false } = {}) {
   const baseSelect = `
     SELECT

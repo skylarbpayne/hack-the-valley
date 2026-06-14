@@ -3,24 +3,337 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  awardBadge,
   checkInAttendee,
   countEventPhotos,
   createEventPhotoRecord,
   getEventCockpit,
+  getCurrentUserFromSession,
   getEventFollowupPacket,
+  getUserCommunityState,
+  linkProjectSubmission,
   listEventPhotos,
+  listEventProjectSubmissions,
   normalizeEmergencyContactInput,
+  normalizeProjectInput,
   normalizeSignupInput,
+  requestLoginCode,
   renderEventPageHtml,
   requireOrganizerAccess,
   requireSuperAdminAccess,
   upsertEmergencyContact,
-  upsertSignup
+  upsertProjectFromSubmission,
+  upsertSignup,
+  verifyLoginCode
 } from "../functions/_lib/event-platform.js";
 import worker from "../worker.js";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), "utf8");
+
+test("participant login page requests a code, verifies it, and reads /api/me", () => {
+  const html = read("public/login/index.html");
+  assert.match(html, /id="login-request-form"/);
+  assert.match(html, /id="login-verify-form"/);
+  assert.match(html, /\/api\/auth\/request-code/);
+  assert.match(html, /\/api\/auth\/verify-code/);
+  assert.match(html, /\/api\/me/);
+  assert.match(html, /Check your email/);
+  assert.doesNotMatch(html, /admin password|HTV_ADMIN_TOKEN/i);
+});
+
+test("schema and migrations add passwordless user login sessions without passwords", () => {
+  const schema = read("schema.sql");
+  const migration = read("migrations/0010_passwordless_login.sql");
+  for (const text of [schema, migration]) {
+    assert.match(text, /CREATE TABLE IF NOT EXISTS auth_login_codes/);
+    assert.match(text, /code_hash TEXT NOT NULL/);
+    assert.match(text, /expires_at TEXT NOT NULL/);
+    assert.match(text, /consumed_at TEXT/);
+    assert.match(text, /CREATE TABLE IF NOT EXISTS user_sessions/);
+    assert.match(text, /token_hash TEXT NOT NULL UNIQUE/);
+    assert.match(text, /expires_at TEXT NOT NULL/);
+    assert.doesNotMatch(text, /password_hash|oauth_secret|refresh_token/i);
+  }
+});
+
+test("passwordless login creates a code, verifies it, and resolves current user from a session", async () => {
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/SELECT \* FROM users WHERE email/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          if (/FROM auth_login_codes/.test(sql)) return { id: "alc_1", user_id: "usr_maya", code_hash: this.args[1], expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM user_sessions/.test(sql)) return { id: "ses_1", user_id: "usr_maya", expires_at: "2999-01-01T00:00:00.000Z" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+      return statement;
+    }
+  };
+
+  const request = await requestLoginCode(db, { email: "MAYA@example.com", name: "Maya R." }, { HTV_AUTH_DEV_CODES: "1" });
+  assert.equal(request.ok, true);
+  assert.equal(request.email, "maya@example.com");
+  assert.match(request.dev_code, /^\d{6}$/);
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO auth_login_codes/);
+  assert.ok(statements.some((s) => s.args.includes("usr_maya")));
+
+  const verified = await verifyLoginCode(db, { email: "maya@example.com", code: request.dev_code });
+  assert.equal(verified.user.email, "maya@example.com");
+  assert.match(verified.session.token, /^htvs_/);
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO user_sessions/);
+  assert.match(statements.map((s) => s.sql).join("\n"), /UPDATE auth_login_codes/);
+
+  const current = await getCurrentUserFromSession(db, verified.session.token);
+  assert.equal(current.email, "maya@example.com");
+});
+
+test("passwordless login sends one-time codes through Resend when configured", async () => {
+  const calls = [];
+  const db = {
+    prepare(sql) {
+      return {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/SELECT \* FROM users WHERE email/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+    }
+  };
+  const fetcher = async (url, options) => {
+    calls.push({ url, options, body: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ id: "email_123" }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+
+  const request = await requestLoginCode(db, { email: "maya@example.com", name: "Maya R.", code: "123456" }, {
+    RESEND_API_KEY: "test_resend_key",
+    HTV_LOGIN_FROM_EMAIL: "Hack the Valley <updates@hackthevalley.org>"
+  }, fetcher);
+
+  assert.equal(request.delivery, "email_sent");
+  assert.equal(request.resend_email_id, "email_123");
+  assert.equal(request.dev_code, undefined);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://api.resend.com/emails");
+  assert.equal(calls[0].options.method, "POST");
+  assert.equal(calls[0].options.headers.Authorization, "Bearer test_resend_key");
+  assert.equal(calls[0].body.from, "Hack the Valley <updates@hackthevalley.org>");
+  assert.deepEqual(calls[0].body.to, ["maya@example.com"]);
+  assert.match(calls[0].body.subject, /login code/i);
+  assert.match(calls[0].body.text, /123456/);
+  assert.match(calls[0].body.html, /123456/);
+});
+
+test("worker exposes passwordless auth request, verify, and /api/me", async () => {
+  let lastSessionToken = null;
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/SELECT \* FROM users WHERE email/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          if (/FROM auth_login_codes/.test(sql)) return { id: "alc_1", user_id: "usr_maya", code_hash: this.args[1], expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM user_sessions/.test(sql)) return { id: "ses_1", user_id: "usr_maya", expires_at: "2999-01-01T00:00:00.000Z" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+    }
+  };
+
+  const requestResponse = await worker.fetch(new Request("https://hackthevalley.org/api/auth/request-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "maya@example.com", name: "Maya R." })
+  }), { HTV_DB: fakeDb, HTV_AUTH_DEV_CODES: "1" }, {});
+  assert.equal(requestResponse.status, 200);
+  const requested = await requestResponse.json();
+  assert.match(requested.dev_code, /^\d{6}$/);
+
+  const verifyResponse = await worker.fetch(new Request("https://hackthevalley.org/api/auth/verify-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "maya@example.com", code: requested.dev_code })
+  }), { HTV_DB: fakeDb }, {});
+  assert.equal(verifyResponse.status, 200);
+  const setCookie = verifyResponse.headers.get("set-cookie") || "";
+  assert.match(setCookie, /htv_session=/);
+  lastSessionToken = setCookie.match(/htv_session=([^;]+)/)?.[1];
+  assert.ok(lastSessionToken);
+
+  const meResponse = await worker.fetch(new Request("https://hackthevalley.org/api/me", {
+    headers: { Cookie: `htv_session=${lastSessionToken}` }
+  }), { HTV_DB: fakeDb }, {});
+  assert.equal(meResponse.status, 200);
+  const me = await meResponse.json();
+  assert.equal(me.user.email, "maya@example.com");
+});
+
+test("schema and migrations add project submission links and badge awards", () => {
+  const schema = read("schema.sql");
+  const migration = read("migrations/0009_projects_and_badges.sql");
+  for (const text of [schema, migration]) {
+    assert.match(text, /CREATE TABLE IF NOT EXISTS projects/);
+    assert.match(text, /canonical_submission_id TEXT REFERENCES submissions\(id\)/);
+    assert.match(text, /CREATE TABLE IF NOT EXISTS project_members/);
+    assert.match(text, /CREATE TABLE IF NOT EXISTS event_project_submissions/);
+    assert.match(text, /event_instance_id TEXT REFERENCES event_instances\(id\)/);
+    assert.match(text, /submission_id TEXT REFERENCES submissions\(id\)/);
+    assert.match(text, /CREATE TABLE IF NOT EXISTS badges/);
+    assert.match(text, /CREATE TABLE IF NOT EXISTS user_badges/);
+    assert.match(text, /UNIQUE\(user_id, badge_id, event_instance_id\)/);
+  }
+});
+
+test("project helpers create a durable project and link it as an event submission", async () => {
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM submissions/.test(sql)) return {
+            id: "sub_1",
+            project_title: "Valley SAT Prep",
+            team_name: "Sequoia Sasquatches",
+            track: "Education | AI",
+            payload_json: JSON.stringify({ description: "SAT prep insight tool", repoLink: "https://github.com/example/sat", demoLink: "https://sat.example.com" })
+          };
+          if (/FROM projects/.test(sql)) return { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+      return statement;
+    }
+  };
+
+  const normalized = normalizeProjectInput({ title: "Valley SAT Prep", team_name: "Sequoia Sasquatches" });
+  assert.deepEqual(normalized.errors, []);
+  assert.equal(normalized.project.slug, "valley-sat-prep");
+
+  const project = await upsertProjectFromSubmission(db, "sub_1", { eventSlug: "hack-the-valley-2026", eventInstanceId: "inst_htv_2026" });
+  assert.equal(project.id, "prj_valley_sat_prep");
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO projects/);
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO event_project_submissions/);
+
+  await linkProjectSubmission(db, {
+    eventSlug: "hack-the-valley-2026",
+    eventInstanceId: "inst_htv_2026",
+    projectId: "prj_valley_sat_prep",
+    submissionId: "sub_1",
+    status: "accepted"
+  });
+  const link = statements.find((s) => /INSERT INTO event_project_submissions/.test(s.sql) && s.args.includes("accepted"));
+  assert.ok(link);
+});
+
+test("badge helpers award badges idempotently with event provenance", async () => {
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM badges/.test(sql)) return { id: "bdg_first_attendance", slug: "first-attendance", name: "First Attendance", badge_type: "attendance" };
+          if (/FROM user_badges/.test(sql)) return { id: "ubg_usr_maya_bdg_first_attendance_inst_1", user_id: "usr_maya", badge_id: "bdg_first_attendance", event_instance_id: "inst_1" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+      return statement;
+    }
+  };
+
+  const award = await awardBadge(db, {
+    userId: "usr_maya",
+    badgeSlug: "first-attendance",
+    eventInstanceId: "inst_1",
+    source: "admin",
+    awardedBy: "organizer@example.com"
+  });
+  assert.equal(award.badge.slug, "first-attendance");
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO badges/);
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT OR IGNORE INTO user_badges/);
+  assert.ok(statements.some((s) => s.args.includes("usr_maya") && s.args.includes("inst_1")));
+});
+
+test("user community state includes roles, attendance, badges, and submitted projects", async () => {
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async first() {
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          return null;
+        },
+        async all() {
+          if (/FROM roles/.test(sql)) return { results: [{ role: "organizer", scope_type: "event", scope_id: "hack-hours" }] };
+          if (/FROM event_participant_events/.test(sql)) return { results: [{ event_slug: "hack-hours", event_instance_id: "inst_1", event_type: "checked_in", occurred_at: "2026-06-20T15:05:00.000Z" }] };
+          if (/FROM user_badges/.test(sql)) return { results: [{ slug: "first-attendance", name: "First Attendance", event_instance_id: "inst_1" }] };
+          if (/FROM event_project_submissions/.test(sql)) return { results: [{ project_id: "prj_valley_sat_prep", title: "Valley SAT Prep", submission_id: "sub_1", event_slug: "hack-the-valley-2026" }] };
+          return { results: [] };
+        }
+      };
+    }
+  };
+
+  const state = await getUserCommunityState(db, "usr_maya");
+  assert.equal(state.user.email, "maya@example.com");
+  assert.deepEqual(state.roles.map((role) => role.role), ["organizer"]);
+  assert.deepEqual(state.badges.map((badge) => badge.slug), ["first-attendance"]);
+  assert.deepEqual(state.projects.map((project) => project.title), ["Valley SAT Prep"]);
+  assert.equal(state.attendance.length, 1);
+});
+
+test("listEventProjectSubmissions returns event-linked projects without private contact fields", async () => {
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async all() {
+          return { results: [{
+            event_slug: "hack-the-valley-2026",
+            event_instance_id: "inst_htv_2026",
+            project_id: "prj_calcguide",
+            submission_id: "sub_calcguide",
+            title: "CalcGuide",
+            team_name: "NewtonsNewts",
+            status: "accepted",
+            contact_email: "private@example.com"
+          }] };
+        }
+      };
+    }
+  };
+
+  const projects = await listEventProjectSubmissions(db, "hack-the-valley-2026", "inst_htv_2026");
+  assert.equal(projects[0].title, "CalcGuide");
+  assert.equal(projects[0].submission_id, "sub_calcguide");
+  assert.equal(Object.hasOwn(projects[0], "contact_email"), false);
+});
 
 test("schema and migration add Hack Hours cockpit tables without scope creep", () => {
   const schema = read("schema.sql");
@@ -35,17 +348,25 @@ test("schema and migration add Hack Hours cockpit tables without scope creep", (
     assert.match(text, /CREATE TABLE IF NOT EXISTS roles/);
     assert.match(text, /scope_id TEXT NOT NULL DEFAULT '\*'/);
     assert.match(text, /WHERE revoked_at IS NULL/);
-    assert.doesNotMatch(text, /event_photos[\s\S]*project_id/);
-    assert.doesNotMatch(text, /event_photos[\s\S]*submission_id/);
-    assert.doesNotMatch(text, /event_photos[\s\S]*participant_user_id/);
+    const eventPhotosTable = text.match(/CREATE TABLE IF NOT EXISTS event_photos \([\s\S]*?\n\);/)?.[0] || "";
+    assert.doesNotMatch(eventPhotosTable, /project_id/);
+    assert.doesNotMatch(eventPhotosTable, /submission_id/);
+    assert.doesNotMatch(eventPhotosTable, /participant_user_id/);
   }
 });
 
 test("package check script covers all event cockpit route modules", () => {
   const pkg = JSON.parse(read("package.json"));
+  assert.match(pkg.scripts.check, /functions\/api\/auth\/request-code\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/auth\/verify-code\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/me\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/checkins\/index\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/cockpit\/index\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/followup\/index\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/projects\/index\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/photos\/index\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/users\/\[id\]\/state\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/users\/\[id\]\/badges\.js/);
 });
 
 test("emergency contact input is required for public signups and ignores school/org", () => {
@@ -193,6 +514,78 @@ test("follow-up packet builds approval-gated draft and safe segments without eme
   assert.doesNotMatch(packet.segment_csv.attended, /emergency|phone|contact/i);
 });
 
+test("worker routes event project submissions API and requires admin", async () => {
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM submissions/.test(sql)) return { id: "sub_1", project_title: "CalcGuide", team_name: "NewtonsNewts", track: "Education", payload_json: JSON.stringify({ description: "Calculus tutor" }) };
+          if (/FROM projects/.test(sql)) return { id: "prj_calcguide", slug: "calcguide", title: "CalcGuide" };
+          return null;
+        },
+        async all() {
+          return { results: [{ event_slug: "hack-the-valley-2026", event_instance_id: "inst_2026", project_id: "prj_calcguide", submission_id: "sub_1", title: "CalcGuide", team_name: "NewtonsNewts", status: "accepted", contact_email: "private@example.com" }] };
+        }
+      };
+    }
+  };
+  const url = "https://hackthevalley.org/api/events/hack-the-valley-2026/instances/inst_2026/projects";
+  const unauthorized = await worker.fetch(new Request(url), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(unauthorized.status, 401);
+  const create = await worker.fetch(new Request(url, {
+    method: "POST",
+    headers: { Authorization: "Bearer secret", "Content-Type": "application/json" },
+    body: JSON.stringify({ submission_id: "sub_1", status: "accepted" })
+  }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(create.status, 200);
+  const created = await create.json();
+  assert.equal(created.project.title, "CalcGuide");
+  const list = await worker.fetch(new Request(url, { headers: { Authorization: "Bearer secret" } }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(list.status, 200);
+  const listed = await list.json();
+  assert.equal(listed.projects[0].title, "CalcGuide");
+  assert.equal(Object.hasOwn(listed.projects[0], "contact_email"), false);
+});
+
+test("worker routes user state and badge award APIs behind admin auth", async () => {
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          if (/FROM badges/.test(sql)) return { id: "bdg_shared_demo", slug: "shared-demo", name: "Shared a Demo", badge_type: "demo" };
+          if (/FROM user_badges/.test(sql)) return { id: "ubg_1", user_id: "usr_maya", badge_id: "bdg_shared_demo", event_instance_id: "inst_1" };
+          return null;
+        },
+        async all() {
+          if (/FROM user_badges/.test(sql)) return { results: [{ slug: "shared-demo", name: "Shared a Demo", event_instance_id: "inst_1" }] };
+          return { results: [] };
+        }
+      };
+    }
+  };
+  const stateUrl = "https://hackthevalley.org/api/users/usr_maya/state";
+  assert.equal((await worker.fetch(new Request(stateUrl), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {})).status, 401);
+  const stateResponse = await worker.fetch(new Request(stateUrl, { headers: { Authorization: "Bearer secret" } }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(stateResponse.status, 200);
+  const state = await stateResponse.json();
+  assert.equal(state.user.email, "maya@example.com");
+
+  const badgeUrl = "https://hackthevalley.org/api/users/usr_maya/badges";
+  const badgeResponse = await worker.fetch(new Request(badgeUrl, {
+    method: "POST",
+    headers: { Authorization: "Bearer secret", "Content-Type": "application/json" },
+    body: JSON.stringify({ badge_slug: "shared-demo", event_instance_id: "inst_1", source: "admin" })
+  }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(badgeResponse.status, 200);
+  const awarded = await badgeResponse.json();
+  assert.equal(awarded.badge.slug, "shared-demo");
+});
+
 test("worker routes follow-up packet API and requires admin", async () => {
   const fakeDb = {
     prepare(sql) {
@@ -328,7 +721,7 @@ test("event photo route validates auth, R2, MIME, filename, and event-photo stor
   assert.equal(stored.size, 1);
 });
 
-test("admin page defaults to Hack Hours cockpit with roster, contact resolution, event photo upload, and follow-up packet", () => {
+test("admin page defaults to Hack Hours cockpit with roster, participant state, badges, projects, contact resolution, event photo upload, and follow-up packet", () => {
   const html = read("public/admin.html");
   assert.match(html, /id="event-cockpit"/);
   assert.match(html, /id="cockpit-roster"/);
@@ -345,12 +738,21 @@ test("admin page defaults to Hack Hours cockpit with roster, contact resolution,
   assert.match(html, /name="emergency_contact_phone"/);
   assert.match(html, /Add emergency contact|Update emergency contact/);
   assert.match(html, /Event photos/);
+  assert.match(html, /id="participant-state"/);
+  assert.match(html, /id="participant-state-output"/);
+  assert.match(html, /data-view-state/);
+  assert.match(html, /data-award-badge/);
+  assert.match(html, /function loadParticipantState/);
+  assert.match(html, /function awardParticipantBadge/);
+  assert.match(html, /\/api\/users\/\$\{encodeURIComponent\(userId\)\}\/state/);
+  assert.match(html, /\/api\/users\/\$\{encodeURIComponent\(userId\)\}\/badges/);
+  assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(slug\)\}\/instances\/\$\{encodeURIComponent\(instanceId\)\}\/projects/);
+  assert.match(html, /Project submissions/);
+  assert.match(html, /Award demo badge/);
   assert.ok(html.indexOf("id=\"event-cockpit\"") < html.indexOf("id=\"event-form\""));
   const cockpit = html.slice(html.indexOf("id=\"event-cockpit\""), html.indexOf("id=\"events-admin\""));
   assert.doesNotMatch(cockpit, /School/);
   assert.doesNotMatch(cockpit, /Notes/);
   assert.doesNotMatch(cockpit, /Waiver/);
-  assert.doesNotMatch(cockpit, /Project upload/);
-  assert.doesNotMatch(cockpit, /projects? or submissions?/i);
   assert.doesNotMatch(cockpit, /participant upload/i);
 });

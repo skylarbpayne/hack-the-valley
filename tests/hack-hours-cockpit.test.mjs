@@ -31,6 +31,17 @@ import worker from "../worker.js";
 const root = new URL("../", import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), "utf8");
 
+test("participant login page requests a code, verifies it, and reads /api/me", () => {
+  const html = read("public/login/index.html");
+  assert.match(html, /id="login-request-form"/);
+  assert.match(html, /id="login-verify-form"/);
+  assert.match(html, /\/api\/auth\/request-code/);
+  assert.match(html, /\/api\/auth\/verify-code/);
+  assert.match(html, /\/api\/me/);
+  assert.match(html, /Check your email/);
+  assert.doesNotMatch(html, /admin password|HTV_ADMIN_TOKEN/i);
+});
+
 test("schema and migrations add passwordless user login sessions without passwords", () => {
   const schema = read("schema.sql");
   const migration = read("migrations/0010_passwordless_login.sql");

@@ -96,6 +96,47 @@ test("passwordless login creates a code, verifies it, and resolves current user 
   assert.equal(current.email, "maya@example.com");
 });
 
+test("passwordless login sends one-time codes through Resend when configured", async () => {
+  const calls = [];
+  const db = {
+    prepare(sql) {
+      return {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/SELECT \* FROM users WHERE email/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+    }
+  };
+  const fetcher = async (url, options) => {
+    calls.push({ url, options, body: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ id: "email_123" }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+
+  const request = await requestLoginCode(db, { email: "maya@example.com", name: "Maya R.", code: "123456" }, {
+    RESEND_API_KEY: "test_resend_key",
+    HTV_LOGIN_FROM_EMAIL: "Hack the Valley <updates@hackthevalley.org>"
+  }, fetcher);
+
+  assert.equal(request.delivery, "email_sent");
+  assert.equal(request.resend_email_id, "email_123");
+  assert.equal(request.dev_code, undefined);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://api.resend.com/emails");
+  assert.equal(calls[0].options.method, "POST");
+  assert.equal(calls[0].options.headers.Authorization, "Bearer test_resend_key");
+  assert.equal(calls[0].body.from, "Hack the Valley <updates@hackthevalley.org>");
+  assert.deepEqual(calls[0].body.to, ["maya@example.com"]);
+  assert.match(calls[0].body.subject, /login code/i);
+  assert.match(calls[0].body.text, /123456/);
+  assert.match(calls[0].body.html, /123456/);
+});
+
 test("worker exposes passwordless auth request, verify, and /api/me", async () => {
   let lastSessionToken = null;
   const fakeDb = {

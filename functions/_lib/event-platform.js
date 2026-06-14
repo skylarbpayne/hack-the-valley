@@ -471,7 +471,53 @@ function addDays(date, days) {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
-export async function requestLoginCode(db, input = {}, env = {}) {
+async function sendLoginCodeWithResend({ email, name, code, expiresAt, env = {}, fetcher = fetch }) {
+  const apiKey = String(env.RESEND_API_KEY || "").trim();
+  if (!apiKey) return null;
+  const from = String(env.HTV_LOGIN_FROM_EMAIL || env.RESEND_LOGIN_FROM_EMAIL || env.RESEND_FROM_EMAIL || "Hack the Valley <updates@hackthevalley.org>").trim();
+  const displayName = String(name || email).trim();
+  const subject = "Your Hack the Valley login code";
+  const text = [
+    `Your Hack the Valley login code is ${code}.`,
+    "",
+    `It expires at ${expiresAt}.`,
+    "If you did not request this, you can ignore this email."
+  ].join("\n");
+  const html = `
+    <div style="font-family: Inter, Arial, sans-serif; color: #0f172a; line-height: 1.5;">
+      <p>Hi ${escapeHtml(displayName)},</p>
+      <p>Your Hack the Valley login code is:</p>
+      <p style="font-size: 32px; font-weight: 800; letter-spacing: 0.24em; margin: 24px 0;">${escapeHtml(code)}</p>
+      <p>This code expires at ${escapeHtml(expiresAt)}.</p>
+      <p style="color: #64748b; font-size: 14px;">If you did not request this, you can ignore this email.</p>
+    </div>
+  `;
+  const response = await fetcher("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from,
+      to: [email],
+      subject,
+      text,
+      html
+    })
+  });
+  const bodyText = await safeText(response);
+  if (!response.ok) {
+    const error = new Error(`Resend login code send failed with HTTP ${response.status}: ${bodyText}`.slice(0, 500));
+    error.status = 502;
+    throw error;
+  }
+  let body = {};
+  try { body = bodyText ? JSON.parse(bodyText) : {}; } catch { body = {}; }
+  return { id: body.id || null };
+}
+
+export async function requestLoginCode(db, input = {}, env = {}, fetcher = fetch) {
   const email = normalizeEmail(input.email);
   if (!EMAIL_RE.test(email)) throw Object.assign(new Error("valid email is required"), { status: 400 });
   const user = await upsertUser(db, {
@@ -492,13 +538,15 @@ export async function requestLoginCode(db, input = {}, env = {}) {
       id, user_id, email, code_hash, purpose, created_at, expires_at, consumed_at, attempt_count
     ) VALUES (?, ?, ?, ?, 'login', ?, ?, NULL, 0)
   `).bind(id, user.id, email, codeHash, createdAt, expiresAt).run();
+  const delivery = await sendLoginCodeWithResend({ email, name: user.name || input.name, code, expiresAt, env, fetcher });
   const response = {
     ok: true,
     user_id: user.id,
     email,
-    delivery: env.RESEND_API_KEY ? "email_not_sent_requires_integration" : "not_configured",
+    delivery: delivery ? "email_sent" : "not_configured",
     expires_at: expiresAt
   };
+  if (delivery?.id) response.resend_email_id = delivery.id;
   if (env.HTV_AUTH_DEV_CODES === "1") response.dev_code = code;
   return response;
 }

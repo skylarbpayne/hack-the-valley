@@ -73,6 +73,7 @@ export async function onRequestPost(context) {
         name: result.signup.name,
         email: result.signup.email,
         checked_in_at: result.checked_in_at,
+        already_checked_in: result.already_checked_in,
         mailing_list_status: result.signup.mailing_list_status
       }
     }, { status: 201 });

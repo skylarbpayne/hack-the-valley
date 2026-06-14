@@ -1,6 +1,7 @@
 import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
 import * as eventCheckins from './functions/api/events/[slug]/checkins/index.js';
 import * as eventCockpit from './functions/api/events/[slug]/instances/[instanceId]/cockpit/index.js';
+import * as eventFollowup from './functions/api/events/[slug]/instances/[instanceId]/followup/index.js';
 import * as eventPhotos from './functions/api/events/[slug]/instances/[instanceId]/photos/index.js';
 import * as eventImage from './functions/api/events/[slug]/image.js';
 import * as eventSlug from './functions/api/events/[slug].js';
@@ -77,6 +78,11 @@ function matchApiRoute(pathname) {
   const cockpitMatch = pathname.match(/^\/api\/events\/([^/]+)\/instances\/([^/]+)\/cockpit\/?$/);
   if (cockpitMatch) {
     return { routeModule: eventCockpit, params: { slug: decodeURIComponent(cockpitMatch[1]), instanceId: decodeURIComponent(cockpitMatch[2]) } };
+  }
+
+  const followupMatch = pathname.match(/^\/api\/events\/([^/]+)\/instances\/([^/]+)\/followup\/?$/);
+  if (followupMatch) {
+    return { routeModule: eventFollowup, params: { slug: decodeURIComponent(followupMatch[1]), instanceId: decodeURIComponent(followupMatch[2]) } };
   }
 
   const photosMatch = pathname.match(/^\/api\/events\/([^/]+)\/instances\/([^/]+)\/photos\/?$/);

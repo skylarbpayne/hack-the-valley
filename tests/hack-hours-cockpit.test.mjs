@@ -7,6 +7,7 @@ import {
   countEventPhotos,
   createEventPhotoRecord,
   getEventCockpit,
+  getEventFollowupPacket,
   listEventPhotos,
   normalizeEmergencyContactInput,
   normalizeSignupInput,
@@ -152,6 +153,69 @@ test("cockpit helper returns summary, roster, emergency state, progression label
   assert.deepEqual(cockpit.roster[1].progression_labels, ["repeat", "3x attendee"]);
   assert.equal(Object.hasOwn(cockpit.roster[0], "school"), false);
   assert.equal(Object.hasOwn(cockpit.roster[0], "notes"), false);
+});
+
+test("follow-up packet builds approval-gated draft and safe segments without emergency contact details", async () => {
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async first() {
+          if (/COUNT\(\*\) AS count/.test(sql)) return { count: 2 };
+          if (/FROM event_instances/.test(sql)) return { id: "inst_hack_hours_20260620", event_slug: "hack-hours", instance_key: "2026-06-20", starts_at: "2026-06-20T15:00:00.000Z" };
+          if (/FROM events/.test(sql)) return { slug: "hack-hours", title: "Hack Hours" };
+          return null;
+        },
+        async all() {
+          if (/FROM signups s/.test(sql)) return { results: [
+            { user_id: "usr_attended", signup_id: "sgn_attended", event_instance_id: "inst_hack_hours_20260620", name: "=Ava Attended", email: "ava@example.com", signed_up_at: "2026-06-20T14:00:00.000Z", checked_in_at: "2026-06-20T15:05:00.000Z", emergency_contact_present: 1, attendance_count: 1 },
+            { user_id: "usr_repeat", signup_id: "sgn_repeat", event_instance_id: "inst_hack_hours_20260620", name: "Riley Repeat", email: "riley@example.com", signed_up_at: "2026-06-20T14:05:00.000Z", checked_in_at: "2026-06-20T15:08:00.000Z", emergency_contact_present: 1, attendance_count: 3 },
+            { user_id: "usr_noshow", signup_id: "sgn_noshow", event_instance_id: "inst_hack_hours_20260620", name: "No Show", email: "noshow@example.com", signed_up_at: "2026-06-20T14:10:00.000Z", checked_in_at: null, emergency_contact_present: 1, attendance_count: 0 }
+          ] };
+          if (/FROM event_photos/.test(sql)) return { results: [{ id: "pho_1" }, { id: "pho_2" }] };
+          return { results: [] };
+        }
+      };
+    }
+  };
+  const packet = await getEventFollowupPacket(db, "hack-hours", "inst_hack_hours_20260620");
+  assert.equal(packet.summary.signed_up_count, 3);
+  assert.equal(packet.summary.checked_in_count, 2);
+  assert.equal(packet.summary.no_show_count, 1);
+  assert.equal(packet.summary.first_time_attendee_count, 1);
+  assert.equal(packet.summary.repeat_attendee_count, 1);
+  assert.deepEqual(packet.segments.attended.map((row) => row.email), ["ava@example.com", "riley@example.com"]);
+  assert.deepEqual(packet.segments.no_show.map((row) => row.email), ["noshow@example.com"]);
+  assert.equal(packet.followup_draft.status, "needs_review");
+  assert.equal(packet.followup_draft.requires_approval, true);
+  assert.match(packet.segment_csv.attended, /email,name,segment,checked_in_at,attendance_count/);
+  assert.match(packet.segment_csv.attended, /ava@example\.com,'=Ava Attended,attended/);
+  assert.doesNotMatch(packet.segment_csv.attended, /emergency|phone|contact/i);
+});
+
+test("worker routes follow-up packet API and requires admin", async () => {
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async first() {
+          if (/COUNT\(\*\) AS count/.test(sql)) return { count: 0 };
+          if (/FROM event_instances/.test(sql)) return { id: "inst_123", event_slug: "hack-hours", instance_key: "2026-06-20" };
+          if (/FROM events/.test(sql)) return { slug: "hack-hours", title: "Hack Hours" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+    }
+  };
+  const url = "https://hackthevalley.org/api/events/hack-hours/instances/inst_123/followup";
+  const unauthorized = await worker.fetch(new Request(url), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(unauthorized.status, 401);
+  const response = await worker.fetch(new Request(url, { headers: { Authorization: "Bearer secret" } }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.followup_draft.status, "needs_review");
+  assert.equal(body.followup_draft.requires_approval, true);
 });
 
 test("worker routes cockpit API and requires admin", async () => {

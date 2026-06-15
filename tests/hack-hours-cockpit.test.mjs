@@ -28,7 +28,8 @@ import {
   upsertEmergencyContact,
   upsertProjectFromSubmission,
   upsertSignup,
-  verifyLoginCode
+  verifyLoginCode,
+  verifyLoginToken
 } from "../functions/_lib/event-platform.js";
 import worker from "../worker.js";
 
@@ -39,13 +40,22 @@ test("participant login page requests a code, verifies it, and reads /api/me", (
   const html = read("public/login/index.html");
   assert.match(html, /id="login-request-form"/);
   assert.match(html, /id="login-verify-form"/);
+  assert.match(html, /magic link/i);
   assert.match(html, /\/api\/auth\/request-code/);
   assert.match(html, /\/api\/auth\/verify-code/);
   assert.match(html, /\/api\/me/);
   assert.match(html, /Check your email/);
   assert.match(html, /nextPath/);
+  assert.match(html, /next: nextPath/);
   assert.match(html, /window\.location\.href = nextPath/);
   assert.doesNotMatch(html, /admin password|HTV_ADMIN_TOKEN/i);
+});
+
+test("homepage exposes clear participant login CTAs", () => {
+  const html = read("public/index.html");
+  assert.match(html, /href="\/login\/"[^>]*>Log in</);
+  assert.match(html, /href="\/login\/\?next=\/projects\//);
+  assert.match(html, /Open your profile and projects/);
 });
 
 test("participant profile shows editable profile info, badges, and project summary from /api/me", () => {
@@ -416,6 +426,11 @@ test("schema and migrations add passwordless user login sessions without passwor
     assert.match(text, /expires_at TEXT NOT NULL/);
     assert.doesNotMatch(text, /password_hash|oauth_secret|refresh_token/i);
   }
+  const magicMigration = read("migrations/0011_magic_login_links.sql");
+  for (const text of [schema, magicMigration]) {
+    assert.match(text, /magic_token_hash TEXT/);
+    assert.match(text, /idx_auth_login_codes_magic_token/);
+  }
 });
 
 test("passwordless login creates a code, verifies it, and resolves current user from a session", async () => {
@@ -458,6 +473,44 @@ test("passwordless login creates a code, verifies it, and resolves current user 
   assert.equal(current.email, "maya@example.com");
 });
 
+test("magic login token creates a session and consumes the one-time login record", async () => {
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM auth_login_codes alc/.test(sql)) {
+            return {
+              id: "alc_magic",
+              user_id: "usr_maya",
+              email: "maya@example.com",
+              magic_token_hash: this.args[0],
+              expires_at: "2999-01-01T00:00:00.000Z",
+              user_email: "maya@example.com",
+              user_name: "Maya R."
+            };
+          }
+          if (/FROM users WHERE id/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+      return statement;
+    }
+  };
+
+  const verified = await verifyLoginToken(db, { token: "htvl_test_magic_token_123456789" });
+  assert.equal(verified.user.email, "maya@example.com");
+  assert.match(verified.session.token, /^htvs_/);
+  assert.match(statements.map((s) => s.sql).join("\n"), /magic_token_hash/);
+  assert.match(statements.map((s) => s.sql).join("\n"), /UPDATE auth_login_codes/);
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO user_sessions/);
+});
+
 test("passwordless login sends one-time codes through Resend when configured", async () => {
   const calls = [];
   const db = {
@@ -482,7 +535,8 @@ test("passwordless login sends one-time codes through Resend when configured", a
 
   const request = await requestLoginCode(db, { email: "maya@example.com", name: "Maya R.", code: "123456" }, {
     RESEND_API_KEY: "test_resend_key",
-    HTV_LOGIN_FROM_EMAIL: "Hack the Valley <updates@hackthevalley.org>"
+    HTV_LOGIN_FROM_EMAIL: "Hack the Valley <updates@hackthevalley.org>",
+    HTV_PUBLIC_BASE_URL: "https://hackthevalley.org"
   }, fetcher);
 
   assert.equal(request.delivery, "email_sent");
@@ -495,8 +549,11 @@ test("passwordless login sends one-time codes through Resend when configured", a
   assert.equal(calls[0].body.from, "Hack the Valley <updates@hackthevalley.org>");
   assert.deepEqual(calls[0].body.to, ["maya@example.com"]);
   assert.match(calls[0].body.subject, /login code/i);
+  assert.match(calls[0].body.text, /https:\/\/hackthevalley\.org\/api\/auth\/magic-login\?token=htvl_/);
+  assert.match(calls[0].body.html, /href="https:\/\/hackthevalley\.org\/api\/auth\/magic-login\?token=htvl_/);
   assert.match(calls[0].body.text, /123456/);
   assert.match(calls[0].body.html, /123456/);
+  assert.equal(request.magic_login_url, undefined);
 });
 
 test("worker exposes passwordless auth request, verify, and /api/me", async () => {
@@ -546,6 +603,38 @@ test("worker exposes passwordless auth request, verify, and /api/me", async () =
   assert.equal(meResponse.status, 200);
   const me = await meResponse.json();
   assert.equal(me.user.email, "maya@example.com");
+});
+
+test("worker magic login endpoint sets a session cookie and redirects to a safe next path", async () => {
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM auth_login_codes alc/.test(sql)) {
+            return {
+              id: "alc_magic",
+              user_id: "usr_maya",
+              email: "maya@example.com",
+              expires_at: "2999-01-01T00:00:00.000Z",
+              user_email: "maya@example.com",
+              user_name: "Maya R."
+            };
+          }
+          if (/FROM users WHERE id/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+    }
+  };
+
+  const response = await worker.fetch(new Request("https://hackthevalley.org/api/auth/magic-login?token=htvl_test_magic_token_123456789&next=%2Fprojects%2F"), { HTV_DB: fakeDb }, {});
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), "https://hackthevalley.org/projects/");
+  assert.match(response.headers.get("set-cookie") || "", /htv_session=/);
 });
 
 test("/api/me returns participant community state for the signed-in user", async () => {

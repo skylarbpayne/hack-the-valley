@@ -1,6 +1,7 @@
 import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
 import * as authRequestCode from './functions/api/auth/request-code.js';
 import * as authVerifyCode from './functions/api/auth/verify-code.js';
+import * as authMagicLogin from './functions/api/auth/magic-login.js';
 import * as me from './functions/api/me.js';
 import * as meProjects from './functions/api/me/projects.js';
 import * as eventCheckins from './functions/api/events/[slug]/checkins/index.js';
@@ -82,6 +83,10 @@ function matchApiRoute(pathname) {
 
   if (pathname === '/api/auth/verify-code') {
     return { routeModule: authVerifyCode, params: {} };
+  }
+
+  if (pathname === '/api/auth/magic-login') {
+    return { routeModule: authMagicLogin, params: {} };
   }
 
   const meProjectMaterialsMatch = pathname.match(/^\/api\/me\/projects\/([^/]+)\/materials\/?$/);

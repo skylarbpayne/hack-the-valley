@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS auth_login_codes (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   code_hash TEXT NOT NULL,
+  magic_token_hash TEXT,
   purpose TEXT NOT NULL DEFAULT 'login',
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
@@ -87,6 +88,9 @@ CREATE TABLE IF NOT EXISTS auth_login_codes (
 CREATE INDEX IF NOT EXISTS idx_auth_login_codes_lookup
   ON auth_login_codes(user_id, code_hash, expires_at)
   WHERE consumed_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_login_codes_magic_token
+  ON auth_login_codes(magic_token_hash)
+  WHERE magic_token_hash IS NOT NULL AND consumed_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_auth_login_codes_email_created
   ON auth_login_codes(email, created_at DESC);
 

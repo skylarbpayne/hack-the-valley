@@ -19,7 +19,7 @@
       <div>
         <p class="text-bc-cyan uppercase tracking-[0.22em] text-xs font-black">Participant login</p>
         <h1 class="text-4xl sm:text-5xl font-black mt-3">Your Hack the Valley account</h1>
-        <p class="text-slate-300 text-lg mt-4 max-w-2xl">Use the same email you used for events or submissions. We’ll send a short one-time code when email delivery is enabled.</p>
+        <p class="text-slate-300 text-lg mt-4 max-w-2xl">Use the same email you used for events or submissions. We’ll send a short one-time code so you can open your profile and projects.</p>
         <div id="me-panel" class="mt-6 rounded-2xl border border-slate-700 bg-bc-navy p-5 text-slate-300">Checking session…</div>
       </div>
 
@@ -63,7 +63,7 @@
       const panel = $("me-panel");
       try {
         const data = await jsonFetch("/api/me");
-        panel.innerHTML = `<div class="text-xs uppercase tracking-[0.16em] text-bc-cyan font-black">Signed in</div><div class="mt-2 text-xl font-black text-white">${escapeHtml(data.user?.name || data.user?.email)}</div><div class="text-slate-400">${escapeHtml(data.user?.email || "")}</div><div class="mt-3 text-sm text-slate-400">Project/profile surfaces are coming next. For now this proves the session works.</div>`;
+        panel.innerHTML = `<div class="text-xs uppercase tracking-[0.16em] text-bc-cyan font-black">Signed in</div><div class="mt-2 text-xl font-black text-white">${escapeHtml(data.user?.name || data.user?.email)}</div><div class="text-slate-400">${escapeHtml(data.user?.email || "")}</div><div class="mt-3 text-sm text-slate-400"><a class="text-bc-cyan font-bold" href="/me/">Open profile</a> · <a class="text-bc-cyan font-bold" href="/projects/">Open projects</a></div>`;
       } catch {
         panel.innerHTML = `<div class="text-xs uppercase tracking-[0.16em] text-slate-500 font-black">Not signed in</div><div class="mt-2 text-slate-300">Request a code to start a participant session.</div>`;
       }

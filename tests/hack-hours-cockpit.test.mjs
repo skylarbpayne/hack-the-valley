@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   awardBadge,
   checkInAttendee,
+  claimProjectForUser,
   countEventPhotos,
   createEventPhotoRecord,
   getEventCockpit,
@@ -54,6 +55,85 @@ test("participant dashboard shows profile, attendance, projects, and badges from
   assert.match(html, /Your projects/);
   assert.match(html, /Badges/);
   assert.doesNotMatch(html, /HTV_ADMIN_TOKEN|data-award-badge/i);
+});
+
+test("participant dashboard lets signed-in users create or claim a project", () => {
+  const html = read("public/me/index.html");
+  assert.match(html, /id="project-create-form"/);
+  assert.match(html, /name="title"/);
+  assert.match(html, /name="repo_url"/);
+  assert.match(html, /name="demo_url"/);
+  assert.match(html, /\/api\/me\/projects/);
+  assert.match(html, /Add project/);
+  assert.doesNotMatch(html, /admin password|data-award-badge|HTV_ADMIN_TOKEN/i);
+});
+
+test("claimProjectForUser creates a project and records owner membership", async () => {
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM projects/.test(sql)) return { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+      return statement;
+    }
+  };
+
+  const result = await claimProjectForUser(db, "usr_maya", {
+    title: "Valley SAT Prep",
+    team_name: "Sequoia Sasquatches",
+    repo_url: "https://github.com/example/sat"
+  });
+  assert.equal(result.project.slug, "valley-sat-prep");
+  assert.equal(result.membership.role, "owner");
+  const sql = statements.map((s) => s.sql).join("\n");
+  assert.match(sql, /INSERT INTO projects/);
+  assert.match(sql, /INSERT INTO project_members/);
+  assert.ok(statements.some((s) => s.args.includes("usr_maya") && s.args.includes("owner")));
+});
+
+test("/api/me/projects lets the signed-in user create a project and returns refreshed state", async () => {
+  const statements = [];
+  const fakeDb = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          if (/FROM projects/.test(sql)) return { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep" };
+          return null;
+        },
+        async all() {
+          if (/FROM project_members/.test(sql)) return { results: [{ project_id: "prj_valley_sat_prep", title: "Valley SAT Prep", event_slug: null, status: "owner" }] };
+          return { results: [] };
+        }
+      };
+      return statement;
+    }
+  };
+
+  const response = await worker.fetch(new Request("https://hackthevalley.org/api/me/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: "htv_session=test-session-token" },
+    body: JSON.stringify({ title: "Valley SAT Prep", team_name: "Sequoia Sasquatches" })
+  }), { HTV_DB: fakeDb }, {});
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.project.title, "Valley SAT Prep");
+  assert.equal(body.state.user.email, "maya@example.com");
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO project_members/);
 });
 
 test("schema and migrations add passwordless user login sessions without passwords", () => {
@@ -217,7 +297,7 @@ test("/api/me returns participant community state for the signed-in user", async
           if (/FROM roles/.test(sql)) return { results: [] };
           if (/FROM event_participant_events/.test(sql)) return { results: [{ event_slug: "hack-hours", event_instance_id: "inst_1", event_type: "checked_in", occurred_at: "2026-06-20T15:05:00.000Z" }] };
           if (/FROM user_badges/.test(sql)) return { results: [{ slug: "first-attendance", name: "First Attendance", badge_type: "attendance", awarded_at: "2026-06-20T15:05:00.000Z" }] };
-          if (/FROM event_project_submissions/.test(sql)) return { results: [{ project_id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep", submission_id: "sub_1", event_slug: "hack-the-valley-2026", status: "accepted" }] };
+          if (/FROM project_members/.test(sql)) return { results: [{ project_id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep", submission_id: "sub_1", event_slug: "hack-the-valley-2026", status: "accepted" }] };
           return { results: [] };
         }
       };
@@ -343,7 +423,7 @@ test("user community state includes roles, attendance, badges, and submitted pro
           if (/FROM roles/.test(sql)) return { results: [{ role: "organizer", scope_type: "event", scope_id: "hack-hours" }] };
           if (/FROM event_participant_events/.test(sql)) return { results: [{ event_slug: "hack-hours", event_instance_id: "inst_1", event_type: "checked_in", occurred_at: "2026-06-20T15:05:00.000Z" }] };
           if (/FROM user_badges/.test(sql)) return { results: [{ slug: "first-attendance", name: "First Attendance", event_instance_id: "inst_1" }] };
-          if (/FROM event_project_submissions/.test(sql)) return { results: [{ project_id: "prj_valley_sat_prep", title: "Valley SAT Prep", submission_id: "sub_1", event_slug: "hack-the-valley-2026" }] };
+          if (/FROM project_members/.test(sql)) return { results: [{ project_id: "prj_valley_sat_prep", title: "Valley SAT Prep", submission_id: "sub_1", event_slug: "hack-the-valley-2026" }] };
           return { results: [] };
         }
       };
@@ -410,6 +490,7 @@ test("package check script covers all event cockpit route modules", () => {
   assert.match(pkg.scripts.check, /functions\/api\/auth\/request-code\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/auth\/verify-code\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/me\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/me\/projects\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/checkins\/index\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/cockpit\/index\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/followup\/index\.js/);

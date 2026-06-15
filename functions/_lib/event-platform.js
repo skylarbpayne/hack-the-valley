@@ -296,6 +296,29 @@ export async function upsertProject(db, input = {}) {
   return await db.prepare("SELECT * FROM projects WHERE slug = ?").bind(project.slug).first();
 }
 
+export async function claimProjectForUser(db, userId, input = {}) {
+  if (!userId) throw Object.assign(new Error("userId is required"), { status: 400 });
+  const project = await upsertProject(db, input);
+  const user = await getUserById(db, userId);
+  const now = new Date().toISOString();
+  const role = input.role || "owner";
+  const source = input.source || "participant_dashboard";
+  const id = `prm_${project.id}_${userId}`.replace(/[^a-zA-Z0-9_]+/g, "_");
+  await db.prepare(`
+    INSERT INTO project_members (
+      id, project_id, user_id, name, email, role, source, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(project_id, user_id) DO UPDATE SET
+      role = CASE WHEN project_members.role = 'owner' THEN project_members.role ELSE excluded.role END,
+      source = excluded.source
+  `).bind(id, project.id, userId, user?.name || input.name || null, user?.email || input.email || null, role, source, now).run();
+  const membership = await db.prepare("SELECT * FROM project_members WHERE project_id = ? AND user_id = ?").bind(project.id, userId).first();
+  return {
+    project: sanitizeProjectRow(project),
+    membership: membership || { id, project_id: project.id, user_id: userId, role, source, created_at: now }
+  };
+}
+
 export async function linkProjectSubmission(db, { eventSlug, eventInstanceId = null, projectId, submissionId = null, status = "submitted", source = "submission_portal" } = {}) {
   if (!eventSlug) throw Object.assign(new Error("eventSlug is required"), { status: 400 });
   if (!projectId) throw Object.assign(new Error("projectId is required"), { status: 400 });
@@ -427,10 +450,11 @@ export async function getUserCommunityState(db, userId) {
       ORDER BY ub.awarded_at DESC
     `).bind(userId).all(),
     db.prepare(`
-      SELECT p.id AS project_id, p.slug, p.title, p.team_name, eps.event_slug, eps.event_instance_id, eps.submission_id, eps.status
-      FROM event_project_submissions eps
-      JOIN projects p ON p.id = eps.project_id
-      LEFT JOIN project_members pm ON pm.project_id = p.id
+      SELECT p.id AS project_id, p.slug, p.title, p.team_name, p.description, p.repo_url, p.demo_url,
+             eps.event_slug, eps.event_instance_id, eps.submission_id, COALESCE(eps.status, pm.role) AS status
+      FROM project_members pm
+      JOIN projects p ON p.id = pm.project_id
+      LEFT JOIN event_project_submissions eps ON eps.project_id = p.id AND eps.status != 'hidden'
       WHERE pm.user_id = ?
       ORDER BY lower(p.title) ASC
     `).bind(userId).all()

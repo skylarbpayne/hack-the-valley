@@ -14,7 +14,7 @@ const DEFAULT_MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 export function corsHeaders() {
   return {
     'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET, POST, OPTIONS',
+    'access-control-allow-methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
     'access-control-allow-headers': 'authorization, content-type, x-admin-token, x-filename, x-project-title, x-team-name, x-upload-kind',
     'access-control-max-age': '86400',
   };

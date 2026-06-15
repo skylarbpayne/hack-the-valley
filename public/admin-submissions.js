@@ -3,6 +3,10 @@ const loadButton = document.getElementById('load');
 const csvLink = document.getElementById('csv');
 const statusEl = document.getElementById('status');
 const submissionsEl = document.getElementById('submissions');
+const cleanupForm = document.getElementById('cleanup-form');
+const cleanupStatus = document.getElementById('cleanup-status');
+const loadEventProjectsButton = document.getElementById('load-event-projects');
+const eventProjectCleanupList = document.getElementById('event-project-cleanup-list');
 
 tokenInput.value = localStorage.getItem('htvSubmissionAdminToken') || '';
 const API_ORIGIN = 'https://hack-the-valley.pages.dev';
@@ -21,6 +25,35 @@ function token() {
 
 function mediaUrl(key) {
   return apiUrl(`/api/media?key=${encodeURIComponent(key)}&token=${encodeURIComponent(token())}`);
+}
+
+function cleanupEventSlug() {
+  return cleanupForm.elements.event_slug.value.trim() || 'hack-the-valley-2026';
+}
+
+function fillCleanupProject(projectId, status = 'hidden') {
+  cleanupForm.elements.project_id.value = projectId;
+  cleanupForm.elements.status.value = status;
+  cleanupStatus.textContent = `Ready to set ${projectId} to ${status}.`;
+}
+
+function renderEventProjects(projects = []) {
+  if (!projects.length) {
+    eventProjectCleanupList.innerHTML = '<div class="text-slate-500">No event-linked projects found.</div>';
+    return;
+  }
+  eventProjectCleanupList.innerHTML = projects.map((project) => `
+    <div class="rounded-xl border border-slate-700 bg-slate-950/50 p-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+      <div>
+        <div class="font-bold text-white">${escapeHtml(project.title || project.project_id)}</div>
+        <div class="font-mono text-xs text-slate-500">${escapeHtml(project.project_id)} · ${escapeHtml(project.status || 'submitted')} ${project.submission_id ? `· ${escapeHtml(project.submission_id)}` : ''}</div>
+      </div>
+      <div class="flex gap-2">
+        <button type="button" data-cleanup-fill="${escapeHtml(project.project_id)}" data-cleanup-status="hidden" class="rounded-lg bg-amber-300 text-slate-950 px-3 py-2 font-bold">Hide</button>
+        <button type="button" data-cleanup-fill="${escapeHtml(project.project_id)}" data-cleanup-status="submitted" class="rounded-lg border border-slate-600 px-3 py-2 font-bold text-slate-200">Restore</button>
+      </div>
+    </div>
+  `).join('');
 }
 
 function renderUpload(upload) {
@@ -134,3 +167,58 @@ async function load() {
 }
 
 loadButton.addEventListener('click', load);
+
+loadEventProjectsButton.addEventListener('click', async () => {
+  if (!token()) {
+    cleanupStatus.textContent = 'Paste the admin token first.';
+    return;
+  }
+  cleanupStatus.textContent = 'Loading event-linked projects…';
+  try {
+    const eventSlug = cleanupEventSlug();
+    const response = await fetch(apiUrl(`/api/events/${encodeURIComponent(eventSlug)}/projects`), {
+      headers: { 'x-admin-token': token() },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    renderEventProjects(data.projects || []);
+    cleanupStatus.textContent = `${data.count || 0} event-linked project(s) loaded.`;
+  } catch (error) {
+    cleanupStatus.textContent = error.message;
+  }
+});
+
+eventProjectCleanupList.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-cleanup-fill]');
+  if (!button) return;
+  fillCleanupProject(button.dataset.cleanupFill, button.dataset.cleanupStatus || 'hidden');
+});
+
+cleanupForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!token()) {
+    cleanupStatus.textContent = 'Paste the admin token first.';
+    return;
+  }
+  const form = event.currentTarget;
+  const eventSlug = cleanupEventSlug();
+  const projectId = form.elements.project_id.value.trim();
+  const status = form.elements.status.value.trim();
+  if (!eventSlug || !projectId) {
+    cleanupStatus.textContent = 'Event and project ID are required.';
+    return;
+  }
+  cleanupStatus.textContent = `Updating ${projectId}…`;
+  try {
+    const response = await fetch(apiUrl(`/api/events/${encodeURIComponent(eventSlug)}/projects/${encodeURIComponent(projectId)}`), {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', 'x-admin-token': token() },
+      body: JSON.stringify({ status }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    cleanupStatus.textContent = `${projectId} is now ${data.project?.status || status}. No records were deleted.`;
+  } catch (error) {
+    cleanupStatus.textContent = error.message;
+  }
+});

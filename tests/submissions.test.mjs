@@ -96,6 +96,8 @@ test('public surfaces link to the canonical projects workspace instead of legacy
   const adminHtml = readFileSync(new URL('../public/admin-submissions.html', import.meta.url), 'utf8');
   assert.match(indexHtml, /href="\/projects\/"/);
   assert.match(adminHtml, /href="\/projects\/"/);
+  assert.match(adminHtml, /id="cleanup-form"/);
+  assert.match(adminHtml, /Hide or restore event-linked test projects/);
   assert.doesNotMatch(indexHtml, /Project submission portal/);
   assert.doesNotMatch(indexHtml, /href="\/submit"/);
   assert.doesNotMatch(indexHtml, /href="\/submit\.html"/);
@@ -112,6 +114,7 @@ test('custom-domain scripts send APIs to the Worker API origin', () => {
   assert.match(submitJs, /apiUrl\('\/api\/submissions'\)/);
   assert.match(adminJs, /apiUrl\('\/api\/submissions'\)/);
   assert.match(adminJs, /apiUrl\(`\/api\/media/);
+  assert.match(adminJs, /apiUrl\(`\/api\/events\/\$\{encodeURIComponent\(eventSlug\)\}\/projects\/\$\{encodeURIComponent\(projectId\)\}`\)/);
   assert.doesNotMatch(submitJs, /xhr\.open\('POST', `\/api\/upload/);
   assert.doesNotMatch(submitJs, /fetch\('\/api\/submissions'/);
   assert.doesNotMatch(adminJs, /fetch\('\/api\/submissions'/);

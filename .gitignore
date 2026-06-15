@@ -5,3 +5,4 @@ node_modules/
 .cloudflare.env.local
 .DS_Store
 *.log
+artifacts/

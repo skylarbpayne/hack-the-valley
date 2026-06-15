@@ -6,6 +6,8 @@ import {
   awardBadge,
   checkInAttendee,
   claimProjectForUser,
+  submitOwnedProjectToEvent,
+  updateOwnedProjectForUser,
   countEventPhotos,
   createEventPhotoRecord,
   getEventCockpit,
@@ -65,6 +67,9 @@ test("participant dashboard lets signed-in users create or claim a project", () 
   assert.match(html, /name="demo_url"/);
   assert.match(html, /\/api\/me\/projects/);
   assert.match(html, /Add project/);
+  assert.match(html, /data-project-edit-form/);
+  assert.match(html, /Submit to Hack the Valley/);
+  assert.match(html, /event_slug/);
   assert.doesNotMatch(html, /admin password|data-award-badge|HTV_ADMIN_TOKEN/i);
 });
 
@@ -98,6 +103,45 @@ test("claimProjectForUser creates a project and records owner membership", async
   assert.match(sql, /INSERT INTO projects/);
   assert.match(sql, /INSERT INTO project_members/);
   assert.ok(statements.some((s) => s.args.includes("usr_maya") && s.args.includes("owner")));
+});
+
+test("owned project helpers require ownership before editing or submitting", async () => {
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM projects p/.test(sql) && /project_members pm/.test(sql)) return { id: "prj_1", slug: "old", title: "Old", team_name: "Old Team" };
+          if (/SELECT \* FROM projects/.test(sql)) return { id: "prj_1", slug: "old", title: "Edited Project", team_name: "New Team" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+      return statement;
+    }
+  };
+
+  const updated = await updateOwnedProjectForUser(db, "usr_maya", "prj_1", { title: "Edited Project", team_name: "New Team" });
+  assert.equal(updated.project.title, "Edited Project");
+  assert.match(statements.map((s) => s.sql).join("\n"), /UPDATE projects/);
+  assert.ok(statements.some((s) => s.args.includes("usr_maya") && s.args.includes("prj_1")));
+
+  const submitted = await submitOwnedProjectToEvent(db, "usr_maya", "prj_1", { event_slug: "hack-the-valley-2026" });
+  assert.equal(submitted.submission.status, "submitted");
+  assert.equal(submitted.submission.source, "participant_dashboard");
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO event_project_submissions/);
+});
+
+test("owned project helpers reject edits when the user is not a project member", async () => {
+  const db = { prepare() { return { bind() { return this; }, async first() { return null; }, async run() { return {}; } }; } };
+  await assert.rejects(
+    () => updateOwnedProjectForUser(db, "usr_intruder", "prj_1", { title: "Nope" }),
+    /Project not found/
+  );
 });
 
 test("/api/me/projects lets the signed-in user create a project and returns refreshed state", async () => {
@@ -134,6 +178,51 @@ test("/api/me/projects lets the signed-in user create a project and returns refr
   assert.equal(body.project.title, "Valley SAT Prep");
   assert.equal(body.state.user.email, "maya@example.com");
   assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO project_members/);
+});
+
+test("/api/me/projects/<id> supports owner edit and event submission", async () => {
+  const statements = [];
+  const fakeDb = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM projects p/.test(sql) && /project_members pm/.test(sql)) return { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep" };
+          if (/SELECT \* FROM projects/.test(sql)) return { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Edited Valley SAT Prep" };
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          return null;
+        },
+        async all() {
+          if (/FROM project_members/.test(sql)) return { results: [{ project_id: "prj_valley_sat_prep", title: "Edited Valley SAT Prep", event_slug: "hack-the-valley-2026", status: "submitted" }] };
+          return { results: [] };
+        }
+      };
+      return statement;
+    }
+  };
+
+  const editResponse = await worker.fetch(new Request("https://hackthevalley.org/api/me/projects/prj_valley_sat_prep", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Cookie: "htv_session=test-session-token" },
+    body: JSON.stringify({ title: "Edited Valley SAT Prep" })
+  }), { HTV_DB: fakeDb }, {});
+  assert.equal(editResponse.status, 200);
+  assert.equal((await editResponse.json()).project.title, "Edited Valley SAT Prep");
+
+  const submitResponse = await worker.fetch(new Request("https://hackthevalley.org/api/me/projects/prj_valley_sat_prep/submissions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: "htv_session=test-session-token" },
+    body: JSON.stringify({ event_slug: "hack-the-valley-2026" })
+  }), { HTV_DB: fakeDb }, {});
+  assert.equal(submitResponse.status, 200);
+  assert.equal((await submitResponse.json()).submission.status, "submitted");
+  const sql = statements.map((s) => s.sql).join("\n");
+  assert.match(sql, /UPDATE projects/);
+  assert.match(sql, /INSERT INTO event_project_submissions/);
 });
 
 test("schema and migrations add passwordless user login sessions without passwords", () => {

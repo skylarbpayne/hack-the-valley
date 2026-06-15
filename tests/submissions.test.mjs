@@ -155,6 +155,21 @@ test('submissions app-db migration helper avoids SQL transaction-control stateme
   assert.doesNotMatch(script, /COMMIT\s*;/i);
 });
 
+test('project migration helper is dry-run first, backs up source rows, and writes idempotent project links', () => {
+  const script = readFileSync(new URL('../scripts/migrate-projects-from-submissions.sh', import.meta.url), 'utf8');
+  assert.match(script, /APPLY=0/);
+  assert.match(script, /backup-submissions/);
+  assert.match(script, /INSERT OR IGNORE INTO events/);
+  assert.match(script, /INSERT INTO projects/);
+  assert.match(script, /ON CONFLICT\(slug\) DO UPDATE SET/);
+  assert.match(script, /INSERT INTO project_members/);
+  assert.match(script, /ON CONFLICT\(project_id, email\) DO UPDATE SET/);
+  assert.match(script, /INSERT INTO event_project_submissions/);
+  assert.match(script, /ON CONFLICT\(id\) DO UPDATE SET status=excluded\.status/);
+  assert.match(script, /Dry run complete\. No target data was changed\./);
+  assert.doesNotMatch(script, /DELETE FROM|DROP TABLE|TRUNCATE/i);
+});
+
 test('jsonResponse returns JSON with no-store cache headers', async () => {
   const response = jsonResponse({ ok: true }, { status: 201 });
   assert.equal(response.status, 201);

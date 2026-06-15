@@ -115,6 +115,7 @@ test("owned project helpers require ownership before editing or submitting", asy
         bind(...args) { this.args = args; statements.push(this); return this; },
         async run() { return { success: true }; },
         async first() {
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
           if (/FROM projects p/.test(sql) && /project_members pm/.test(sql)) return { id: "prj_1", slug: "old", title: "Old", team_name: "Old Team" };
           if (/SELECT \* FROM projects/.test(sql)) return { id: "prj_1", slug: "old", title: "Edited Project", team_name: "New Team" };
           return null;
@@ -137,7 +138,7 @@ test("owned project helpers require ownership before editing or submitting", asy
 });
 
 test("owned project helpers reject edits when the user is not a project member", async () => {
-  const db = { prepare() { return { bind() { return this; }, async first() { return null; }, async run() { return {}; } }; } };
+  const db = { prepare(sql) { return { bind() { return this; }, async first() { return /FROM users/.test(sql) ? { id: "usr_intruder", email: "intruder@example.com" } : null; }, async run() { return {}; } }; } };
   await assert.rejects(
     () => updateOwnedProjectForUser(db, "usr_intruder", "prj_1", { title: "Nope" }),
     /Project not found/
@@ -500,10 +501,13 @@ test("badge helpers award badges idempotently with event provenance", async () =
 });
 
 test("user community state includes roles, attendance, badges, and submitted projects", async () => {
+  const statements = [];
   const db = {
     prepare(sql) {
       return {
-        bind(...args) { this.args = args; return this; },
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
         async first() {
           if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
           return null;
@@ -524,6 +528,8 @@ test("user community state includes roles, attendance, badges, and submitted pro
   assert.deepEqual(state.roles.map((role) => role.role), ["organizer"]);
   assert.deepEqual(state.badges.map((badge) => badge.slug), ["first-attendance"]);
   assert.deepEqual(state.projects.map((project) => project.title), ["Valley SAT Prep"]);
+  assert.match(statements.map((s) => s.sql).join("\n"), /lower\(pm\.email\) = lower\(\?\)/);
+  assert.ok(statements.some((s) => s.args.includes("maya@example.com")));
   assert.equal(state.attendance.length, 1);
 });
 

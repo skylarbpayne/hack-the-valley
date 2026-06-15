@@ -322,14 +322,21 @@ export async function claimProjectForUser(db, userId, input = {}) {
 async function getOwnedProject(db, userId, projectId) {
   if (!userId) throw Object.assign(new Error("userId is required"), { status: 400 });
   if (!projectId) throw Object.assign(new Error("project_id is required"), { status: 400 });
+  const user = await getUserById(db, userId);
+  if (!user) throw Object.assign(new Error("User not found"), { status: 404 });
   const project = await db.prepare(`
     SELECT p.*
     FROM projects p
     JOIN project_members pm ON pm.project_id = p.id
-    WHERE p.id = ? AND pm.user_id = ?
+    WHERE p.id = ? AND (pm.user_id = ? OR lower(pm.email) = lower(?))
     LIMIT 1
-  `).bind(projectId, userId).first();
+  `).bind(projectId, userId, user.email || "").first();
   if (!project) throw Object.assign(new Error("Project not found for signed-in user"), { status: 404 });
+  await db.prepare(`
+    UPDATE project_members
+    SET user_id = COALESCE(user_id, ?)
+    WHERE project_id = ? AND user_id IS NULL AND lower(email) = lower(?)
+  `).bind(userId, projectId, user.email || "").run();
   return project;
 }
 
@@ -519,9 +526,9 @@ export async function getUserCommunityState(db, userId) {
       FROM project_members pm
       JOIN projects p ON p.id = pm.project_id
       LEFT JOIN event_project_submissions eps ON eps.project_id = p.id AND eps.status != 'hidden'
-      WHERE pm.user_id = ?
+      WHERE (pm.user_id = ? OR lower(pm.email) = lower(?))
       ORDER BY lower(p.title) ASC
-    `).bind(userId).all()
+    `).bind(userId, user.email || "").all()
   ]);
   return {
     user,

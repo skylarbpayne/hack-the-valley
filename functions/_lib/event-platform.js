@@ -626,14 +626,60 @@ function addDays(date, days) {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
-async function sendLoginCodeWithResend({ email, name, code, expiresAt, env = {}, fetcher = fetch }) {
+function safeReturnPath(value, fallback = "/me/") {
+  const path = String(value || "").trim();
+  if (!path || !path.startsWith("/") || path.startsWith("//")) return fallback;
+  return path;
+}
+
+function publicBaseUrl(env = {}) {
+  const configured = String(env.HTV_PUBLIC_BASE_URL || env.PUBLIC_BASE_URL || "https://hackthevalley.org").trim();
+  try {
+    const url = new URL(configured);
+    if (url.protocol === "https:" || url.protocol === "http:") return url.origin;
+  } catch {
+    // fall through to production custom domain
+  }
+  return "https://hackthevalley.org";
+}
+
+function buildMagicLoginUrl({ token, next, env = {} }) {
+  const url = new URL("/api/auth/magic-login", publicBaseUrl(env));
+  url.searchParams.set("token", token);
+  const returnPath = safeReturnPath(next, "/me/");
+  if (returnPath) url.searchParams.set("next", returnPath);
+  return url.toString();
+}
+
+async function createSessionForUser(db, user, input = {}, env = {}, now = new Date()) {
+  const token = randomToken("htvs");
+  const tokenHash = await sha256Hex(token);
+  const sessionId = generateId("ses");
+  const nowIso = now.toISOString();
+  const expiresAt = addDays(now, Number(env.HTV_AUTH_SESSION_DAYS || 30));
+  await db.prepare(`
+    INSERT INTO user_sessions (
+      id, user_id, token_hash, created_at, expires_at, revoked_at, user_agent, ip_hint
+    ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+  `).bind(sessionId, user.id, tokenHash, nowIso, expiresAt, input.user_agent || null, input.ip_hint || null).run();
+  return {
+    id: sessionId,
+    token,
+    expires_at: expiresAt
+  };
+}
+
+async function sendLoginCodeWithResend({ email, name, code, magicLoginUrl, expiresAt, env = {}, fetcher = fetch }) {
   const apiKey = String(env.RESEND_API_KEY || "").trim();
   if (!apiKey) return null;
   const from = String(env.HTV_LOGIN_FROM_EMAIL || env.RESEND_LOGIN_FROM_EMAIL || env.RESEND_FROM_EMAIL || "Hack the Valley <updates@hackthevalley.org>").trim();
   const displayName = String(name || email).trim();
-  const subject = "Your Hack the Valley login code";
+  const subject = "Your Hack the Valley login code and magic link";
   const text = [
-    `Your Hack the Valley login code is ${code}.`,
+    "Use this magic link to sign in to Hack the Valley:",
+    magicLoginUrl,
+    "",
+    `Or enter this 6-digit code on the login page: ${code}.`,
     "",
     `It expires at ${expiresAt}.`,
     "If you did not request this, you can ignore this email."
@@ -641,7 +687,11 @@ async function sendLoginCodeWithResend({ email, name, code, expiresAt, env = {},
   const html = `
     <div style="font-family: Inter, Arial, sans-serif; color: #0f172a; line-height: 1.5;">
       <p>Hi ${escapeHtml(displayName)},</p>
-      <p>Your Hack the Valley login code is:</p>
+      <p>Use this magic link to sign in to Hack the Valley:</p>
+      <p style="margin: 24px 0;"><a href="${escapeHtml(magicLoginUrl)}" style="display: inline-block; background: #06b6d4; color: #0f172a; font-weight: 800; text-decoration: none; padding: 12px 18px; border-radius: 10px;">Sign in to Hack the Valley</a></p>
+      <p>If the button does not work, copy and paste this link:</p>
+      <p style="word-break: break-all;"><a href="${escapeHtml(magicLoginUrl)}">${escapeHtml(magicLoginUrl)}</a></p>
+      <p>Or enter this 6-digit code on the login page:</p>
       <p style="font-size: 32px; font-weight: 800; letter-spacing: 0.24em; margin: 24px 0;">${escapeHtml(code)}</p>
       <p>This code expires at ${escapeHtml(expiresAt)}.</p>
       <p style="color: #64748b; font-size: 14px;">If you did not request this, you can ignore this email.</p>
@@ -687,13 +737,16 @@ export async function requestLoginCode(db, input = {}, env = {}, fetcher = fetch
   const createdAt = now.toISOString();
   const expiresAt = addMinutes(now, Number(env.HTV_AUTH_CODE_TTL_MINUTES || 15));
   const codeHash = await sha256Hex(`${user.id}:${email}:${code}`);
+  const magicToken = randomToken("htvl");
+  const magicTokenHash = await sha256Hex(magicToken);
+  const magicLoginUrl = buildMagicLoginUrl({ token: magicToken, next: input.next, env });
   const id = generateId("alc");
   await db.prepare(`
     INSERT INTO auth_login_codes (
-      id, user_id, email, code_hash, purpose, created_at, expires_at, consumed_at, attempt_count
-    ) VALUES (?, ?, ?, ?, 'login', ?, ?, NULL, 0)
-  `).bind(id, user.id, email, codeHash, createdAt, expiresAt).run();
-  const delivery = await sendLoginCodeWithResend({ email, name: user.name || input.name, code, expiresAt, env, fetcher });
+      id, user_id, email, code_hash, magic_token_hash, purpose, created_at, expires_at, consumed_at, attempt_count
+    ) VALUES (?, ?, ?, ?, ?, 'login', ?, ?, NULL, 0)
+  `).bind(id, user.id, email, codeHash, magicTokenHash, createdAt, expiresAt).run();
+  const delivery = await sendLoginCodeWithResend({ email, name: user.name || input.name, code, magicLoginUrl, expiresAt, env, fetcher });
   const response = {
     ok: true,
     user_id: user.id,
@@ -725,23 +778,55 @@ export async function verifyLoginCode(db, input = {}, env = {}) {
   `).bind(user.id, codeHash, nowIso).first();
   if (!loginCode) throw Object.assign(new Error("Invalid or expired login code"), { status: 401 });
   await db.prepare("UPDATE auth_login_codes SET consumed_at = ? WHERE id = ?").bind(nowIso, loginCode.id).run();
-  const token = randomToken("htvs");
-  const tokenHash = await sha256Hex(token);
-  const sessionId = generateId("ses");
-  const expiresAt = addDays(now, Number(env.HTV_AUTH_SESSION_DAYS || 30));
-  await db.prepare(`
-    INSERT INTO user_sessions (
-      id, user_id, token_hash, created_at, expires_at, revoked_at, user_agent, ip_hint
-    ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
-  `).bind(sessionId, user.id, tokenHash, nowIso, expiresAt, input.user_agent || null, input.ip_hint || null).run();
+  const session = await createSessionForUser(db, user, input, env, now);
   return {
     ok: true,
     user,
-    session: {
-      id: sessionId,
-      token,
-      expires_at: expiresAt
-    }
+    session
+  };
+}
+
+export async function verifyLoginToken(db, input = {}, env = {}) {
+  const magicToken = String(input.token || "").trim();
+  if (!magicToken || magicToken.length < 24) {
+    throw Object.assign(new Error("Invalid or expired login link"), { status: 401 });
+  }
+  const tokenHash = await sha256Hex(magicToken);
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const loginCode = await db.prepare(`
+    SELECT
+      alc.*,
+      u.email AS user_email,
+      u.name AS user_name,
+      u.first_name AS user_first_name,
+      u.last_name AS user_last_name,
+      u.phone AS user_phone,
+      u.created_at AS user_created_at,
+      u.updated_at AS user_updated_at
+    FROM auth_login_codes alc
+    JOIN users u ON u.id = alc.user_id
+    WHERE alc.magic_token_hash = ? AND alc.consumed_at IS NULL AND alc.expires_at > ?
+    ORDER BY alc.created_at DESC
+    LIMIT 1
+  `).bind(tokenHash, nowIso).first();
+  if (!loginCode) throw Object.assign(new Error("Invalid or expired login link"), { status: 401 });
+  const user = {
+    id: loginCode.user_id,
+    email: loginCode.user_email || loginCode.email,
+    name: loginCode.user_name || null,
+    first_name: loginCode.user_first_name || null,
+    last_name: loginCode.user_last_name || null,
+    phone: loginCode.user_phone || null,
+    created_at: loginCode.user_created_at || null,
+    updated_at: loginCode.user_updated_at || null
+  };
+  await db.prepare("UPDATE auth_login_codes SET consumed_at = ? WHERE id = ?").bind(nowIso, loginCode.id).run();
+  const session = await createSessionForUser(db, user, input, env, now);
+  return {
+    ok: true,
+    user,
+    session
   };
 }
 

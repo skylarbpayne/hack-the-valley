@@ -51,8 +51,8 @@ test("participant profile shows editable profile info, badges, and project summa
   assert.match(html, /id="profile-card"/);
   assert.match(html, /id="profile-edit-form"/);
   assert.match(html, /\/api\/me/);
-  assert.match(html, /API_ORIGIN\s*=\s*'https:\/\/hack-the-valley\.pages\.dev'/);
-  assert.match(html, /apiUrl\("\/api\/me"\)/);
+  assert.match(html, /fetch\("\/api\/me"/);
+  assert.doesNotMatch(html, /API_ORIGIN\s*=\s*'https:\/\/hack-the-valley\.pages\.dev'/);
   assert.match(html, /method: "PATCH"/);
   assert.match(html, /id="attendance-list"/);
   assert.match(html, /id="project-summary-list"/);
@@ -75,8 +75,9 @@ test("participant projects workspace lets signed-in users create, edit, upload, 
   assert.match(html, /name="demo_url"/);
   assert.match(html, /\/api\/me\/projects/);
   assert.match(html, /\/api\/upload/);
-  assert.match(html, /API_ORIGIN\s*=\s*'https:\/\/hack-the-valley\.pages\.dev'/);
-  assert.match(html, /apiUrl\(`\/api\/upload/);
+  assert.match(html, /fetch\("\/api\/me"/);
+  assert.match(html, /const url = `\/api\/upload/);
+  assert.doesNotMatch(html, /API_ORIGIN\s*=\s*'https:\/\/hack-the-valley\.pages\.dev'/);
   assert.match(html, /\/materials/);
   assert.match(html, /data-project-upload/);
   assert.match(html, /Add project/);

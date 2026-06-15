@@ -79,24 +79,25 @@ test('validateSubmission allows no track and accepts multiple official tracks', 
   assert.equal(multiTrack.ok, true);
 });
 
-test('participant form exposes optional checkbox tracks only for Education, Social Impact, and AI', () => {
-  const html = readFileSync(new URL('../public/submit.html', import.meta.url), 'utf8');
-  assert.match(html, /Track\(s\)/);
-  assert.doesNotMatch(html, /id="track"[^>]*required/);
-  assert.doesNotMatch(html, /<select[^>]*id="track"/);
-  for (const track of SUBMISSION_TRACKS) {
-    assert.match(html, new RegExp(`name="tracks"[^>]+value="${track}"`));
-  }
-  for (const staleTrack of ['AI for Good', 'Health', 'FinTech', 'Open Track']) {
-    assert.doesNotMatch(html, new RegExp(staleTrack));
-  }
+test('project workspace replaces the legacy submit form and exposes upload workflow', () => {
+  const projectsHtml = readFileSync(new URL('../public/projects/index.html', import.meta.url), 'utf8');
+  const submitHtml = readFileSync(new URL('../public/submit.html', import.meta.url), 'utf8');
+  assert.match(projectsHtml, /id="participant-projects"/);
+  assert.match(projectsHtml, /data-project-upload/);
+  assert.match(projectsHtml, /\/api\/upload/);
+  assert.match(projectsHtml, /\/api\/me\/projects/);
+  assert.match(submitHtml, /url=\/projects\//);
+  assert.match(submitHtml, /window\.location\.replace\('\/projects\/'\)/);
+  assert.doesNotMatch(projectsHtml, /Showcase event slug|id="track"[^>]*required/);
 });
 
-test('public surfaces use extensionless canonical submit path', () => {
+test('public surfaces link to the canonical projects workspace instead of legacy submit portal', () => {
   const indexHtml = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const adminHtml = readFileSync(new URL('../public/admin-submissions.html', import.meta.url), 'utf8');
-  assert.match(indexHtml, /href="\/submit"/);
-  assert.match(adminHtml, /href="\/submit"/);
+  assert.match(indexHtml, /href="\/projects\/"/);
+  assert.match(adminHtml, /href="\/projects\/"/);
+  assert.doesNotMatch(indexHtml, /Project submission portal/);
+  assert.doesNotMatch(indexHtml, /href="\/submit"/);
   assert.doesNotMatch(indexHtml, /href="\/submit\.html"/);
   assert.doesNotMatch(adminHtml, /href="\/submit\.html"/);
 });

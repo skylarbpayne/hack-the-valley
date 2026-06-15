@@ -206,6 +206,17 @@ function parseJsonObject(value, fallback = {}) {
   }
 }
 
+function parseJsonArray(value, fallback = []) {
+  if (!value) return fallback;
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function normalizeTracks(value) {
   if (Array.isArray(value)) return value.map((track) => String(track).trim()).filter(Boolean);
   if (typeof value === "string") return value.split(/[|,]/).map((track) => track.trim()).filter(Boolean);
@@ -259,6 +270,17 @@ function defaultBadgeForSlug(slug) {
 
 function sanitizeProjectRow(row = {}) {
   const { contact_email, payload_json, uploads_json, ...safe } = row;
+  const payload = parseJsonObject(payload_json, {});
+  const uploads = parseJsonArray(uploads_json).map((upload) => ({
+    kind: upload.kind || "file",
+    filename: upload.filename || upload.originalFilename || "Uploaded file",
+    contentType: upload.contentType || upload.content_type || null,
+    size: upload.size || upload.bytes || null
+  }));
+  safe.media_link = payload.mediaLink || payload.media_link || null;
+  safe.uploads = uploads;
+  safe.upload_count = uploads.length;
+  safe.has_uploads = uploads.length > 0 || Boolean(safe.media_link);
   return safe;
 }
 
@@ -522,9 +544,11 @@ export async function getUserCommunityState(db, userId) {
     `).bind(userId).all(),
     db.prepare(`
       SELECT p.id AS project_id, p.slug, p.title, p.team_name, p.description, p.repo_url, p.demo_url,
+             p.canonical_submission_id, cs.payload_json, cs.uploads_json,
              eps.event_slug, eps.event_instance_id, eps.submission_id, COALESCE(eps.status, pm.role) AS status
       FROM project_members pm
       JOIN projects p ON p.id = pm.project_id
+      LEFT JOIN submissions cs ON cs.id = p.canonical_submission_id
       LEFT JOIN event_project_submissions eps ON eps.project_id = p.id AND eps.status != 'hidden'
       WHERE (pm.user_id = ? OR lower(pm.email) = lower(?))
       ORDER BY lower(p.title) ASC
@@ -938,6 +962,36 @@ export async function upsertUser(db, input) {
   ).run();
 
   return await db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first();
+}
+
+export async function updateUserProfile(db, userId, input = {}) {
+  if (!userId) throw Object.assign(new Error("userId is required"), { status: 400 });
+  const existing = await getUserById(db, userId);
+  if (!existing) throw Object.assign(new Error("User not found"), { status: 404 });
+
+  const firstName = trimOrNull(input.first_name ?? input.firstName ?? existing.first_name);
+  const lastName = trimOrNull(input.last_name ?? input.lastName ?? existing.last_name);
+  const suppliedName = trimOrNull(input.name);
+  const composedName = trimOrNull(`${firstName || ""} ${lastName || ""}`);
+  const name = suppliedName || composedName || trimOrNull(existing.name) || existing.email;
+  const phone = trimOrNull(input.phone ?? existing.phone);
+  const school = trimOrNull(input.school ?? input.university ?? existing.school);
+  const metadata = stringifyJson(input.metadata ?? input.metadata_json ?? existing.metadata_json);
+  const now = new Date().toISOString();
+
+  await db.prepare(`
+    UPDATE users
+    SET name = ?,
+        first_name = ?,
+        last_name = ?,
+        phone = ?,
+        school = ?,
+        metadata_json = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).bind(name, firstName, lastName, phone, school, metadata, now, userId).run();
+
+  return await getUserById(db, userId);
 }
 
 export async function upsertSignup(db, eventSlug, input, mailingListResult, eventInstance = null) {

@@ -45,32 +45,53 @@ test("participant login page requests a code, verifies it, and reads /api/me", (
   assert.doesNotMatch(html, /admin password|HTV_ADMIN_TOKEN/i);
 });
 
-test("participant dashboard shows profile, attendance, projects, and badges from /api/me", () => {
+test("participant profile shows editable profile info, badges, and project summary from /api/me", () => {
   const html = read("public/me/index.html");
-  assert.match(html, /id="participant-dashboard"/);
+  assert.match(html, /id="participant-profile"/);
   assert.match(html, /id="profile-card"/);
-  assert.match(html, /id="attendance-list"/);
-  assert.match(html, /id="project-list"/);
-  assert.match(html, /id="badge-list"/);
+  assert.match(html, /id="profile-edit-form"/);
   assert.match(html, /\/api\/me/);
+  assert.match(html, /API_ORIGIN\s*=\s*'https:\/\/hack-the-valley\.pages\.dev'/);
+  assert.match(html, /apiUrl\("\/api\/me"\)/);
+  assert.match(html, /method: "PATCH"/);
+  assert.match(html, /id="attendance-list"/);
+  assert.match(html, /id="project-summary-list"/);
+  assert.match(html, /id="badge-list"/);
+  assert.match(html, /\/projects\//);
   assert.match(html, /\/login\//);
-  assert.match(html, /Your projects/);
+  assert.match(html, /Open project workspace/);
   assert.match(html, /Badges/);
+  assert.doesNotMatch(html, /id="project-create-form"/);
+  assert.doesNotMatch(html, /Showcase event slug|name="event_slug"/);
   assert.doesNotMatch(html, /HTV_ADMIN_TOKEN|data-award-badge/i);
 });
 
-test("participant dashboard lets signed-in users create or claim a project", () => {
-  const html = read("public/me/index.html");
+test("participant projects workspace lets signed-in users create, edit, upload, and submit projects", () => {
+  const html = read("public/projects/index.html");
+  assert.match(html, /id="participant-projects"/);
   assert.match(html, /id="project-create-form"/);
   assert.match(html, /name="title"/);
   assert.match(html, /name="repo_url"/);
   assert.match(html, /name="demo_url"/);
   assert.match(html, /\/api\/me\/projects/);
+  assert.match(html, /\/api\/upload/);
+  assert.match(html, /API_ORIGIN\s*=\s*'https:\/\/hack-the-valley\.pages\.dev'/);
+  assert.match(html, /apiUrl\(`\/api\/upload/);
+  assert.match(html, /\/materials/);
+  assert.match(html, /data-project-upload/);
   assert.match(html, /Add project/);
   assert.match(html, /data-project-edit-form/);
   assert.match(html, /Submit to Hack the Valley/);
-  assert.match(html, /event_slug/);
+  assert.doesNotMatch(html, /Showcase event slug|name="event_slug"/);
   assert.doesNotMatch(html, /admin password|data-award-badge|HTV_ADMIN_TOKEN/i);
+});
+
+test("legacy submit paths redirect to the project workspace", async () => {
+  for (const path of ["/submit", "/submit/"]) {
+    const response = await worker.fetch(new Request(`https://hackthevalley.org${path}`), {}, {});
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), "https://hackthevalley.org/projects/");
+  }
 });
 
 test("claimProjectForUser creates a project and records owner membership", async () => {
@@ -143,6 +164,38 @@ test("owned project helpers reject edits when the user is not a project member",
     () => updateOwnedProjectForUser(db, "usr_intruder", "prj_1", { title: "Nope" }),
     /Project not found/
   );
+});
+
+test("/api/me lets the signed-in user update basic profile info", async () => {
+  const statements = [];
+  const fakeDb = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya Rivera", first_name: "Maya", last_name: "Rivera", phone: "661-555-0100", school: "CSUB" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+      return statement;
+    }
+  };
+
+  const response = await worker.fetch(new Request("https://hackthevalley.org/api/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Cookie: "htv_session=test-session-token" },
+    body: JSON.stringify({ first_name: "Maya", last_name: "Rivera", phone: "661-555-0100", school: "CSUB" })
+  }), { HTV_DB: fakeDb }, {});
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.user.first_name, "Maya");
+  assert.equal(body.user.school, "CSUB");
+  assert.match(statements.map((s) => s.sql).join("\n"), /UPDATE users/);
 });
 
 test("/api/me/projects lets the signed-in user create a project and returns refreshed state", async () => {
@@ -224,6 +277,57 @@ test("/api/me/projects/<id> supports owner edit and event submission", async () 
   const sql = statements.map((s) => s.sql).join("\n");
   assert.match(sql, /UPDATE projects/);
   assert.match(sql, /INSERT INTO event_project_submissions/);
+});
+
+test("/api/me/projects/<id>/materials saves uploaded materials against the owned project", async () => {
+  const statements = [];
+  const fakeDb = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM projects p/.test(sql) && /project_members pm/.test(sql)) return { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep", team_name: "Sequoia Sasquatches", description: "SAT helper", repo_url: "", demo_url: "", tracks_json: "[]", canonical_submission_id: "htv_old" };
+          if (/SELECT \* FROM projects/.test(sql)) return { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep", team_name: "Sequoia Sasquatches", description: "SAT helper", repo_url: "", demo_url: "", tracks_json: "[]", canonical_submission_id: "htv_old" };
+          if (/FROM submissions WHERE id/.test(sql)) return { payload_json: JSON.stringify({ mediaLink: "https://loom.example.com/old-demo" }), uploads_json: JSON.stringify([{ key: "submissions/team/old.png", filename: "old.png", kind: "image" }]) };
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          return null;
+        },
+        async all() {
+          if (/FROM project_members/.test(sql)) return { results: [{ project_id: "prj_valley_sat_prep", title: "Valley SAT Prep", team_name: "Sequoia Sasquatches", status: "owner", payload_json: JSON.stringify({ mediaLink: "https://loom.example.com/new-demo" }), uploads_json: JSON.stringify([{ key: "submissions/team/video.mp4", filename: "demo.mp4", kind: "video" }]) }] };
+          return { results: [] };
+        }
+      };
+      return statement;
+    }
+  };
+
+  const response = await worker.fetch(new Request("https://hackthevalley.org/api/me/projects/prj_valley_sat_prep/materials", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: "htv_session=test-session-token" },
+    body: JSON.stringify({
+      title: "Valley SAT Prep",
+      team_name: "Sequoia Sasquatches",
+      description: "SAT helper",
+      mediaLink: "https://loom.example.com/new-demo",
+      uploads: [{ key: "submissions/team/video.mp4", filename: "demo.mp4", kind: "video" }]
+    })
+  }), { HTV_DB: fakeDb, SUBMISSIONS_MEDIA: { put: async () => ({}) } }, {});
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.state.projects[0].has_uploads, true);
+  assert.equal(body.state.projects[0].media_link, "https://loom.example.com/new-demo");
+  const sql = statements.map((s) => s.sql).join("\n");
+  assert.match(sql, /INSERT INTO submissions/);
+  assert.match(sql, /canonical_submission_id/);
+  assert.match(sql, /UPDATE event_project_submissions/);
+  const insertedSubmission = statements.find((s) => /INSERT INTO submissions/.test(s.sql));
+  const uploadsJson = insertedSubmission.args[7];
+  assert.match(uploadsJson, /old\.png/);
+  assert.match(uploadsJson, /demo\.mp4/);
 });
 
 test("schema and migrations add passwordless user login sessions without passwords", () => {

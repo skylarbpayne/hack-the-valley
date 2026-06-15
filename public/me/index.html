@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>My Hack the Valley | Dashboard</title>
+  <title>My Hack the Valley | Profile</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,53 +13,43 @@
   </script>
 </head>
 <body class="min-h-screen bg-bc-dark text-slate-100 font-sans">
-  <main id="participant-dashboard" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+  <main id="participant-profile" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
     <nav class="flex items-center justify-between gap-4">
       <a href="/" class="font-black text-white">Hack the Valley</a>
       <div class="flex items-center gap-4 text-sm">
         <a href="/events" class="text-slate-300 hover:text-bc-cyan">Events</a>
+        <a href="/projects/" class="text-slate-300 hover:text-bc-cyan">Projects</a>
         <a href="/login/" class="text-bc-cyan hover:text-cyan-300">Login</a>
       </div>
     </nav>
 
-    <header class="mt-10 grid lg:grid-cols-[1.2fr_0.8fr] gap-6 items-stretch">
+    <header class="mt-10 grid lg:grid-cols-[1.1fr_0.9fr] gap-6 items-stretch">
       <section class="rounded-3xl border border-slate-700 bg-bc-navy p-6 sm:p-8">
-        <p class="text-bc-cyan uppercase tracking-[0.22em] text-xs font-black">Participant dashboard</p>
-        <h1 class="text-4xl sm:text-5xl font-black mt-3">Your Hack the Valley home base</h1>
-        <p class="text-slate-300 text-lg mt-4 max-w-2xl">Track your event history, projects, and badges. This is the participant-facing loop — no admin controls, no awkward spreadsheet goblinry.</p>
+        <p class="text-bc-cyan uppercase tracking-[0.22em] text-xs font-black">Participant profile</p>
+        <h1 class="text-4xl sm:text-5xl font-black mt-3">Your Hack the Valley profile</h1>
+        <p class="text-slate-300 text-lg mt-4 max-w-2xl">Keep your basic info current, see badges, and jump to your project workspace when you need to edit or upload materials.</p>
       </section>
       <section id="profile-card" class="rounded-3xl border border-slate-700 bg-slate-950 p-6 sm:p-8">
         <p class="text-slate-400">Loading your profile…</p>
       </section>
     </header>
 
-    <div id="dashboard-error" class="hidden mt-6 rounded-2xl border border-red-500/40 bg-red-950/40 p-5 text-red-100"></div>
+    <div id="profile-error" class="hidden mt-6 rounded-2xl border border-red-500/40 bg-red-950/40 p-5 text-red-100"></div>
 
-    <section class="grid lg:grid-cols-3 gap-5 mt-6">
+    <section class="grid lg:grid-cols-[1fr_1fr] gap-5 mt-6">
       <article class="rounded-3xl border border-slate-700 bg-bc-navy p-6">
         <div class="flex items-center justify-between gap-3">
-          <h2 class="text-2xl font-black">Attendance</h2>
-          <span id="attendance-count" class="text-xs font-black uppercase tracking-[0.16em] text-bc-cyan">0 events</span>
+          <h2 class="text-2xl font-black">Basic info</h2>
+          <span class="text-xs font-black uppercase tracking-[0.16em] text-bc-cyan">Editable</span>
         </div>
-        <ul id="attendance-list" class="mt-4 space-y-3 text-slate-300"></ul>
-      </article>
-
-      <article class="rounded-3xl border border-slate-700 bg-bc-navy p-6">
-        <div class="flex items-center justify-between gap-3">
-          <h2 class="text-2xl font-black">Your projects</h2>
-          <span id="project-count" class="text-xs font-black uppercase tracking-[0.16em] text-bc-cyan">0 projects</span>
-        </div>
-        <form id="project-create-form" class="mt-4 space-y-3 rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
-          <label class="block"><span class="text-xs font-bold text-slate-300">Project title</span><input name="title" required class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Valley SAT Prep"></label>
-          <label class="block"><span class="text-xs font-bold text-slate-300">Team name <span class="text-slate-500">optional</span></span><input name="team_name" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Sequoia Sasquatches"></label>
-          <label class="block"><span class="text-xs font-bold text-slate-300">Description <span class="text-slate-500">optional</span></span><textarea name="description" rows="2" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="What did you build?"></textarea></label>
-          <label class="block"><span class="text-xs font-bold text-slate-300">Repository URL <span class="text-slate-500">optional</span></span><input name="repo_url" type="url" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="https://github.com/..."></label>
-          <label class="block"><span class="text-xs font-bold text-slate-300">Demo URL <span class="text-slate-500">optional</span></span><input name="demo_url" type="url" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="https://..."></label>
-          <label class="block"><span class="text-xs font-bold text-slate-300">Showcase event slug</span><input name="event_slug" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" value="hack-the-valley-2026"></label>
-          <button class="w-full bg-bc-cyan text-bc-dark px-4 py-2 rounded-lg font-black hover:bg-cyan-400">Add project</button>
-          <p id="project-create-status" class="text-xs text-slate-400">Creates a project and marks you as owner.</p>
+        <form id="profile-edit-form" class="mt-4 space-y-3 rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
+          <label class="block"><span class="text-xs font-bold text-slate-300">First name</span><input name="first_name" autocomplete="given-name" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white"></label>
+          <label class="block"><span class="text-xs font-bold text-slate-300">Last name</span><input name="last_name" autocomplete="family-name" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white"></label>
+          <label class="block"><span class="text-xs font-bold text-slate-300">Phone <span class="text-slate-500">optional</span></span><input name="phone" autocomplete="tel" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white"></label>
+          <label class="block"><span class="text-xs font-bold text-slate-300">School / organization <span class="text-slate-500">optional</span></span><input name="school" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white"></label>
+          <button class="w-full bg-bc-cyan text-bc-dark px-4 py-2 rounded-lg font-black hover:bg-cyan-400">Save profile</button>
+          <p id="profile-edit-status" role="status" aria-live="polite" class="text-xs text-slate-400">Changes update your participant profile only.</p>
         </form>
-        <ul id="project-list" class="mt-4 space-y-3 text-slate-300"></ul>
       </article>
 
       <article class="rounded-3xl border border-slate-700 bg-bc-navy p-6">
@@ -70,10 +60,35 @@
         <ul id="badge-list" class="mt-4 space-y-3 text-slate-300"></ul>
       </article>
     </section>
+
+    <section class="grid lg:grid-cols-[1fr_1fr] gap-5 mt-6">
+      <article class="rounded-3xl border border-slate-700 bg-bc-navy p-6">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-2xl font-black">Projects</h2>
+          <span id="project-count" class="text-xs font-black uppercase tracking-[0.16em] text-bc-cyan">0 projects</span>
+        </div>
+        <ul id="project-summary-list" class="mt-4 space-y-3 text-slate-300"></ul>
+        <a href="/projects/" class="mt-4 inline-flex w-full justify-center rounded-lg bg-bc-orange px-4 py-3 font-black text-bc-dark hover:bg-amber-300">Open project workspace</a>
+      </article>
+
+      <article class="rounded-3xl border border-slate-700 bg-bc-navy p-6">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-2xl font-black">Event history</h2>
+          <span id="attendance-count" class="text-xs font-black uppercase tracking-[0.16em] text-bc-cyan">0 events</span>
+        </div>
+        <ul id="attendance-list" class="mt-4 space-y-3 text-slate-300"></ul>
+      </article>
+    </section>
   </main>
 
   <script>
     const $ = (id) => document.getElementById(id);
+    let currentState = null;
+    const API_ORIGIN = 'https://hack-the-valley.pages.dev';
+
+    function apiUrl(path) {
+      return window.location.hostname.endsWith('.pages.dev') || ['localhost', '127.0.0.1', ''].includes(window.location.hostname) ? path : `${API_ORIGIN}${path}`;
+    }
 
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
@@ -90,6 +105,25 @@
       return `<li class="rounded-2xl border border-dashed border-slate-600 bg-slate-950/40 p-4 text-sm text-slate-400">${escapeHtml(copy)}</li>`;
     }
 
+    function eventLabel(slug) {
+      if (!slug) return "No event submission yet";
+      return slug === "hack-the-valley-2026" ? "Hack the Valley 2026" : slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    function statusLabel(project) {
+      if (project.status === "submitted") return `Submitted to ${eventLabel(project.event_slug)}`;
+      if (project.status === "accepted" || project.status === "showcased" || project.status === "winner") return project.status.charAt(0).toUpperCase() + project.status.slice(1);
+      return "Not submitted yet";
+    }
+
+    function fillProfileForm(user = {}) {
+      const form = $("profile-edit-form");
+      form.elements.first_name.value = user.first_name || "";
+      form.elements.last_name.value = user.last_name || "";
+      form.elements.phone.value = user.phone || "";
+      form.elements.school.value = user.school || "";
+    }
+
     function renderProfile(user) {
       $("profile-card").innerHTML = `
         <p class="text-xs uppercase tracking-[0.16em] text-bc-cyan font-black">Signed in</p>
@@ -97,41 +131,31 @@
         <p class="text-slate-400">${escapeHtml(user?.email || "")}</p>
         <p class="mt-4 text-sm text-slate-500">Session expires ${escapeHtml(prettyDate(user?.session_expires_at))}</p>
       `;
+      fillProfileForm(user || {});
     }
 
     function renderAttendance(events = []) {
       $("attendance-count").textContent = `${events.length} event${events.length === 1 ? "" : "s"}`;
       $("attendance-list").innerHTML = events.length ? events.map((event) => `
         <li class="rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
-          <div class="font-bold text-white">${escapeHtml(event.event_slug || "Event")}</div>
-          <div class="text-sm text-slate-400">${escapeHtml(event.event_type || "participated")} · ${escapeHtml(prettyDate(event.occurred_at))}</div>
+          <div class="font-bold text-white">${escapeHtml(eventLabel(event.event_slug))}</div>
+          <div class="text-sm text-slate-400">${escapeHtml(event.event_type === "checked_in" ? "Checked in" : event.event_type || "Participated")} · ${escapeHtml(prettyDate(event.occurred_at))}</div>
         </li>
-      `).join("") : emptyItem("No attendance yet. Show up and this starts filling in.");
+      `).join("") : emptyItem("No attendance yet. Sign up for Hack Hours to start your history.");
     }
 
     function renderProjects(projects = []) {
       $("project-count").textContent = `${projects.length} project${projects.length === 1 ? "" : "s"}`;
-      $("project-list").innerHTML = projects.length ? projects.map((project) => `
-        <li class="rounded-2xl border border-slate-700 bg-slate-950/50 p-4 space-y-3">
-          <div>
-            <div class="font-bold text-white">${escapeHtml(project.title || "Untitled project")}</div>
-            <div class="text-sm text-slate-400">${escapeHtml(project.event_slug || "event pending")} · ${escapeHtml(project.status || "owner")}</div>
+      $("project-summary-list").innerHTML = projects.length ? projects.map((project) => `
+        <li class="rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
+          <div class="font-bold text-white">${escapeHtml(project.title || "Untitled project")}</div>
+          <div class="text-sm text-slate-400">${escapeHtml(project.team_name || "Team name not set")}</div>
+          <div class="mt-2 flex flex-wrap gap-2 text-xs">
+            <span class="rounded-full bg-cyan-400/10 px-2 py-1 text-bc-cyan">${escapeHtml(statusLabel(project))}</span>
+            <span class="rounded-full ${project.has_uploads ? "bg-green-400/10 text-green-300" : "bg-slate-700 text-slate-300"} px-2 py-1">${project.has_uploads ? `${project.upload_count} upload${project.upload_count === 1 ? "" : "s"}` : "No uploads yet"}</span>
           </div>
-          <form data-project-edit-form data-project-id="${escapeHtml(project.project_id || project.id)}" class="space-y-2">
-            <input name="title" required value="${escapeHtml(project.title || "")}" class="w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Project title">
-            <input name="team_name" value="${escapeHtml(project.team_name || "")}" class="w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Team name">
-            <textarea name="description" rows="2" class="w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Description">${escapeHtml(project.description || "")}</textarea>
-            <div class="grid sm:grid-cols-2 gap-2">
-              <input name="repo_url" value="${escapeHtml(project.repo_url || "")}" class="w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Repository URL">
-              <input name="demo_url" value="${escapeHtml(project.demo_url || "")}" class="w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Demo URL">
-            </div>
-            <div class="flex flex-col sm:flex-row gap-2">
-              <button class="flex-1 rounded-lg border border-slate-600 px-3 py-2 font-bold text-white hover:border-bc-cyan" type="submit">Save edits</button>
-              <button class="flex-1 rounded-lg bg-bc-orange px-3 py-2 font-black text-bc-dark hover:bg-amber-300" type="button" data-project-submit="${escapeHtml(project.project_id || project.id)}" data-event-slug="${escapeHtml(project.event_slug || "hack-the-valley-2026")}">Submit to Hack the Valley</button>
-            </div>
-          </form>
         </li>
-      `).join("") : emptyItem("No linked projects yet. Add one, then submit it to the Hack the Valley showcase.");
+      `).join("") : emptyItem("No projects yet. Open the project workspace to create one.");
     }
 
     function renderBadges(badges = []) {
@@ -141,11 +165,11 @@
           <div class="font-bold text-white">🏅 ${escapeHtml(badge.name || badge.slug || "Badge")}</div>
           <div class="text-sm text-slate-400">${escapeHtml(badge.description || badge.badge_type || "earned")}</div>
         </li>
-      `).join("") : emptyItem("No badges yet. The first one should not be a sad empty div.");
+      `).join("") : emptyItem("No badges yet. Check in at an event or submit a project to earn one.");
     }
 
     async function jsonFetch(path, options = {}) {
-      const response = await fetch(path, {
+      const response = await fetch(apiUrl(path), {
         ...options,
         headers: { "Content-Type": "application/json", "Accept": "application/json", ...(options.headers || {}) }
       });
@@ -154,91 +178,55 @@
       return data;
     }
 
-    async function loadDashboard() {
+    function renderState(data) {
+      currentState = data;
+      renderProfile(data.user || {});
+      renderAttendance(data.attendance || []);
+      renderProjects(data.projects || []);
+      renderBadges(data.badges || []);
+    }
+
+    async function loadProfile() {
       try {
-        const response = await fetch("/api/me", { headers: { "Accept": "application/json" } });
+        const response = await fetch(apiUrl("/api/me"), { headers: { "Accept": "application/json" } });
         const data = await response.json().catch(() => ({}));
         if (response.status === 401) {
           window.location.href = "/login/?next=/me/";
           return;
         }
-        if (!response.ok) throw new Error(data.error || "Could not load dashboard");
-        renderProfile(data.user || {});
-        renderAttendance(data.attendance || []);
-        renderProjects(data.projects || []);
-        renderBadges(data.badges || []);
+        if (!response.ok) throw new Error(data.error || "Could not load profile");
+        renderState(data);
       } catch (error) {
-        const box = $("dashboard-error");
+        const box = $("profile-error");
         box.classList.remove("hidden");
-        box.textContent = error.message || "Could not load dashboard.";
+        box.textContent = error.message || "Could not load profile.";
       }
     }
 
-    $("project-create-form").addEventListener("submit", async (event) => {
+    $("profile-edit-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       const form = event.currentTarget;
-      const status = $("project-create-status");
+      const status = $("profile-edit-status");
       const payload = {
-        title: form.elements.title.value.trim(),
-        team_name: form.elements.team_name.value.trim(),
-        description: form.elements.description.value.trim(),
-        repo_url: form.elements.repo_url.value.trim(),
-        demo_url: form.elements.demo_url.value.trim(),
-        event_slug: form.elements.event_slug.value.trim()
+        first_name: form.elements.first_name.value.trim(),
+        last_name: form.elements.last_name.value.trim(),
+        phone: form.elements.phone.value.trim(),
+        school: form.elements.school.value.trim()
       };
       try {
         status.className = "text-xs text-slate-400";
-        status.textContent = "Saving project…";
-        const data = await jsonFetch("/api/me/projects", { method: "POST", body: JSON.stringify(payload) });
-        renderProjects(data.state?.projects || []);
+        status.textContent = "Saving profile…";
+        const data = await jsonFetch("/api/me", { method: "PATCH", body: JSON.stringify(payload) });
+        renderState(data);
         status.className = "text-xs text-green-300";
-        status.textContent = `Added ${data.project?.title || "project"}.`;
-        form.reset();
+        status.textContent = "Profile saved.";
       } catch (error) {
         status.className = "text-xs text-red-300";
-        status.textContent = error.message || "Could not save project.";
+        status.textContent = error.message || "Could not save profile.";
       }
     });
 
-    $("project-list").addEventListener("submit", async (event) => {
-      const form = event.target.closest("[data-project-edit-form]");
-      if (!form) return;
-      event.preventDefault();
-      const projectId = form.dataset.projectId;
-      try {
-        const payload = {
-          title: form.elements.title.value.trim(),
-          team_name: form.elements.team_name.value.trim(),
-          description: form.elements.description.value.trim(),
-          repo_url: form.elements.repo_url.value.trim(),
-          demo_url: form.elements.demo_url.value.trim()
-        };
-        const data = await jsonFetch(`/api/me/projects/${encodeURIComponent(projectId)}`, { method: "PATCH", body: JSON.stringify(payload) });
-        renderProjects(data.state?.projects || []);
-      } catch (error) {
-        alert(error.message || "Could not update project.");
-      }
-    });
-
-    $("project-list").addEventListener("click", async (event) => {
-      const button = event.target.closest("[data-project-submit]");
-      if (!button) return;
-      const projectId = button.dataset.projectSubmit;
-      const eventSlug = button.dataset.eventSlug || "hack-the-valley-2026";
-      try {
-        button.disabled = true;
-        button.textContent = "Submitting…";
-        const data = await jsonFetch(`/api/me/projects/${encodeURIComponent(projectId)}/submissions`, {
-          method: "POST",
-          body: JSON.stringify({ event_slug: eventSlug })
-        });
-        renderProjects(data.state?.projects || []);
-      } catch (error) {
-        alert(error.message || "Could not submit project.");
-      }
-    });
-
-    loadDashboard();
+    loadProfile();
   </script>
 </body>
 </html>

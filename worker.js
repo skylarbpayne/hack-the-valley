@@ -82,9 +82,14 @@ function matchApiRoute(pathname) {
     return { routeModule: authVerifyCode, params: {} };
   }
 
+  const meProjectMaterialsMatch = pathname.match(/^\/api\/me\/projects\/([^/]+)\/materials\/?$/);
+  if (meProjectMaterialsMatch) {
+    return { routeModule: meProjects, params: { projectId: decodeURIComponent(meProjectMaterialsMatch[1]), action: 'materials' } };
+  }
+
   const meProjectSubmissionMatch = pathname.match(/^\/api\/me\/projects\/([^/]+)\/submissions\/?$/);
   if (meProjectSubmissionMatch) {
-    return { routeModule: meProjects, params: { projectId: decodeURIComponent(meProjectSubmissionMatch[1]) } };
+    return { routeModule: meProjects, params: { projectId: decodeURIComponent(meProjectSubmissionMatch[1]), action: 'submissions' } };
   }
 
   const meProjectMatch = pathname.match(/^\/api\/me\/projects\/([^/]+)\/?$/);
@@ -172,6 +177,10 @@ export default {
 
     if (route) {
       return routeApiRequest(request, env, ctx, route.routeModule, route.params);
+    }
+
+    if (url.pathname === '/submit' || url.pathname === '/submit/') {
+      return Response.redirect(new URL('/projects/', url), 302);
     }
 
     if (isEventPagePath(url.pathname)) {

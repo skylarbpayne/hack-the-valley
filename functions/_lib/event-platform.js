@@ -319,6 +319,70 @@ export async function claimProjectForUser(db, userId, input = {}) {
   };
 }
 
+async function getOwnedProject(db, userId, projectId) {
+  if (!userId) throw Object.assign(new Error("userId is required"), { status: 400 });
+  if (!projectId) throw Object.assign(new Error("project_id is required"), { status: 400 });
+  const project = await db.prepare(`
+    SELECT p.*
+    FROM projects p
+    JOIN project_members pm ON pm.project_id = p.id
+    WHERE p.id = ? AND pm.user_id = ?
+    LIMIT 1
+  `).bind(projectId, userId).first();
+  if (!project) throw Object.assign(new Error("Project not found for signed-in user"), { status: 404 });
+  return project;
+}
+
+export async function updateOwnedProjectForUser(db, userId, projectId, input = {}) {
+  const existing = await getOwnedProject(db, userId, projectId);
+  const { project, errors } = normalizeProjectInput(input, existing);
+  if (errors.length) throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
+  const now = new Date().toISOString();
+  await db.prepare(`
+    UPDATE projects
+    SET slug = ?,
+        title = ?,
+        team_name = ?,
+        description = ?,
+        repo_url = ?,
+        demo_url = ?,
+        tracks_json = ?,
+        canonical_submission_id = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).bind(
+    project.slug,
+    project.title,
+    project.team_name,
+    project.description,
+    project.repo_url,
+    project.demo_url,
+    project.tracks_json,
+    project.canonical_submission_id,
+    now,
+    existing.id
+  ).run();
+  const saved = await db.prepare("SELECT * FROM projects WHERE id = ?").bind(existing.id).first();
+  return { project: sanitizeProjectRow(saved || { ...existing, ...project, updated_at: now }) };
+}
+
+export async function submitOwnedProjectToEvent(db, userId, projectId, input = {}) {
+  const project = await getOwnedProject(db, userId, projectId);
+  const eventSlug = input.event_slug || input.eventSlug;
+  if (!eventSlug) throw Object.assign(new Error("event_slug is required"), { status: 400 });
+  const explicitInstanceId = input.event_instance_id || input.eventInstanceId || null;
+  const eventInstance = explicitInstanceId ? null : await resolveSignupEventInstance(db, eventSlug);
+  const submission = await linkProjectSubmission(db, {
+    eventSlug,
+    eventInstanceId: explicitInstanceId || eventInstance?.id || null,
+    projectId: project.id,
+    submissionId: input.submission_id || input.submissionId || project.canonical_submission_id || null,
+    status: input.status || "submitted",
+    source: "participant_dashboard"
+  });
+  return { project: sanitizeProjectRow(project), submission };
+}
+
 export async function linkProjectSubmission(db, { eventSlug, eventInstanceId = null, projectId, submissionId = null, status = "submitted", source = "submission_portal" } = {}) {
   if (!eventSlug) throw Object.assign(new Error("eventSlug is required"), { status: 400 });
   if (!projectId) throw Object.assign(new Error("projectId is required"), { status: 400 });
@@ -328,7 +392,7 @@ export async function linkProjectSubmission(db, { eventSlug, eventInstanceId = n
     INSERT INTO event_project_submissions (
       id, event_slug, event_instance_id, project_id, submission_id, status, source, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(event_slug, event_instance_id, project_id, submission_id) DO UPDATE SET
+    ON CONFLICT(id) DO UPDATE SET
       status = excluded.status,
       source = excluded.source,
       updated_at = excluded.updated_at

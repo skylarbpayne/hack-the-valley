@@ -6,7 +6,9 @@ import {
   handleErrors,
   jsonResponse,
   methodNotAllowed,
-  readJson
+  readJson,
+  submitOwnedProjectToEvent,
+  updateOwnedProjectForUser
 } from "../../_lib/event-platform.js";
 
 function cookieValue(request, name) {
@@ -27,12 +29,39 @@ export async function onRequestPost(context) {
   return handleErrors(async () => {
     const { db, user } = await signedInUser(context);
     const input = await readJson(context.request);
+    if (context.params?.projectId) {
+      const submitted = await submitOwnedProjectToEvent(db, user.id, context.params.projectId, input);
+      const state = await getUserCommunityState(db, user.id);
+      return jsonResponse({ ok: true, ...submitted, state }, { status: 200 });
+    }
     const claimed = await claimProjectForUser(db, user.id, input);
     const state = await getUserCommunityState(db, user.id);
     return jsonResponse({ ok: true, ...claimed, state }, { status: 200 });
   });
 }
 
+export async function onRequestPatch(context) {
+  return handleErrors(async () => {
+    const { db, user } = await signedInUser(context);
+    const input = await readJson(context.request);
+    const projectId = context.params?.projectId || input.project_id || input.projectId;
+    const updated = await updateOwnedProjectForUser(db, user.id, projectId, input);
+    const state = await getUserCommunityState(db, user.id);
+    return jsonResponse({ ok: true, ...updated, state }, { status: 200 });
+  });
+}
+
+export async function onRequestPut(context) {
+  return handleErrors(async () => {
+    const { db, user } = await signedInUser(context);
+    const input = await readJson(context.request);
+    const projectId = context.params?.projectId || input.project_id || input.projectId;
+    const submitted = await submitOwnedProjectToEvent(db, user.id, projectId, input);
+    const state = await getUserCommunityState(db, user.id);
+    return jsonResponse({ ok: true, ...submitted, state }, { status: 200 });
+  });
+}
+
 export async function onRequest(context) {
-  return methodNotAllowed(["POST"]);
+  return methodNotAllowed(["POST", "PATCH", "PUT"]);
 }

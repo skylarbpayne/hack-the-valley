@@ -52,8 +52,10 @@
         <form id="project-create-form" class="mt-4 space-y-3 rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
           <label class="block"><span class="text-xs font-bold text-slate-300">Project title</span><input name="title" required class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Valley SAT Prep"></label>
           <label class="block"><span class="text-xs font-bold text-slate-300">Team name <span class="text-slate-500">optional</span></span><input name="team_name" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Sequoia Sasquatches"></label>
+          <label class="block"><span class="text-xs font-bold text-slate-300">Description <span class="text-slate-500">optional</span></span><textarea name="description" rows="2" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="What did you build?"></textarea></label>
           <label class="block"><span class="text-xs font-bold text-slate-300">Repository URL <span class="text-slate-500">optional</span></span><input name="repo_url" type="url" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="https://github.com/..."></label>
           <label class="block"><span class="text-xs font-bold text-slate-300">Demo URL <span class="text-slate-500">optional</span></span><input name="demo_url" type="url" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="https://..."></label>
+          <label class="block"><span class="text-xs font-bold text-slate-300">Showcase event slug</span><input name="event_slug" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" value="hack-the-valley-2026"></label>
           <button class="w-full bg-bc-cyan text-bc-dark px-4 py-2 rounded-lg font-black hover:bg-cyan-400">Add project</button>
           <p id="project-create-status" class="text-xs text-slate-400">Creates a project and marks you as owner.</p>
         </form>
@@ -110,11 +112,26 @@
     function renderProjects(projects = []) {
       $("project-count").textContent = `${projects.length} project${projects.length === 1 ? "" : "s"}`;
       $("project-list").innerHTML = projects.length ? projects.map((project) => `
-        <li class="rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
-          <div class="font-bold text-white">${escapeHtml(project.title || "Untitled project")}</div>
-          <div class="text-sm text-slate-400">${escapeHtml(project.event_slug || "event pending")} · ${escapeHtml(project.status || "submitted")}</div>
+        <li class="rounded-2xl border border-slate-700 bg-slate-950/50 p-4 space-y-3">
+          <div>
+            <div class="font-bold text-white">${escapeHtml(project.title || "Untitled project")}</div>
+            <div class="text-sm text-slate-400">${escapeHtml(project.event_slug || "event pending")} · ${escapeHtml(project.status || "owner")}</div>
+          </div>
+          <form data-project-edit-form data-project-id="${escapeHtml(project.project_id || project.id)}" class="space-y-2">
+            <input name="title" required value="${escapeHtml(project.title || "")}" class="w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Project title">
+            <input name="team_name" value="${escapeHtml(project.team_name || "")}" class="w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Team name">
+            <textarea name="description" rows="2" class="w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Description">${escapeHtml(project.description || "")}</textarea>
+            <div class="grid sm:grid-cols-2 gap-2">
+              <input name="repo_url" value="${escapeHtml(project.repo_url || "")}" class="w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Repository URL">
+              <input name="demo_url" value="${escapeHtml(project.demo_url || "")}" class="w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Demo URL">
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2">
+              <button class="flex-1 rounded-lg border border-slate-600 px-3 py-2 font-bold text-white hover:border-bc-cyan" type="submit">Save edits</button>
+              <button class="flex-1 rounded-lg bg-bc-orange px-3 py-2 font-black text-bc-dark hover:bg-amber-300" type="button" data-project-submit="${escapeHtml(project.project_id || project.id)}" data-event-slug="${escapeHtml(project.event_slug || "hack-the-valley-2026")}">Submit to Hack the Valley</button>
+            </div>
+          </form>
         </li>
-      `).join("") : emptyItem("No linked projects yet. Project claiming/editing is the next slice.");
+      `).join("") : emptyItem("No linked projects yet. Add one, then submit it to the Hack the Valley showcase.");
     }
 
     function renderBadges(badges = []) {
@@ -164,8 +181,10 @@
       const payload = {
         title: form.elements.title.value.trim(),
         team_name: form.elements.team_name.value.trim(),
+        description: form.elements.description.value.trim(),
         repo_url: form.elements.repo_url.value.trim(),
-        demo_url: form.elements.demo_url.value.trim()
+        demo_url: form.elements.demo_url.value.trim(),
+        event_slug: form.elements.event_slug.value.trim()
       };
       try {
         status.className = "text-xs text-slate-400";
@@ -178,6 +197,44 @@
       } catch (error) {
         status.className = "text-xs text-red-300";
         status.textContent = error.message || "Could not save project.";
+      }
+    });
+
+    $("project-list").addEventListener("submit", async (event) => {
+      const form = event.target.closest("[data-project-edit-form]");
+      if (!form) return;
+      event.preventDefault();
+      const projectId = form.dataset.projectId;
+      try {
+        const payload = {
+          title: form.elements.title.value.trim(),
+          team_name: form.elements.team_name.value.trim(),
+          description: form.elements.description.value.trim(),
+          repo_url: form.elements.repo_url.value.trim(),
+          demo_url: form.elements.demo_url.value.trim()
+        };
+        const data = await jsonFetch(`/api/me/projects/${encodeURIComponent(projectId)}`, { method: "PATCH", body: JSON.stringify(payload) });
+        renderProjects(data.state?.projects || []);
+      } catch (error) {
+        alert(error.message || "Could not update project.");
+      }
+    });
+
+    $("project-list").addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-project-submit]");
+      if (!button) return;
+      const projectId = button.dataset.projectSubmit;
+      const eventSlug = button.dataset.eventSlug || "hack-the-valley-2026";
+      try {
+        button.disabled = true;
+        button.textContent = "Submitting…";
+        const data = await jsonFetch(`/api/me/projects/${encodeURIComponent(projectId)}/submissions`, {
+          method: "POST",
+          body: JSON.stringify({ event_slug: eventSlug })
+        });
+        renderProjects(data.state?.projects || []);
+      } catch (error) {
+        alert(error.message || "Could not submit project.");
       }
     });
 

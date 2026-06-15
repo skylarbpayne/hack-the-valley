@@ -82,6 +82,16 @@ function matchApiRoute(pathname) {
     return { routeModule: authVerifyCode, params: {} };
   }
 
+  const meProjectSubmissionMatch = pathname.match(/^\/api\/me\/projects\/([^/]+)\/submissions\/?$/);
+  if (meProjectSubmissionMatch) {
+    return { routeModule: meProjects, params: { projectId: decodeURIComponent(meProjectSubmissionMatch[1]) } };
+  }
+
+  const meProjectMatch = pathname.match(/^\/api\/me\/projects\/([^/]+)\/?$/);
+  if (meProjectMatch) {
+    return { routeModule: meProjects, params: { projectId: decodeURIComponent(meProjectMatch[1]) } };
+  }
+
   const signupMatch = pathname.match(/^\/api\/events\/([^/]+)\/signups\/?$/);
   if (signupMatch) {
     return { routeModule: eventSignups, params: { slug: decodeURIComponent(signupMatch[1]) } };

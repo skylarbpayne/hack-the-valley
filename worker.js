@@ -2,6 +2,7 @@ import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
 import * as authRequestCode from './functions/api/auth/request-code.js';
 import * as authVerifyCode from './functions/api/auth/verify-code.js';
 import * as me from './functions/api/me.js';
+import * as meProjects from './functions/api/me/projects.js';
 import * as eventCheckins from './functions/api/events/[slug]/checkins/index.js';
 import * as eventCockpit from './functions/api/events/[slug]/instances/[instanceId]/cockpit/index.js';
 import * as eventFollowup from './functions/api/events/[slug]/instances/[instanceId]/followup/index.js';
@@ -24,6 +25,7 @@ import { corsHeaders } from './functions/_shared/submissions.js';
 const API_ROUTES = {
   '/api/media': media,
   '/api/me': me,
+  '/api/me/projects': meProjects,
   '/api/register': register,
   '/api/submissions': submissions,
   '/api/subscribe': subscribe,

@@ -49,6 +49,14 @@
           <h2 class="text-2xl font-black">Your projects</h2>
           <span id="project-count" class="text-xs font-black uppercase tracking-[0.16em] text-bc-cyan">0 projects</span>
         </div>
+        <form id="project-create-form" class="mt-4 space-y-3 rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
+          <label class="block"><span class="text-xs font-bold text-slate-300">Project title</span><input name="title" required class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Valley SAT Prep"></label>
+          <label class="block"><span class="text-xs font-bold text-slate-300">Team name <span class="text-slate-500">optional</span></span><input name="team_name" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="Sequoia Sasquatches"></label>
+          <label class="block"><span class="text-xs font-bold text-slate-300">Repository URL <span class="text-slate-500">optional</span></span><input name="repo_url" type="url" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="https://github.com/..."></label>
+          <label class="block"><span class="text-xs font-bold text-slate-300">Demo URL <span class="text-slate-500">optional</span></span><input name="demo_url" type="url" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="https://..."></label>
+          <button class="w-full bg-bc-cyan text-bc-dark px-4 py-2 rounded-lg font-black hover:bg-cyan-400">Add project</button>
+          <p id="project-create-status" class="text-xs text-slate-400">Creates a project and marks you as owner.</p>
+        </form>
         <ul id="project-list" class="mt-4 space-y-3 text-slate-300"></ul>
       </article>
 
@@ -119,6 +127,16 @@
       `).join("") : emptyItem("No badges yet. The first one should not be a sad empty div.");
     }
 
+    async function jsonFetch(path, options = {}) {
+      const response = await fetch(path, {
+        ...options,
+        headers: { "Content-Type": "application/json", "Accept": "application/json", ...(options.headers || {}) }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Request failed");
+      return data;
+    }
+
     async function loadDashboard() {
       try {
         const response = await fetch("/api/me", { headers: { "Accept": "application/json" } });
@@ -138,6 +156,30 @@
         box.textContent = error.message || "Could not load dashboard.";
       }
     }
+
+    $("project-create-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const status = $("project-create-status");
+      const payload = {
+        title: form.elements.title.value.trim(),
+        team_name: form.elements.team_name.value.trim(),
+        repo_url: form.elements.repo_url.value.trim(),
+        demo_url: form.elements.demo_url.value.trim()
+      };
+      try {
+        status.className = "text-xs text-slate-400";
+        status.textContent = "Saving project…";
+        const data = await jsonFetch("/api/me/projects", { method: "POST", body: JSON.stringify(payload) });
+        renderProjects(data.state?.projects || []);
+        status.className = "text-xs text-green-300";
+        status.textContent = `Added ${data.project?.title || "project"}.`;
+        form.reset();
+      } catch (error) {
+        status.className = "text-xs text-red-300";
+        status.textContent = error.message || "Could not save project.";
+      }
+    });
 
     loadDashboard();
   </script>

@@ -27,7 +27,7 @@
       <section class="rounded-3xl border border-slate-700 bg-bc-navy p-6 sm:p-8">
         <p class="text-bc-cyan uppercase tracking-[0.22em] text-xs font-black">Project workspace</p>
         <h1 class="text-4xl sm:text-5xl font-black mt-3">Your Hack the Valley projects</h1>
-        <p class="text-slate-300 text-lg mt-4 max-w-2xl">Create projects, edit details, upload demo materials, and submit to Hack the Valley when the project is ready.</p>
+        <p id="workspace-intro" class="text-slate-300 text-lg mt-4 max-w-2xl">Create projects, edit details, upload demo materials, and submit to Hack the Valley when the project is ready.</p>
       </section>
       <section class="rounded-3xl border border-slate-700 bg-slate-950 p-6 sm:p-8">
         <p class="text-xs uppercase tracking-[0.16em] text-bc-cyan font-black">Upload rules</p>
@@ -35,6 +35,12 @@
         <p class="mt-3 text-sm text-slate-400">Videos, screenshots, repo links, and demo links attach to a project. Later, event pages can create or claim a project and associate it with that event.</p>
       </section>
     </header>
+
+    <section id="event-context-banner" class="hidden mt-6 rounded-3xl border border-bc-orange/50 bg-bc-orange/10 p-5">
+      <p class="text-xs uppercase tracking-[0.18em] text-bc-orange font-black">Event submission</p>
+      <h2 id="event-context-title" class="mt-2 text-2xl font-black text-white">Submit a project to this event</h2>
+      <p class="mt-2 text-sm text-slate-300">Create a new project below or open an existing project card. We’ll associate the project with this event automatically — no event slug field required.</p>
+    </section>
 
     <div id="projects-error" class="hidden mt-6 rounded-2xl border border-red-500/40 bg-red-950/40 p-5 text-red-100"></div>
 
@@ -65,6 +71,12 @@
   <script>
     const $ = (id) => document.getElementById(id);
     const pendingUploads = new Map();
+    const params = new URLSearchParams(window.location.search);
+    const requestedEvent = params.get("event") || "";
+    const eventContext = /^[a-z0-9-]+$/.test(requestedEvent) ? {
+      slug: requestedEvent,
+      name: params.get("eventName") || eventLabel(requestedEvent)
+    } : null;
 
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
@@ -77,6 +89,14 @@
     function eventLabel(slug) {
       if (!slug) return "No event submission yet";
       return slug === "hack-the-valley-2026" ? "Hack the Valley 2026" : slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    function submitEventFor(project = {}) {
+      return eventContext?.slug || project.event_slug || "hack-the-valley-2026";
+    }
+
+    function submitLabelFor(project = {}) {
+      return eventContext?.name || eventLabel(submitEventFor(project));
     }
 
     function statusLabel(project) {
@@ -100,7 +120,9 @@
 
     function renderProject(project) {
       const id = projectId(project);
-      const submitted = project.status === "submitted" || project.status === "accepted" || project.status === "showcased" || project.status === "winner";
+      const submitEvent = submitEventFor(project);
+      const submitLabel = submitLabelFor(project);
+      const submitted = project.event_slug === submitEvent && (project.status === "submitted" || project.status === "accepted" || project.status === "showcased" || project.status === "winner");
       return `
         <li class="rounded-2xl border border-slate-700 bg-slate-950/50 p-4 space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
@@ -131,7 +153,7 @@
               <div class="flex flex-col sm:flex-row gap-2">
                 <button class="flex-1 rounded-lg border border-slate-600 px-3 py-2 font-bold text-white hover:border-bc-cyan" type="submit">Save details</button>
                 <button class="flex-1 rounded-lg bg-bc-cyan px-3 py-2 font-black text-bc-dark hover:bg-cyan-400" type="button" data-project-materials="${escapeHtml(id)}">Save uploads/materials</button>
-                <button class="flex-1 rounded-lg ${submitted ? "bg-slate-700 text-slate-300" : "bg-bc-orange text-bc-dark hover:bg-amber-300"} px-3 py-2 font-black" type="button" data-project-submit="${escapeHtml(id)}" data-event-slug="${escapeHtml(project.event_slug || "hack-the-valley-2026")}" ${submitted ? "disabled" : ""}>${submitted ? "Submitted" : "Submit to Hack the Valley"}</button>
+                <button class="flex-1 rounded-lg ${submitted ? "bg-slate-700 text-slate-300" : "bg-bc-orange text-bc-dark hover:bg-amber-300"} px-3 py-2 font-black" type="button" data-project-submit="${escapeHtml(id)}" data-event-slug="${escapeHtml(submitEvent)}" ${submitted ? "disabled" : ""}>${submitted ? `Submitted to ${escapeHtml(submitLabel)}` : `Submit to ${escapeHtml(submitLabel)}`}</button>
               </div>
               <p id="project-status-${escapeHtml(id)}" role="status" aria-live="polite" class="text-xs text-slate-400">Save details, upload materials, or submit this project when ready.</p>
             </form>
@@ -160,7 +182,7 @@
         const response = await fetch("/api/me", { headers: { "Accept": "application/json" } });
         const data = await response.json().catch(() => ({}));
         if (response.status === 401) {
-          window.location.href = "/login/?next=/projects/";
+          window.location.href = `/login/?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
           return;
         }
         if (!response.ok) throw new Error(data.error || "Could not load projects");
@@ -218,13 +240,14 @@
         repo_url: form.elements.repo_url.value.trim(),
         demo_url: form.elements.demo_url.value.trim()
       };
+      if (eventContext) payload.event_slug = eventContext.slug;
       try {
         status.className = "text-xs text-slate-400";
         status.textContent = "Saving project…";
         const data = await jsonFetch("/api/me/projects", { method: "POST", body: JSON.stringify(payload) });
         renderProjects(data.state?.projects || []);
         status.className = "text-xs text-green-300";
-        status.textContent = `Added ${data.project?.title || "project"}.`;
+        status.textContent = eventContext ? `Added and submitted ${data.project?.title || "project"} to ${eventContext.name}.` : `Added ${data.project?.title || "project"}.`;
         form.reset();
       } catch (error) {
         status.className = "text-xs text-red-300";
@@ -316,6 +339,12 @@
         input.value = "";
       }
     });
+
+    if (eventContext) {
+      $("event-context-banner").classList.remove("hidden");
+      $("event-context-title").textContent = `Submit a project to ${eventContext.name}`;
+      $("workspace-intro").textContent = `Create a project, upload materials, and attach it to ${eventContext.name}.`;
+    }
 
     loadProjects();
   </script>

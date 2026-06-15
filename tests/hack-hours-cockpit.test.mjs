@@ -7,6 +7,7 @@ import {
   checkInAttendee,
   claimProjectForUser,
   submitOwnedProjectToEvent,
+  updateEventProjectSubmissionStatus,
   updateOwnedProjectForUser,
   countEventPhotos,
   createEventPhotoRecord,
@@ -42,6 +43,8 @@ test("participant login page requests a code, verifies it, and reads /api/me", (
   assert.match(html, /\/api\/auth\/verify-code/);
   assert.match(html, /\/api\/me/);
   assert.match(html, /Check your email/);
+  assert.match(html, /nextPath/);
+  assert.match(html, /window\.location\.href = nextPath/);
   assert.doesNotMatch(html, /admin password|HTV_ADMIN_TOKEN/i);
 });
 
@@ -52,6 +55,7 @@ test("participant profile shows editable profile info, badges, and project summa
   assert.match(html, /id="profile-edit-form"/);
   assert.match(html, /\/api\/me/);
   assert.match(html, /fetch\("\/api\/me"/);
+  assert.match(html, /encodeURIComponent\(window\.location\.pathname \+ window\.location\.search\)/);
   assert.doesNotMatch(html, /API_ORIGIN\s*=\s*'https:\/\/hack-the-valley\.pages\.dev'/);
   assert.match(html, /method: "PATCH"/);
   assert.match(html, /id="attendance-list"/);
@@ -76,6 +80,7 @@ test("participant projects workspace lets signed-in users create, edit, upload, 
   assert.match(html, /\/api\/me\/projects/);
   assert.match(html, /\/api\/upload/);
   assert.match(html, /fetch\("\/api\/me"/);
+  assert.match(html, /encodeURIComponent\(window\.location\.pathname \+ window\.location\.search\)/);
   assert.match(html, /const url = `\/api\/upload/);
   assert.doesNotMatch(html, /API_ORIGIN\s*=\s*'https:\/\/hack-the-valley\.pages\.dev'/);
   assert.match(html, /\/materials/);
@@ -85,6 +90,19 @@ test("participant projects workspace lets signed-in users create, edit, upload, 
   assert.match(html, /Submit to Hack the Valley/);
   assert.doesNotMatch(html, /Showcase event slug|name="event_slug"/);
   assert.doesNotMatch(html, /admin password|data-award-badge|HTV_ADMIN_TOKEN/i);
+});
+
+test("event pages can launch contextual project submission without raw event slug fields", () => {
+  const eventHtml = read("public/events/hack-the-valley-2026/index.html");
+  const projectsHtml = read("public/projects/index.html");
+  assert.match(eventHtml, /Submit a project for this event/);
+  assert.match(eventHtml, /\/projects\/\?event=hack-the-valley-2026&eventName=Hack%20the%20Valley%202026/);
+  assert.match(projectsHtml, /id="event-context-banner"/);
+  assert.match(projectsHtml, /new URLSearchParams\(window\.location\.search\)/);
+  assert.match(projectsHtml, /payload\.event_slug = eventContext\.slug/);
+  assert.match(projectsHtml, /Submit to \$\{escapeHtml\(submitLabel\)\}/);
+  assert.match(projectsHtml, /login\/\?next=\$\{encodeURIComponent\(window\.location\.pathname \+ window\.location\.search\)\}/);
+  assert.doesNotMatch(projectsHtml, /name="event_slug"|Showcase event slug/);
 });
 
 test("legacy submit paths redirect to the project workspace", async () => {
@@ -159,11 +177,62 @@ test("owned project helpers require ownership before editing or submitting", asy
   assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO event_project_submissions/);
 });
 
+test("participant submit cannot restore an organizer-hidden event project", async () => {
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          if (/FROM projects p/.test(sql) && /project_members pm/.test(sql)) return { id: "prj_hidden", slug: "hidden", title: "Hidden Smoke" };
+          if (/FROM event_project_submissions/.test(sql) && /status = 'hidden'/.test(sql)) return { id: "eps_hidden", status: "hidden" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+    }
+  };
+  await assert.rejects(
+    () => submitOwnedProjectToEvent(db, "usr_maya", "prj_hidden", { event_slug: "hack-the-valley-2026" }),
+    /hidden by an organizer/
+  );
+});
+
 test("owned project helpers reject edits when the user is not a project member", async () => {
   const db = { prepare(sql) { return { bind() { return this; }, async first() { return /FROM users/.test(sql) ? { id: "usr_intruder", email: "intruder@example.com" } : null; }, async run() { return {}; } }; } };
   await assert.rejects(
     () => updateOwnedProjectForUser(db, "usr_intruder", "prj_1", { title: "Nope" }),
     /Project not found/
+  );
+});
+
+test("admin cleanup can hide or restore an event-linked project without deleting records", async () => {
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async first() {
+          if (/FROM event_project_submissions eps/.test(sql)) {
+            return { event_slug: "hack-the-valley-2026", project_id: "prj_smoke", status: "submitted", title: "Smoke" };
+          }
+          return null;
+        },
+        async run() { return { success: true }; }
+      };
+      return statement;
+    }
+  };
+  const hidden = await updateEventProjectSubmissionStatus(db, { eventSlug: "hack-the-valley-2026", projectId: "prj_smoke", status: "hidden" });
+  assert.equal(hidden.status, "hidden");
+  assert.match(statements.map((s) => s.sql).join("\n"), /UPDATE event_project_submissions/);
+  assert.ok(statements.some((s) => s.args.includes("hidden") && s.args.includes("prj_smoke")));
+  await assert.rejects(
+    () => updateEventProjectSubmissionStatus(db, { eventSlug: "hack-the-valley-2026", projectId: "prj_smoke", status: "delete" }),
+    /Unsupported project submission status/
   );
 });
 
@@ -199,7 +268,7 @@ test("/api/me lets the signed-in user update basic profile info", async () => {
   assert.match(statements.map((s) => s.sql).join("\n"), /UPDATE users/);
 });
 
-test("/api/me/projects lets the signed-in user create a project and returns refreshed state", async () => {
+test("/api/me/projects can create a project and associate it with an event context", async () => {
   const statements = [];
   const fakeDb = {
     prepare(sql) {
@@ -226,13 +295,16 @@ test("/api/me/projects lets the signed-in user create a project and returns refr
   const response = await worker.fetch(new Request("https://hackthevalley.org/api/me/projects", {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: "htv_session=test-session-token" },
-    body: JSON.stringify({ title: "Valley SAT Prep", team_name: "Sequoia Sasquatches" })
+    body: JSON.stringify({ title: "Valley SAT Prep", team_name: "Sequoia Sasquatches", event_slug: "hack-the-valley-2026" })
   }), { HTV_DB: fakeDb }, {});
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.project.title, "Valley SAT Prep");
+  assert.equal(body.submission.status, "submitted");
+  assert.equal(body.submission.event_slug, "hack-the-valley-2026");
   assert.equal(body.state.user.email, "maya@example.com");
   assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO project_members/);
+  assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO event_project_submissions/);
 });
 
 test("/api/me/projects/<id> supports owner edit and event submission", async () => {
@@ -878,6 +950,40 @@ test("worker routes event project submissions API and requires admin", async () 
   const listed = await list.json();
   assert.equal(listed.projects[0].title, "CalcGuide");
   assert.equal(Object.hasOwn(listed.projects[0], "contact_email"), false);
+});
+
+test("worker routes admin soft-cleanup for event-linked projects", async () => {
+  const statements = [];
+  const fakeDb = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM event_project_submissions eps/.test(sql)) return { event_slug: "hack-the-valley-2026", project_id: "prj_smoke", status: "submitted", title: "Smoke" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+      return statement;
+    }
+  };
+  const url = "https://hackthevalley.org/api/events/hack-the-valley-2026/projects/prj_smoke";
+  const options = await worker.fetch(new Request(url, { method: "OPTIONS" }), { HTV_DB: fakeDb, SUBMISSIONS_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(options.status, 204);
+  assert.match(options.headers.get("access-control-allow-methods") || "", /PATCH/);
+  const unauthorized = await worker.fetch(new Request(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "hidden" }) }), { HTV_DB: fakeDb, SUBMISSIONS_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(unauthorized.status, 401);
+  const hidden = await worker.fetch(new Request(url, { method: "PATCH", headers: { "x-admin-token": "secret", "Content-Type": "application/json" }, body: JSON.stringify({ status: "hidden" }) }), { HTV_DB: fakeDb, SUBMISSIONS_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(hidden.status, 200);
+  const body = await hidden.json();
+  assert.equal(body.project.status, "hidden");
+  assert.ok(statements.some((s) => s.args.includes("hidden") && s.args.includes("prj_smoke")));
+  const list = await worker.fetch(new Request("https://hackthevalley.org/api/events/hack-the-valley-2026/projects", { headers: { "x-admin-token": "secret" } }), { HTV_DB: fakeDb, SUBMISSIONS_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(list.status, 200);
+  assert.equal((await list.json()).count, 0);
 });
 
 test("worker routes user state and badge award APIs behind admin auth", async () => {

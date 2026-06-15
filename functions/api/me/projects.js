@@ -120,8 +120,18 @@ export async function onRequestPost(context) {
       return jsonResponse({ ok: true, ...submitted, state }, { status: 200 });
     }
     const claimed = await claimProjectForUser(db, user.id, input);
+    let submission = null;
+    const eventSlug = input.event_slug || input.eventSlug;
+    if (eventSlug) {
+      const submitted = await submitOwnedProjectToEvent(db, user.id, claimed.project.id, {
+        event_slug: eventSlug,
+        event_instance_id: input.event_instance_id || input.eventInstanceId || null,
+        status: input.status || "submitted"
+      });
+      submission = submitted.submission;
+    }
     const state = await getUserCommunityState(db, user.id);
-    return jsonResponse({ ok: true, ...claimed, state }, { status: 200 });
+    return jsonResponse({ ok: true, ...claimed, submission, state }, { status: 200 });
   });
 }
 

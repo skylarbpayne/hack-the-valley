@@ -47,6 +47,8 @@
     const $ = (id) => document.getElementById(id);
     const requestForm = $("login-request-form");
     const verifyForm = $("login-verify-form");
+    const nextParam = new URLSearchParams(window.location.search).get("next") || "";
+    const nextPath = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
 
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
@@ -63,7 +65,7 @@
       const panel = $("me-panel");
       try {
         const data = await jsonFetch("/api/me");
-        panel.innerHTML = `<div class="text-xs uppercase tracking-[0.16em] text-bc-cyan font-black">Signed in</div><div class="mt-2 text-xl font-black text-white">${escapeHtml(data.user?.name || data.user?.email)}</div><div class="text-slate-400">${escapeHtml(data.user?.email || "")}</div><div class="mt-3 text-sm text-slate-400"><a class="text-bc-cyan font-bold" href="/me/">Open profile</a> · <a class="text-bc-cyan font-bold" href="/projects/">Open projects</a></div>`;
+        panel.innerHTML = `<div class="text-xs uppercase tracking-[0.16em] text-bc-cyan font-black">Signed in</div><div class="mt-2 text-xl font-black text-white">${escapeHtml(data.user?.name || data.user?.email)}</div><div class="text-slate-400">${escapeHtml(data.user?.email || "")}</div><div class="mt-3 text-sm text-slate-400">${nextPath ? `<a class="text-bc-cyan font-bold" href="${escapeHtml(nextPath)}">Continue</a> · ` : ""}<a class="text-bc-cyan font-bold" href="/me/">Open profile</a> · <a class="text-bc-cyan font-bold" href="/projects/">Open projects</a></div>`;
       } catch {
         panel.innerHTML = `<div class="text-xs uppercase tracking-[0.16em] text-slate-500 font-black">Not signed in</div><div class="mt-2 text-slate-300">Request a code to start a participant session.</div>`;
       }
@@ -96,6 +98,10 @@
         await jsonFetch("/api/auth/verify-code", { method: "POST", body: JSON.stringify({ email: form.elements.email.value.trim(), code: form.elements.code.value.trim() }) });
         $("verify-status").className = "text-sm text-green-300";
         $("verify-status").textContent = "Signed in.";
+        if (nextPath) {
+          window.location.href = nextPath;
+          return;
+        }
         await loadMe();
       } catch (error) {
         $("verify-status").className = "text-sm text-red-300";

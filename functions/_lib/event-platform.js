@@ -400,6 +400,15 @@ export async function submitOwnedProjectToEvent(db, userId, projectId, input = {
   const eventSlug = input.event_slug || input.eventSlug;
   if (!eventSlug) throw Object.assign(new Error("event_slug is required"), { status: 400 });
   const explicitInstanceId = input.event_instance_id || input.eventInstanceId || null;
+  const hiddenSubmission = await db.prepare(`
+    SELECT id, status
+    FROM event_project_submissions
+    WHERE event_slug = ? AND project_id = ? AND status = 'hidden'
+    LIMIT 1
+  `).bind(eventSlug, project.id).first();
+  if (hiddenSubmission) {
+    throw Object.assign(new Error("This project submission was hidden by an organizer. Ask an organizer to restore it before submitting again."), { status: 409 });
+  }
   const eventInstance = explicitInstanceId ? null : await resolveSignupEventInstance(db, eventSlug);
   const submission = await linkProjectSubmission(db, {
     eventSlug,
@@ -410,6 +419,33 @@ export async function submitOwnedProjectToEvent(db, userId, projectId, input = {
     source: "participant_dashboard"
   });
   return { project: sanitizeProjectRow(project), submission };
+}
+
+export async function updateEventProjectSubmissionStatus(db, { eventSlug, projectId, status = "hidden" } = {}) {
+  if (!eventSlug) throw Object.assign(new Error("eventSlug is required"), { status: 400 });
+  if (!projectId) throw Object.assign(new Error("projectId is required"), { status: 400 });
+  const allowed = new Set(["submitted", "accepted", "showcased", "winner", "rejected", "hidden"]);
+  const normalizedStatus = String(status || "hidden").trim().toLowerCase();
+  if (!allowed.has(normalizedStatus)) throw Object.assign(new Error("Unsupported project submission status"), { status: 400 });
+  const existing = await db.prepare(`
+    SELECT eps.*, p.title, p.team_name
+    FROM event_project_submissions eps
+    JOIN projects p ON p.id = eps.project_id
+    WHERE eps.event_slug = ? AND eps.project_id = ?
+    LIMIT 1
+  `).bind(eventSlug, projectId).first();
+  if (!existing) throw Object.assign(new Error("Event project submission not found"), { status: 404 });
+  const now = new Date().toISOString();
+  await db.prepare(`
+    UPDATE event_project_submissions
+    SET status = ?, updated_at = ?
+    WHERE event_slug = ? AND project_id = ?
+  `).bind(normalizedStatus, now, eventSlug, projectId).run();
+  return {
+    ...existing,
+    status: normalizedStatus,
+    updated_at: now
+  };
 }
 
 export async function linkProjectSubmission(db, { eventSlug, eventInstanceId = null, projectId, submissionId = null, status = "submitted", source = "submission_portal" } = {}) {

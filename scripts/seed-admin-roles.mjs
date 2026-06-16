@@ -5,6 +5,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const args = new Set(process.argv.slice(2));
 const apply = args.has("--apply");
 const remote = !args.has("--local");
+const databaseName = process.env.HTV_D1_DATABASE_NAME || process.env.HTV_D1_DATABASE || "hack-the-valley";
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -49,11 +50,9 @@ FROM users
 WHERE lower(email) IN (${targetEmailSql})
 ORDER BY lower(email);`);
 
-statements.push(`SELECT target.email AS missing_email
-FROM (
-${targetEmails.map((email, index) => `  SELECT ${sqlString(email)} AS email${index === 0 ? "" : ""}`).join("\n  UNION ALL\n")}
-) target
-LEFT JOIN users u ON lower(u.email) = target.email
+statements.push(`SELECT target.column1 AS missing_email
+FROM (VALUES ${targetEmails.map((email) => `(${sqlString(email)})`).join(", ")}) target
+LEFT JOIN users u ON lower(u.email) = target.column1
 WHERE u.id IS NULL;`);
 
 statements.push(`UPDATE roles
@@ -88,11 +87,11 @@ const sql = statements.join("\n\n");
 
 if (!apply) {
   console.log(sql);
-  console.error("\nDry run only. This script does not create users; missing_email rows must be fixed before --apply. Set HTV_SUPER_ADMIN_EMAIL, HTV_ADMIN_EMAILS and rerun with --apply to write D1.");
+  console.error(`\nDry run only. This script does not create users; missing_email rows must be fixed before --apply. Target D1 database: ${databaseName}. Override with HTV_D1_DATABASE_NAME if needed. Set HTV_SUPER_ADMIN_EMAIL, HTV_ADMIN_EMAILS and rerun with --apply to write D1.`);
   process.exit(0);
 }
 
-const wranglerArgs = ["wrangler", "d1", "execute", "HTV_DB", "--command", sql];
+const wranglerArgs = ["wrangler", "d1", "execute", databaseName, "--command", sql];
 if (remote) wranglerArgs.splice(4, 0, "--remote");
 const result = spawnSync("npx", wranglerArgs, { stdio: "inherit", env: process.env });
 process.exit(result.status ?? 1);

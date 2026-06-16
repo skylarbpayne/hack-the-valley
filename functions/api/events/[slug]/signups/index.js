@@ -16,7 +16,7 @@ import {
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
-    requireAdmin(context.request, context.env);
+    await requireAdmin(context.request, context.env);
     const db = getDb(context.env);
     const event = await getEvent(db, context.params.slug);
     if (!event) return jsonResponse({ error: "Event not found" }, { status: 404 });

@@ -26,7 +26,7 @@ async function resolveCheckinInstance(db, eventSlug, requestedInstanceId) {
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
-    requireAdmin(context.request, context.env);
+    await requireAdmin(context.request, context.env);
     const db = getDb(context.env);
     const event = await getEvent(db, context.params.slug);
     if (!event || event.status === "archived") return jsonResponse({ error: "Event not found" }, { status: 404 });
@@ -46,7 +46,7 @@ export async function onRequestGet(context) {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    requireAdmin(context.request, context.env);
+    await requireAdmin(context.request, context.env);
     const db = getDb(context.env);
     const event = await getEvent(db, context.params.slug);
     if (!event || event.status === "archived") return jsonResponse({ error: "Event not found" }, { status: 404 });

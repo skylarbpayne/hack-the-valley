@@ -8,6 +8,8 @@ import {
   csvEscape,
   normalizeEventInput,
   normalizeSignupInput,
+  requireAdmin,
+  requireSuperAdminAccess,
   renderEventPageHtml,
   resolveSignupEventInstance,
   searchCheckinCandidates,
@@ -17,6 +19,38 @@ import {
   upsertUser
 } from "../functions/_lib/event-platform.js";
 import worker from "../worker.js";
+
+function roleAwareAdminDb({ role = "admin", users = [] } = {}) {
+  return {
+    prepare(sql) {
+      return {
+        bind(...args) {
+          this.args = args;
+          return this;
+        },
+        async first() {
+          if (/FROM user_sessions/.test(sql)) {
+            return {
+              id: "usr_admin",
+              email: "admin@example.com",
+              name: "Admin User",
+              session_id: "ses_admin",
+              session_expires_at: "2099-01-01T00:00:00.000Z"
+            };
+          }
+          if (/FROM roles/.test(sql)) {
+            return role && this.args.includes(role) ? { role, scope_type: "global", scope_id: "*", created_at: "2026-01-01T00:00:00.000Z" } : null;
+          }
+          throw new Error(`Unexpected first() query: ${sql}`);
+        },
+        async all() {
+          if (/FROM users/.test(sql)) return { results: users };
+          return { results: [] };
+        }
+      };
+    }
+  };
+}
 
 test("slugify creates stable event slugs", () => {
   assert.equal(slugify("Hack Hours at Panera!"), "hack-hours-at-panera");
@@ -251,13 +285,44 @@ test("admin page is the canonical one-stop admin surface at /admin", () => {
   assert.doesNotMatch(html, /admin-events\.html/);
 });
 
-test("admin page gates the full UI behind a saved admin login", () => {
+test("admin page gates the full UI behind a signed-in admin role", () => {
   const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
   assert.match(html, /id="login-panel"/);
   assert.match(html, /id="admin-app"[\s\S]*hidden/);
-  assert.match(html, /document\.cookie = `htv_admin_logged_in=1/);
-  assert.match(html, /localStorage\.setItem\("htv_admin_token"/);
+  assert.match(html, /\/login\/\?next=\/admin/);
+  assert.match(html, /api\("\/api\/admin\/me"\)/);
+  assert.match(html, /active admin role/);
+  assert.match(html, /id="role-admin"/);
+  assert.match(html, /\/api\/admin\/roles/);
+  assert.match(html, /Admin role grants/);
+  assert.doesNotMatch(html, /localStorage\.setItem\("htv_admin_token"/);
+  assert.doesNotMatch(html, /id="admin-token"/);
   assert.doesNotMatch(html, /Prefill Hack Hours at Panera/);
+});
+
+test("admin role helpers require session roles and keep token bootstrap opt-in only", async () => {
+  const sessionRequest = new Request("https://hackthevalley.org/api/users", { headers: { cookie: "htv_session=test-session" } });
+  const admin = await requireAdmin(sessionRequest, { HTV_DB: roleAwareAdminDb({ role: "admin" }) });
+  assert.equal(admin.role.role, "admin");
+
+  await assert.rejects(
+    () => requireSuperAdminAccess(sessionRequest, { HTV_DB: roleAwareAdminDb({ role: "admin" }) }),
+    /Forbidden/
+  );
+  const superAdmin = await requireSuperAdminAccess(sessionRequest, { HTV_DB: roleAwareAdminDb({ role: "super_admin" }) });
+  assert.equal(superAdmin.role.role, "super_admin");
+
+  const tokenRequest = new Request("https://hackthevalley.org/api/users", { headers: { Authorization: "Bearer legacy-secret" } });
+  await assert.rejects(
+    () => requireAdmin(tokenRequest, { HTV_DB: roleAwareAdminDb({ role: null }), HTV_ADMIN_TOKEN: "legacy-secret" }),
+    /Unauthorized/
+  );
+  const bootstrap = await requireAdmin(tokenRequest, {
+    HTV_DB: roleAwareAdminDb({ role: null }),
+    HTV_ADMIN_TOKEN: "legacy-secret",
+    HTV_ADMIN_BOOTSTRAP_TOKEN_ENABLED: "1"
+  });
+  assert.equal(bootstrap.bootstrap, true);
 });
 
 test("admin page can list users and per-event signups without school/org or notes clutter", () => {
@@ -568,20 +633,10 @@ test("worker routes dynamic event APIs on the deployed Worker surface", async ()
 });
 
 test("worker exposes admin-only users API", async () => {
-  const fakeDb = {
-    prepare(sql) {
-      return {
-        bind(...args) {
-          this.args = args;
-          return this;
-        },
-        async all() {
-          assert.match(sql, /FROM users/);
-          return { results: [{ id: "usr_1", email: "ada@example.com", name: "Ada", created_at: "2026-01-01T00:00:00.000Z" }] };
-        }
-      };
-    }
-  };
+  const fakeDb = roleAwareAdminDb({
+    role: "admin",
+    users: [{ id: "usr_1", email: "ada@example.com", name: "Ada", created_at: "2026-01-01T00:00:00.000Z" }]
+  });
 
   const unauthorized = await worker.fetch(
     new Request("https://hackthevalley.org/api/users", { method: "GET" }),
@@ -591,7 +646,7 @@ test("worker exposes admin-only users API", async () => {
   assert.equal(unauthorized.status, 401);
 
   const response = await worker.fetch(
-    new Request("https://hackthevalley.org/api/users", { method: "GET", headers: { Authorization: "Bearer secret" } }),
+    new Request("https://hackthevalley.org/api/users", { method: "GET", headers: { cookie: "htv_session=test-session" } }),
     { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" },
     {}
   );
@@ -663,6 +718,7 @@ test("Resend import script pre-populates the users table without email IDs", () 
 test("worker accepts admin event image uploads and serves uploaded event images publicly", async () => {
   const stored = new Map();
   const env = {
+    HTV_DB: roleAwareAdminDb({ role: "admin" }),
     HTV_ADMIN_TOKEN: "secret",
     MAX_UPLOAD_MB: "1",
     SUBMISSIONS_MEDIA: {
@@ -687,7 +743,7 @@ test("worker accepts admin event image uploads and serves uploaded event images 
   const uploadResponse = await worker.fetch(
     new Request("https://hackthevalley.org/api/events/hack-hours-panera/image?filename=hero.png", {
       method: "POST",
-      headers: { Authorization: "Bearer secret", "Content-Type": "image/png", "X-Filename": "hero.png" },
+      headers: { cookie: "htv_session=test-session", "Content-Type": "image/png", "X-Filename": "hero.png" },
       body: "fake image"
     }),
     env,

@@ -29,28 +29,82 @@ export async function readJson(request) {
   }
 }
 
-export function requireAdmin(request, env) {
-  const configuredToken = env.HTV_ADMIN_TOKEN || env.ADMIN_TOKEN;
-  if (!configuredToken) {
-    throw Object.assign(new Error("HTV_ADMIN_TOKEN is not configured"), { status: 500 });
+function cookieValue(request, name) {
+  const cookie = request.headers.get("cookie") || "";
+  const match = cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`));
+  if (!match) return "";
+  try {
+    return decodeURIComponent(match.slice(name.length + 1));
+  } catch {
+    return match.slice(name.length + 1);
   }
+}
 
+function adminBootstrapTokenEnabled(env = {}) {
+  return [env.HTV_ADMIN_BOOTSTRAP_TOKEN_ENABLED, env.HTV_ADMIN_TOKEN_BOOTSTRAP]
+    .some((value) => String(value || "").trim() === "1");
+}
+
+function adminTokenFromRequest(request) {
   const auth = request.headers.get("Authorization") || "";
   const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   const headerToken = request.headers.get("X-Admin-Token") || "";
-  const token = bearer || headerToken;
+  return bearer || headerToken;
+}
 
-  if (token !== configuredToken) {
-    throw Object.assign(new Error("Unauthorized"), { status: 401 });
+function bootstrapTokenMatches(request, env = {}) {
+  const configuredToken = env.HTV_ADMIN_TOKEN || env.ADMIN_TOKEN;
+  return Boolean(configuredToken && adminTokenFromRequest(request) === configuredToken);
+}
+
+async function findActiveRole(db, userId, allowedRoles, { scopeType = "global", scopeId = "*" } = {}) {
+  const roles = [...new Set(allowedRoles)].filter(Boolean);
+  if (!userId || !roles.length) return null;
+  const placeholders = roles.map(() => "?").join(", ");
+  const binds = [userId, ...roles];
+  const scopeClauses = ["(scope_type = 'global' AND scope_id = '*')"];
+  if (scopeType && scopeId) {
+    scopeClauses.push("(scope_type = ? AND scope_id = ?)");
+    binds.push(scopeType, scopeId);
   }
+  return await db.prepare(`
+    SELECT role, scope_type, scope_id, created_at
+    FROM roles
+    WHERE user_id = ?
+      AND revoked_at IS NULL
+      AND role IN (${placeholders})
+      AND (${scopeClauses.join(" OR ")})
+    ORDER BY CASE role WHEN 'super_admin' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, created_at ASC
+    LIMIT 1
+  `).bind(...binds).first();
 }
 
-export function requireOrganizerAccess(request, env) {
-  return requireAdmin(request, env);
+async function requireRoleAccess(request, env, allowedRoles, scope = {}) {
+  const db = getDb(env);
+  const sessionToken = cookieValue(request, "htv_session") || request.headers.get("x-htv-session") || "";
+  const user = await getCurrentUserFromSession(db, sessionToken);
+  const role = user ? await findActiveRole(db, user.id, allowedRoles, scope) : null;
+  if (role) return { user, role, bootstrap: false };
+
+  if (adminBootstrapTokenEnabled(env) && bootstrapTokenMatches(request, env)) {
+    return { user: null, role: { role: "bootstrap", scope_type: "global", scope_id: "*" }, bootstrap: true };
+  }
+
+  const error = new Error(user ? "Forbidden" : "Unauthorized");
+  error.status = user ? 403 : 401;
+  throw error;
 }
 
-export function requireSuperAdminAccess(request, env) {
-  return requireAdmin(request, env);
+export async function requireAdmin(request, env, scope = {}) {
+  return await requireRoleAccess(request, env, ["super_admin", "admin"], scope);
+}
+
+export async function requireOrganizerAccess(request, env, scope = {}) {
+  return await requireRoleAccess(request, env, ["super_admin", "admin"], scope);
+}
+
+export async function requireSuperAdminAccess(request, env, scope = {}) {
+  return await requireRoleAccess(request, env, ["super_admin"], scope);
 }
 
 export function getDb(env) {

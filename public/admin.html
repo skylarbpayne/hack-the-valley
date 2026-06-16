@@ -19,15 +19,16 @@
     <section id="login-panel" class="max-w-xl mx-auto bg-bc-navy border border-slate-700 rounded-3xl p-6 sm:p-8 mt-10">
       <a href="/events" class="text-bc-cyan text-sm">← Public events</a>
       <h1 class="text-4xl font-black mt-4">Hack the Valley Admin</h1>
-      <p class="text-slate-400 mt-2">Enter the admin password once. We’ll keep it in this browser for admin API calls.</p>
-      <form id="login-form" class="mt-6 space-y-4">
-        <label class="block">
-          <span class="text-sm font-semibold">Admin password</span>
-          <input id="admin-token" type="password" autocomplete="off" required class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-bc-cyan" placeholder="Enter admin password">
-        </label>
-        <button class="w-full bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-black hover:bg-cyan-400">Log in</button>
-        <p id="login-status" class="text-sm text-slate-300"></p>
-      </form>
+      <p class="text-slate-400 mt-2">Sign in with your Hack the Valley account. Admin access now comes from active roles on your session, not the old shared password.</p>
+      <div id="login-actions" class="mt-6 space-y-4">
+        <a id="login-link" href="/login/?next=/admin" class="block w-full bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-black text-center hover:bg-cyan-400">Sign in with magic link</a>
+        <button id="retry-session" type="button" class="w-full border border-slate-600 px-5 py-3 rounded-lg font-bold hover:border-bc-cyan">Check current session</button>
+        <p id="login-status" class="text-sm text-slate-300">Checking your session…</p>
+        <details class="rounded-xl border border-slate-700 p-4 text-sm text-slate-400">
+          <summary class="cursor-pointer text-slate-300 font-semibold">Recovery note</summary>
+          <p class="mt-2">The shared admin token is kept only as an API bootstrap path when explicitly enabled with <code>HTV_ADMIN_BOOTSTRAP_TOKEN_ENABLED=1</code>. Normal admin use requires an <code>admin</code> or <code>super_admin</code> role.</p>
+        </details>
+      </div>
     </section>
 
     <section id="admin-app" class="hidden">
@@ -35,9 +36,9 @@
         <div>
           <a href="/events" class="text-bc-cyan text-sm">← Public events</a>
           <h1 class="text-4xl font-black mt-2">Hack the Valley Admin</h1>
-          <p class="text-slate-400 mt-2 max-w-2xl">One admin page for event ops and organizer tools. Event creation/export uses <code>HTV_ADMIN_TOKEN</code>.</p>
+          <p class="text-slate-400 mt-2 max-w-2xl">One admin page for event ops and organizer tools. Admin actions require your signed-in session to have an active <code>admin</code> or <code>super_admin</code> role.</p>
         </div>
-        <button id="logout" class="border border-slate-600 px-4 py-2 rounded-lg text-sm hover:border-bc-cyan">Forget password</button>
+        <button id="logout" class="border border-slate-600 px-4 py-2 rounded-lg text-sm hover:border-bc-cyan">Sign in as another account</button>
       </div>
 
       <section id="event-cockpit" class="bg-bc-navy border-2 border-bc-cyan/60 rounded-3xl p-6 mb-8 shadow-2xl shadow-cyan-950/20">
@@ -107,7 +108,7 @@
         </div>
       </section>
 
-      <section class="grid md:grid-cols-4 gap-4 mb-8">
+      <section class="grid md:grid-cols-5 gap-4 mb-8">
         <a href="#events-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Events</div>
           <h2 class="text-xl font-black mt-2">Create / update event</h2>
@@ -117,6 +118,11 @@
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">People</div>
           <h2 class="text-xl font-black mt-2">Users</h2>
           <p class="text-slate-400 text-sm mt-2">See imported Resend contacts and users created by event signups.</p>
+        </a>
+        <a id="super-admin-card" href="#role-admin" class="hidden bg-bc-navy border border-violet-500/60 rounded-2xl p-5 hover:border-violet-300 transition">
+          <div class="text-xs uppercase tracking-[0.2em] text-violet-300 font-semibold">Super admin</div>
+          <h2 class="text-xl font-black mt-2">Role grants</h2>
+          <p class="text-slate-400 text-sm mt-2">Grant or revoke global admin access. Skylar-only trust root.</p>
         </a>
         <a href="/admin-submissions" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Project submissions</div>
@@ -218,12 +224,28 @@
         </div>
         <div id="users-list" class="overflow-x-auto text-sm text-slate-300"></div>
       </section>
+
+      <section id="role-admin" class="hidden bg-bc-navy border border-violet-500/50 rounded-2xl p-6 mt-8">
+        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5 mb-4">
+          <div>
+            <p class="text-violet-300 uppercase tracking-[0.2em] text-xs font-black">Super admin</p>
+            <h2 class="text-2xl font-black mt-1">Admin role grants</h2>
+            <p id="role-admin-status" class="text-sm text-slate-400 mt-1">Only the global super admin can grant or revoke admin access.</p>
+          </div>
+          <button id="load-admin-roles" class="border border-violet-400 text-violet-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-violet-400 hover:text-bc-dark">Refresh roles</button>
+        </div>
+        <form id="admin-role-form" class="grid lg:grid-cols-[1fr_auto_auto] gap-3 items-end bg-bc-dark border border-slate-700 rounded-2xl p-4 mb-4">
+          <label class="block"><span class="text-sm font-semibold">Admin email</span><input name="email" type="email" required class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="person@example.com"></label>
+          <label class="block"><span class="text-sm font-semibold">Action</span><select name="action" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><option value="grant">Grant admin</option><option value="revoke">Revoke admin</option></select></label>
+          <button class="bg-violet-300 text-bc-dark px-5 py-3 rounded-lg font-black hover:bg-violet-200">Apply</button>
+        </form>
+        <div id="admin-role-list" class="overflow-x-auto text-sm text-slate-300"></div>
+      </section>
     </section>
   </main>
 
   <script>
     const $ = (id) => document.getElementById(id);
-    const tokenInput = $("admin-token");
     const loginPanel = $("login-panel");
     const adminApp = $("admin-app");
     const eventForm = $("event-form");
@@ -235,8 +257,9 @@
     let currentCockpitEvent = null;
     let currentCockpitInstanceId = null;
     let currentCockpitRoster = [];
+    let currentAdminUser = null;
     let checkinSearchTimer = null;
-    tokenInput.value = localStorage.getItem("htv_admin_token") || "";
+    $("login-link").href = `/login/?next=${encodeURIComponent("/admin")}`;
 
     function slugify(value) {
       return String(value || "")
@@ -258,32 +281,49 @@
       $("login-status").textContent = message;
     }
 
-    function getToken() {
-      return tokenInput.value.trim() || localStorage.getItem("htv_admin_token") || "";
-    }
-
     function headers() {
-      const token = getToken();
-      return { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
+      return { "Content-Type": "application/json" };
     }
 
-    function showApp() {
+    function hasAdminRole(roles = []) {
+      return roles.some((role) => ["admin", "super_admin"].includes(role.role) && !role.revoked_at);
+    }
+
+    function hasSuperAdminRole(roles = []) {
+      return roles.some((role) => role.role === "super_admin" && !role.revoked_at);
+    }
+
+    function showLogin(message = "Sign in with an admin account to continue.", error = false) {
+      adminApp.classList.add("hidden");
+      loginPanel.classList.remove("hidden");
+      setLoginStatus(message, error);
+    }
+
+    function showApp(me) {
+      currentAdminUser = me;
+      const superAdmin = hasSuperAdminRole(me.roles || []);
+      $("role-admin").classList.toggle("hidden", !superAdmin);
+      $("super-admin-card").classList.toggle("hidden", !superAdmin);
       loginPanel.classList.add("hidden");
       adminApp.classList.remove("hidden");
     }
 
-    function rememberToken(token) {
-      localStorage.setItem("htv_admin_token", token);
-      document.cookie = `htv_admin_logged_in=1; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax; Path=/`;
+    async function checkAdminSession({ loadData = false } = {}) {
+      const me = await api("/api/admin/me");
+      if (!hasAdminRole(me.roles || [])) {
+        throw new Error("Signed in, but this account does not have an active admin role.");
+      }
+      showApp(me);
+      if (loadData) {
+        await loadEvents();
+        await loadUsers();
+        if (hasSuperAdminRole(me.roles || [])) await loadAdminRoles();
+      }
+      return me;
     }
 
-    function forgetToken() {
-      localStorage.removeItem("htv_admin_token");
-      document.cookie = "htv_admin_logged_in=; Max-Age=0; SameSite=Lax; Path=/";
-      tokenInput.value = "";
-      adminApp.classList.add("hidden");
-      loginPanel.classList.remove("hidden");
-      setLoginStatus("Password forgotten in this browser.");
+    function switchAccount() {
+      window.location.href = `/login/?next=${encodeURIComponent("/admin")}`;
     }
 
     function toIsoLocalValue(value) {
@@ -347,7 +387,6 @@
       const response = await fetch(`/api/events/${encodeURIComponent(slug)}/image?filename=${encodeURIComponent(file.name)}`, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${getToken()}`,
           "Content-Type": file.type,
           "X-Filename": file.name
         },
@@ -663,6 +702,63 @@
         </table>`;
     }
 
+    async function loadAdminRoles() {
+      const status = $("role-admin-status");
+      try {
+        status.className = "text-sm text-slate-400 mt-1";
+        status.textContent = "Loading role grants…";
+        const data = await api("/api/admin/roles");
+        renderAdminRoles(data.roles || []);
+        status.textContent = `Loaded ${data.count ?? (data.roles || []).length} active admin role grant(s).`;
+        return data.roles || [];
+      } catch (error) {
+        status.textContent = error.message;
+        status.className = "text-sm text-red-300 mt-1";
+        throw error;
+      }
+    }
+
+    function renderAdminRoles(roles) {
+      const container = $("admin-role-list");
+      if (!roles.length) {
+        container.innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">No active admin role grants yet.</div>`;
+        return;
+      }
+      container.innerHTML = `
+        <table class="min-w-full border-separate border-spacing-y-2">
+          <thead class="text-left text-xs uppercase tracking-[0.16em] text-slate-500"><tr><th class="pr-4">Role</th><th class="pr-4">Name</th><th class="pr-4">Email</th><th class="pr-4">Scope</th><th class="pr-4">Granted</th></tr></thead>
+          <tbody>
+            ${roles.map((grant) => `
+              <tr class="bg-bc-dark border border-slate-700">
+                <td class="p-3 rounded-l-xl font-black ${grant.role === "super_admin" ? "text-violet-300" : "text-bc-cyan"}">${escapeHtml(grant.role)}</td>
+                <td class="p-3">${escapeHtml(grant.name || "—")}</td>
+                <td class="p-3 font-mono text-xs">${escapeHtml(grant.email || "")}</td>
+                <td class="p-3">${escapeHtml(`${grant.scope_type || "global"}:${grant.scope_id || "*"}`)}</td>
+                <td class="p-3 rounded-r-xl text-xs text-slate-400">${escapeHtml(grant.created_at || "")}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>`;
+    }
+
+    async function applyAdminRoleChange(event) {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const status = $("role-admin-status");
+      const payload = Object.fromEntries(new FormData(form).entries());
+      status.className = "text-sm text-slate-400 mt-1";
+      status.textContent = `${payload.action === "revoke" ? "Revoking" : "Granting"} admin for ${payload.email}…`;
+      try {
+        const data = await api("/api/admin/roles", { method: "POST", body: JSON.stringify(payload) });
+        renderAdminRoles(data.roles || []);
+        status.textContent = `${payload.action === "revoke" ? "Revoked" : "Granted"} admin for ${payload.email}.`;
+        form.reset();
+      } catch (error) {
+        status.textContent = error.message;
+        status.className = "text-sm text-red-300 mt-1";
+      }
+    }
+
     async function loadEventSignups(slug, title = slug) {
       const status = $("event-signups-status");
       try {
@@ -883,18 +979,9 @@
       if (!editingSlug) slugInput.value = slugify(titleInput.value);
     });
 
-    $("login-form").addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const token = tokenInput.value.trim();
-      if (!token) return setLoginStatus("Enter the admin password.", true);
-      rememberToken(token);
-      showApp();
-      try {
-        await loadEvents();
-        await loadUsers();
-      } catch (error) {
-        setLoginStatus(error.message, true);
-      }
+    $("retry-session").addEventListener("click", () => {
+      setLoginStatus("Checking session…");
+      checkAdminSession({ loadData: true }).catch((error) => showLogin(error.message, true));
     });
 
     eventForm.addEventListener("submit", async (event) => {
@@ -985,9 +1072,11 @@
       }
     });
     $("load-users").addEventListener("click", () => loadUsers().catch(() => {}));
+    $("load-admin-roles").addEventListener("click", () => loadAdminRoles().catch(() => {}));
+    $("admin-role-form").addEventListener("submit", applyAdminRoleChange);
     $("load-events").addEventListener("click", () => loadEvents().catch(() => {}));
     $("new-event").addEventListener("click", resetForm);
-    $("logout").addEventListener("click", forgetToken);
+    $("logout").addEventListener("click", switchAccount);
 
     function escapeHtml(value) {
       return String(value ?? "")
@@ -995,11 +1084,7 @@
         .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
     }
 
-    if (tokenInput.value) {
-      showApp();
-      loadEvents().catch(() => {});
-      loadUsers().catch(() => {});
-    }
+    checkAdminSession({ loadData: true }).catch((error) => showLogin(error.message, true));
   </script>
 </body>
 </html>

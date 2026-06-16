@@ -29,7 +29,7 @@ npm run deploy
 The `/events` page is the canonical events surface. It combines the existing event archive with dynamic upcoming events from the event/signup backend.
 
 - Event/signup API lives under `/api/events` and stores records in app D1 binding `HTV_DB` / database `hack-the-valley`.
-- Admin UI lives at `/admin` and event create/export actions require `HTV_ADMIN_TOKEN`. Legacy `/admin-events.html` redirects to `/admin`.
+- Admin UI lives at `/admin` and event create/export actions require an `htv_session` user with an active global `admin` or `super_admin` role. Legacy `/admin-events.html` redirects to `/admin`.
 - Public signups sync opted-in emails to Resend using `RESEND_API_KEY`; per-event signup history lives in `HTV_DB`.
 - Do not create a separate root `/events.html`; preserve the existing `/events` information architecture.
 
@@ -39,7 +39,7 @@ The project submission flow lives on `/submit` with a private admin review page 
 
 - Uploads go to R2 through `/api/upload`.
 - Submission metadata goes to D1 through `HTV_DB`.
-- Admin media access goes through `/api/media` and accepts the shared `HTV_ADMIN_TOKEN`.
+- Admin media access goes through `/api/media`; legacy token access is kept for submissions/recovery paths, while the main admin surface is session + roles based.
 - Full Cloudflare setup/deploy instructions are in `SUBMISSIONS-DEPLOYMENT.md`.
 
 ## Architecture

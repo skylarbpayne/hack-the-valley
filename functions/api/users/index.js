@@ -9,7 +9,7 @@ import {
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
-    requireAdmin(context.request, context.env);
+    await requireAdmin(context.request, context.env);
     const url = new URL(context.request.url);
     const users = await listUsers(getDb(context.env), { limit: url.searchParams.get("limit") || 500 });
     return jsonResponse({ users, count: users.length });

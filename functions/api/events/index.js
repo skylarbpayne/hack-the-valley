@@ -21,7 +21,7 @@ export async function onRequestGet(context) {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    requireAdmin(context.request, context.env);
+    await requireAdmin(context.request, context.env);
     const db = getDb(context.env);
     const input = await readJson(context.request);
     const event = await upsertEvent(db, input);

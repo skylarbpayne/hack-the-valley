@@ -1,4 +1,6 @@
 import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
+import * as adminMe from './functions/api/admin/me.js';
+import * as adminRoles from './functions/api/admin/roles.js';
 import * as authRequestCode from './functions/api/auth/request-code.js';
 import * as authVerifyCode from './functions/api/auth/verify-code.js';
 import * as authMagicLogin from './functions/api/auth/magic-login.js';
@@ -75,6 +77,14 @@ async function routeApiRequest(request, env, ctx, routeModule, params = {}) {
 function matchApiRoute(pathname) {
   if (pathname === '/api/events') {
     return { routeModule: eventsIndex, params: {} };
+  }
+
+  if (pathname === '/api/admin/me') {
+    return { routeModule: adminMe, params: {} };
+  }
+
+  if (pathname === '/api/admin/roles') {
+    return { routeModule: adminRoles, params: {} };
   }
 
   if (pathname === '/api/auth/request-code') {

@@ -9,7 +9,7 @@ import {
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
-    requireOrganizerAccess(context.request, context.env);
+    await requireOrganizerAccess(context.request, context.env);
     const db = getDb(context.env);
     const cockpit = await getEventCockpit(db, context.params.slug, context.params.instanceId);
     return jsonResponse(cockpit);

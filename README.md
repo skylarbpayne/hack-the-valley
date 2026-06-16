@@ -72,7 +72,7 @@ Production setup after approval:
 ./scripts/setup-hack-the-valley-d1.sh
 ```
 
-CI/CD applies D1 migrations before each Worker deploy. Then set Worker secrets `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, create the real event, and smoke signup + CSV export + Resend contact creation.
+CI/CD applies D1 migrations before each Worker deploy. Then set Worker secrets `RESEND_API_KEY` and the optional recovery `HTV_ADMIN_TOKEN`, seed confirmed D1 admin roles with `npm run roles:seed-admin -- --apply`, create the real event, and smoke signup + CSV export + Resend contact creation.
 
 Existing project submissions from the old `hack-the-valley-submissions` D1 database need one explicit data migration into the new app DB:
 

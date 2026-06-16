@@ -22,7 +22,7 @@ export async function onRequestGet(context) {
 
 export async function onRequestPatch(context) {
   return handleErrors(async () => {
-    requireAdmin(context.request, context.env);
+    await requireAdmin(context.request, context.env);
     const db = getDb(context.env);
     const existing = await getEvent(db, context.params.slug);
     if (!existing) return jsonResponse({ error: "Event not found" }, { status: 404 });

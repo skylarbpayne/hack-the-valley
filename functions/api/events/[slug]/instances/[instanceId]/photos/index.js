@@ -38,7 +38,7 @@ export function onRequestOptions() {
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
-    requireOrganizerAccess(context.request, context.env);
+    await requireOrganizerAccess(context.request, context.env);
     const db = getDb(context.env);
     const instance = await getEventInstance(db, context.params.slug, context.params.instanceId);
     if (!instance) return jsonResponse({ error: "Event instance not found" }, { status: 404 });
@@ -52,7 +52,7 @@ export async function onRequestGet(context) {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    requireOrganizerAccess(context.request, context.env);
+    await requireOrganizerAccess(context.request, context.env);
     if (!context.env.SUBMISSIONS_MEDIA) {
       return jsonResponse({ error: "Upload storage is not configured." }, { status: 503 });
     }

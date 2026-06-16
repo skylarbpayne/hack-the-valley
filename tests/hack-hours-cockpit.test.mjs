@@ -35,6 +35,35 @@ import worker from "../worker.js";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), "utf8");
+const adminHeaders = (extra = {}) => ({ cookie: "htv_session=test-session", ...extra });
+
+function withAdminRoleDb(db, { role = "admin" } = {}) {
+  return {
+    prepare(sql) {
+      if (/FROM user_sessions/.test(sql)) {
+        return {
+          bind(...args) { this.args = args; return this; },
+          async first() {
+            return { id: "usr_admin", email: "admin@example.com", session_id: "ses_admin", session_expires_at: "2099-01-01T00:00:00.000Z" };
+          },
+          async all() { return { results: [] }; },
+          async run() { return { success: true }; }
+        };
+      }
+      if (/FROM roles/.test(sql)) {
+        return {
+          bind(...args) { this.args = args; return this; },
+          async first() {
+            return role && this.args.includes(role) ? { role, scope_type: "global", scope_id: "*", created_at: "2026-01-01T00:00:00.000Z" } : null;
+          },
+          async all() { return { results: role ? [{ role, scope_type: "global", scope_id: "*", created_at: "2026-01-01T00:00:00.000Z" }] : [] }; },
+          async run() { return { success: true }; }
+        };
+      }
+      return db.prepare(sql);
+    }
+  };
+}
 
 test("participant login page requests a code, verifies it, and reads /api/me", () => {
   const html = read("public/login/index.html");
@@ -925,11 +954,17 @@ test("rendered public RSVP collects emergency contact and excludes school notes 
   assert.doesNotMatch(html, /waiver/i);
 });
 
-test("organizer access helpers exist and delegate to the current admin token gate", () => {
-  const request = new Request("https://hackthevalley.org/admin", { headers: { Authorization: "Bearer secret" } });
-  assert.equal(requireOrganizerAccess(request, { HTV_ADMIN_TOKEN: "secret" }), undefined);
-  assert.equal(requireSuperAdminAccess(request, { HTV_ADMIN_TOKEN: "secret" }), undefined);
-  assert.throws(() => requireOrganizerAccess(new Request("https://hackthevalley.org/admin"), { HTV_ADMIN_TOKEN: "secret" }), /Unauthorized/);
+test("organizer access helpers require session roles and separate super admin", async () => {
+  const baseDb = { prepare() { throw new Error("base DB should not be queried by auth helper test"); } };
+  const request = new Request("https://hackthevalley.org/admin", { headers: adminHeaders() });
+  const organizer = await requireOrganizerAccess(request, { HTV_DB: withAdminRoleDb(baseDb, { role: "admin" }) });
+  assert.equal(organizer.role.role, "admin");
+  const superAdmin = await requireSuperAdminAccess(request, { HTV_DB: withAdminRoleDb(baseDb, { role: "super_admin" }) });
+  assert.equal(superAdmin.role.role, "super_admin");
+  await assert.rejects(
+    () => requireOrganizerAccess(new Request("https://hackthevalley.org/admin"), { HTV_DB: withAdminRoleDb(baseDb, { role: "admin" }) }),
+    /Unauthorized/
+  );
 });
 
 test("cockpit helper returns summary, roster, emergency state, progression labels, and photo count", async () => {
@@ -1024,17 +1059,17 @@ test("worker routes event project submissions API and requires admin", async () 
     }
   };
   const url = "https://hackthevalley.org/api/events/hack-the-valley-2026/instances/inst_2026/projects";
-  const unauthorized = await worker.fetch(new Request(url), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  const unauthorized = await worker.fetch(new Request(url), { HTV_DB: withAdminRoleDb(fakeDb), HTV_ADMIN_TOKEN: "secret" }, {});
   assert.equal(unauthorized.status, 401);
   const create = await worker.fetch(new Request(url, {
     method: "POST",
-    headers: { Authorization: "Bearer secret", "Content-Type": "application/json" },
+    headers: adminHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ submission_id: "sub_1", status: "accepted" })
-  }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  }), { HTV_DB: withAdminRoleDb(fakeDb), HTV_ADMIN_TOKEN: "secret" }, {});
   assert.equal(create.status, 200);
   const created = await create.json();
   assert.equal(created.project.title, "CalcGuide");
-  const list = await worker.fetch(new Request(url, { headers: { Authorization: "Bearer secret" } }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  const list = await worker.fetch(new Request(url, { headers: adminHeaders() }), { HTV_DB: withAdminRoleDb(fakeDb), HTV_ADMIN_TOKEN: "secret" }, {});
   assert.equal(list.status, 200);
   const listed = await list.json();
   assert.equal(listed.projects[0].title, "CalcGuide");
@@ -1095,8 +1130,8 @@ test("worker routes user state and badge award APIs behind admin auth", async ()
     }
   };
   const stateUrl = "https://hackthevalley.org/api/users/usr_maya/state";
-  assert.equal((await worker.fetch(new Request(stateUrl), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {})).status, 401);
-  const stateResponse = await worker.fetch(new Request(stateUrl, { headers: { Authorization: "Bearer secret" } }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  assert.equal((await worker.fetch(new Request(stateUrl), { HTV_DB: withAdminRoleDb(fakeDb), HTV_ADMIN_TOKEN: "secret" }, {})).status, 401);
+  const stateResponse = await worker.fetch(new Request(stateUrl, { headers: adminHeaders() }), { HTV_DB: withAdminRoleDb(fakeDb), HTV_ADMIN_TOKEN: "secret" }, {});
   assert.equal(stateResponse.status, 200);
   const state = await stateResponse.json();
   assert.equal(state.user.email, "maya@example.com");
@@ -1104,9 +1139,9 @@ test("worker routes user state and badge award APIs behind admin auth", async ()
   const badgeUrl = "https://hackthevalley.org/api/users/usr_maya/badges";
   const badgeResponse = await worker.fetch(new Request(badgeUrl, {
     method: "POST",
-    headers: { Authorization: "Bearer secret", "Content-Type": "application/json" },
+    headers: adminHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ badge_slug: "shared-demo", event_instance_id: "inst_1", source: "admin" })
-  }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  }), { HTV_DB: withAdminRoleDb(fakeDb), HTV_ADMIN_TOKEN: "secret" }, {});
   assert.equal(badgeResponse.status, 200);
   const awarded = await badgeResponse.json();
   assert.equal(awarded.badge.slug, "shared-demo");
@@ -1128,9 +1163,9 @@ test("worker routes follow-up packet API and requires admin", async () => {
     }
   };
   const url = "https://hackthevalley.org/api/events/hack-hours/instances/inst_123/followup";
-  const unauthorized = await worker.fetch(new Request(url), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  const unauthorized = await worker.fetch(new Request(url), { HTV_DB: withAdminRoleDb(fakeDb), HTV_ADMIN_TOKEN: "secret" }, {});
   assert.equal(unauthorized.status, 401);
-  const response = await worker.fetch(new Request(url, { headers: { Authorization: "Bearer secret" } }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  const response = await worker.fetch(new Request(url, { headers: adminHeaders() }), { HTV_DB: withAdminRoleDb(fakeDb), HTV_ADMIN_TOKEN: "secret" }, {});
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.followup_draft.status, "needs_review");
@@ -1152,9 +1187,9 @@ test("worker routes cockpit API and requires admin", async () => {
     }
   };
   const url = "https://hackthevalley.org/api/events/hack-hours/instances/inst_123/cockpit";
-  const unauthorized = await worker.fetch(new Request(url), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  const unauthorized = await worker.fetch(new Request(url), { HTV_DB: withAdminRoleDb(fakeDb), HTV_ADMIN_TOKEN: "secret" }, {});
   assert.equal(unauthorized.status, 401);
-  const response = await worker.fetch(new Request(url, { headers: { Authorization: "Bearer secret" } }), { HTV_DB: fakeDb, HTV_ADMIN_TOKEN: "secret" }, {});
+  const response = await worker.fetch(new Request(url, { headers: adminHeaders() }), { HTV_DB: withAdminRoleDb(fakeDb), HTV_ADMIN_TOKEN: "secret" }, {});
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.instance.id, "inst_123");
@@ -1224,19 +1259,19 @@ test("event photo route validates auth, R2, MIME, filename, and event-photo stor
     }
   };
   const url = "https://hackthevalley.org/api/events/hack-hours/instances/inst_1/photos?filename=../photo.jpg&kind=photo";
-  const noStorage = await worker.fetch(new Request(url, { method: "POST", headers: { Authorization: "Bearer secret", "Content-Type": "image/jpeg", "Content-Length": "12" }, body: "fake" }), { HTV_DB: db, HTV_ADMIN_TOKEN: "secret" }, {});
+  const noStorage = await worker.fetch(new Request(url, { method: "POST", headers: adminHeaders({ "Content-Type": "image/jpeg", "Content-Length": "12" }), body: "fake" }), { HTV_DB: withAdminRoleDb(db), HTV_ADMIN_TOKEN: "secret" }, {});
   assert.equal(noStorage.status, 503);
-  const badType = await worker.fetch(new Request(url, { method: "POST", headers: { Authorization: "Bearer secret", "Content-Type": "text/plain", "Content-Length": "12" }, body: "fake" }), { HTV_DB: db, HTV_ADMIN_TOKEN: "secret", SUBMISSIONS_MEDIA: { put: async () => {} } }, {});
+  const badType = await worker.fetch(new Request(url, { method: "POST", headers: adminHeaders({ "Content-Type": "text/plain", "Content-Length": "12" }), body: "fake" }), { HTV_DB: withAdminRoleDb(db), HTV_ADMIN_TOKEN: "secret", SUBMISSIONS_MEDIA: { put: async () => {} } }, {});
   assert.equal(badType.status, 400);
-  const oversizeWithoutLength = await worker.fetch(new Request(url, { method: "POST", headers: { Authorization: "Bearer secret", "Content-Type": "image/jpeg" }, body: "fake" }), {
-    HTV_DB: db,
+  const oversizeWithoutLength = await worker.fetch(new Request(url, { method: "POST", headers: adminHeaders({ "Content-Type": "image/jpeg" }), body: "fake" }), {
+    HTV_DB: withAdminRoleDb(db),
     HTV_ADMIN_TOKEN: "secret",
     MAX_UPLOAD_BYTES: "1",
     SUBMISSIONS_MEDIA: { async put() { throw new Error("oversize upload should not be stored"); } }
   }, {});
   assert.equal(oversizeWithoutLength.status, 400);
-  const response = await worker.fetch(new Request(url, { method: "POST", headers: { Authorization: "Bearer secret", "Content-Type": "image/jpeg", "Content-Length": "12" }, body: "fake" }), {
-    HTV_DB: db,
+  const response = await worker.fetch(new Request(url, { method: "POST", headers: adminHeaders({ "Content-Type": "image/jpeg", "Content-Length": "12" }), body: "fake" }), {
+    HTV_DB: withAdminRoleDb(db),
     HTV_ADMIN_TOKEN: "secret",
     SUBMISSIONS_MEDIA: { async put(key, body, options) { stored.set(key, { body: await new Response(body).text(), options }); } }
   }, {});

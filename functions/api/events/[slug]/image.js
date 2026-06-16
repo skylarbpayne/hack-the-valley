@@ -45,7 +45,7 @@ export function onRequestOptions() {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    requireAdmin(context.request, context.env);
+    await requireAdmin(context.request, context.env);
     if (!context.env.SUBMISSIONS_MEDIA) {
       throw Object.assign(new Error("Upload storage is not configured."), { status: 503 });
     }

@@ -13,7 +13,7 @@ import {
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
-    requireOrganizerAccess(context.request, context.env);
+    await requireOrganizerAccess(context.request, context.env);
     const db = getDb(context.env);
     const projects = await listEventProjectSubmissions(db, context.params.slug, context.params.instanceId);
     return jsonResponse({ projects, count: projects.length });
@@ -22,7 +22,7 @@ export async function onRequestGet(context) {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    requireOrganizerAccess(context.request, context.env);
+    await requireOrganizerAccess(context.request, context.env);
     const db = getDb(context.env);
     const body = await readJson(context.request);
     let project;

@@ -47,7 +47,7 @@ Legacy registration notification fallback:
 
 Event signup platform:
 - D1 binding `HTV_DB`: app database `hack-the-valley` for submissions, events, and signups
-- `HTV_ADMIN_TOKEN`: organizer/admin bearer token
+- Admin access: `/admin` and event ops require passwordless login plus an active global `admin` or `super_admin` role in D1. `HTV_ADMIN_TOKEN` is only a bootstrap/recovery secret when `HTV_ADMIN_BOOTSTRAP_TOKEN_ENABLED=1`.
 - `RESEND_API_KEY`: Resend contact sync
 
 **Note:** MailChannels requires domain verification in production. See: https://mailchannels.zendesk.com/hc/en-us/articles/4565898358413-Sending-Email-from-Cloudflare-Workers-using-MailChannels-Send-API
@@ -89,7 +89,7 @@ Setup after approval:
 ./scripts/setup-hack-the-valley-d1.sh
 ```
 
-Then set Worker secrets `HTV_ADMIN_TOKEN` and `RESEND_API_KEY`, deploy, create the real Hack Hours event from `/admin`, submit a test signup from `/events/<slug>`, export CSV, and confirm the signup row exists in HTV_DB and the opted-in contact was created/updated in Resend.
+Then set Worker secrets `RESEND_API_KEY` and the optional recovery `HTV_ADMIN_TOKEN`, seed confirmed admin roles with `HTV_SUPER_ADMIN_EMAIL=... HTV_ADMIN_EMAILS=... npm run roles:seed-admin -- --apply`, deploy, create the real Hack Hours event from `/admin`, submit a test signup from `/events/<slug>`, export CSV, and confirm the signup row exists in HTV_DB and the opted-in contact was created/updated in Resend.
 
 ## Existing submissions migration
 

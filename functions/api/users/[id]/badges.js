@@ -10,7 +10,7 @@ import {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    requireOrganizerAccess(context.request, context.env);
+    await requireOrganizerAccess(context.request, context.env);
     const body = await readJson(context.request);
     const result = await awardBadge(getDb(context.env), {
       userId: context.params.id,

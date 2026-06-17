@@ -756,6 +756,16 @@ function safeLeaderboardProject(row = {}) {
   };
 }
 
+function publicLeaderboardDisplayName(value) {
+  const cleaned = String(value || "").trim().replace(/\s+/g, " ");
+  if (!cleaned || cleaned === "Community member") return "Community member";
+  const parts = cleaned.split(" ").filter(Boolean);
+  if (parts.length === 1) return parts[0];
+  const first = parts[0];
+  const last = parts[parts.length - 1].replace(/[^\p{L}\p{N}]/gu, "");
+  return last ? `${first} ${last.charAt(0).toUpperCase()}.` : first;
+}
+
 export async function listCommunityLeaderboard(db, { limit = 50 } = {}) {
   const safeLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 50, 1), 100);
   const result = await db.prepare(`
@@ -832,7 +842,7 @@ export async function listCommunityLeaderboard(db, { limit = 50 } = {}) {
     }));
     return {
       rank: index + 1,
-      display_name: row.display_name || "Community member",
+      display_name: publicLeaderboardDisplayName(row.display_name),
       score: Number(row.score) || leaderboardScore(row),
       badge_count: badges.length,
       badges,

@@ -28,7 +28,7 @@ export async function onRequestGet(context) {
       leaderboard,
       count: leaderboard.length,
       scoring: SCORING,
-      privacy: "Public leaderboard fields intentionally omit email, phone, emergency contact, and private submission payload data."
+      privacy: "Public leaderboard fields intentionally omit email, phone, emergency contact, private submission payload data, and full last names."
     });
   });
 }

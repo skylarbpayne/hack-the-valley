@@ -65,7 +65,7 @@ test("community leaderboard returns scored, privacy-safe public entries", async 
 
   assert.equal(leaderboard.length, 2);
   assert.equal(leaderboard[0].rank, 1);
-  assert.equal(leaderboard[0].display_name, "Ada Lovelace");
+  assert.equal(leaderboard[0].display_name, "Ada L.");
   assert.equal(leaderboard[0].score, 41);
   assert.equal(leaderboard[0].metrics.projects, 2);
   assert.equal(leaderboard[0].metrics.hack_hours_checkins, 3);
@@ -78,13 +78,13 @@ test("community leaderboard returns scored, privacy-safe public entries", async 
   ]);
   assert.equal(leaderboard[0].projects.length, 2);
 
-  assert.equal(leaderboard[1].display_name, "Grace Hopper");
+  assert.equal(leaderboard[1].display_name, "Grace H.");
   assert.equal(leaderboard[1].metrics.attended_htv_2026, true);
   assert.ok(leaderboard[1].badges.some((badge) => badge.slug === "attended-htv-2026"));
   assert.equal(leaderboard[1].badges.some((badge) => badge.slug === "helped-mentor"), false);
 
   const serialized = JSON.stringify(leaderboard);
-  assert.doesNotMatch(serialized, /email|phone|emergency|payload_json|uploads_json|awarded_by|source/i);
+  assert.doesNotMatch(serialized, /Ada Lovelace|Grace Hopper|email|phone|emergency|payload_json|uploads_json|awarded_by|source/i);
 });
 
 test("worker exposes public leaderboard API without an organizer session", async () => {
@@ -97,9 +97,10 @@ test("worker exposes public leaderboard API without an organizer session", async
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.ok, true);
-  assert.equal(body.leaderboard[0].display_name, "Ada Lovelace");
+  assert.equal(body.leaderboard[0].display_name, "Ada L.");
   assert.equal(body.scoring.hack_hours_checkin, 2);
   assert.match(body.privacy, /omit/i);
+  assert.match(body.privacy, /full last names/i);
   assert.doesNotMatch(JSON.stringify(body), /ada@example\.com|661-555|payload_json|uploads_json/i);
 });
 

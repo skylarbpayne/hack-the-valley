@@ -184,6 +184,11 @@ function isEventPagePath(pathname) {
 
 async function renderEventPage(request, env) {
   return handleErrors(async () => {
+    if (env.ASSETS?.fetch) {
+      const assetResponse = await env.ASSETS.fetch(request);
+      if (assetResponse.status < 400) return assetResponse;
+    }
+
     const url = new URL(request.url);
     const slug = decodeURIComponent(url.pathname.match(/^\/events\/([^/]+)\/?$/)?.[1] || "");
     const event = await getEvent(getDb(env), slug);

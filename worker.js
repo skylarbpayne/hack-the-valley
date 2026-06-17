@@ -17,6 +17,7 @@ import * as eventImage from './functions/api/events/[slug]/image.js';
 import * as eventSlug from './functions/api/events/[slug].js';
 import * as eventsIndex from './functions/api/events/index.js';
 import * as media from './functions/api/media.js';
+import * as leaderboard from './functions/api/leaderboard.js';
 import * as projectsPublic from './functions/api/projects.js';
 import * as projectsMedia from './functions/api/projects/media.js';
 import * as register from './functions/api/register.js';
@@ -31,6 +32,8 @@ import { corsHeaders } from './functions/_shared/submissions.js';
 
 const API_ROUTES = {
   '/api/media': media,
+  '/api/leaderboard': leaderboard,
+  '/api/leaderboard/': leaderboard,
   '/api/me': me,
   '/api/me/projects': meProjects,
   '/api/projects': projectsPublic,

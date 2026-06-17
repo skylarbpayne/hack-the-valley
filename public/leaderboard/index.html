@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Community Leaderboard | Hack the Valley</title>
+  <meta name="description" content="Celebrate Hack the Valley builders by badges, projects, attendance, and awards without exposing private participant data.">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = { theme: { extend: { colors: { 'bc-dark': '#0f172a', 'bc-navy': '#1e293b', 'bc-cyan': '#22d3ee', 'bc-orange': '#f59e0b' }, fontFamily: { sans: ['Inter', 'sans-serif'] } } } }
+  </script>
+</head>
+<body class="bg-bc-dark text-white font-sans">
+  <header class="sticky top-0 z-50 bg-bc-dark/90 backdrop-blur-md border-b border-slate-700">
+    <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <div class="flex justify-between items-center gap-4">
+        <a href="/" class="flex items-center gap-3">
+          <img src="/images/HackTheValleyLogo.PNG" alt="Hack the Valley" class="h-10 w-auto">
+          <span class="font-black text-xl">Hack the Valley</span>
+        </a>
+        <div class="hidden md:flex items-center gap-6 text-sm font-medium">
+          <a href="/" class="text-slate-300 hover:text-bc-cyan">Home</a>
+          <a href="/events" class="text-slate-300 hover:text-bc-cyan">Events</a>
+          <a href="/projects/" class="text-slate-300 hover:text-bc-cyan">Projects</a>
+          <a href="/leaderboard/" class="text-bc-cyan font-bold">Leaderboard</a>
+          <a href="/login/?next=/me/" class="rounded-lg border border-bc-cyan px-4 py-2 text-bc-cyan hover:bg-bc-cyan/10">Open profile</a>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section class="relative overflow-hidden py-20 sm:py-24">
+      <div class="absolute inset-0">
+        <img src="/images/events/2026/photos/img_9824.jpg" alt="Hack the Valley builders" class="h-full w-full object-cover opacity-25">
+        <div class="absolute inset-0 bg-gradient-to-b from-bc-dark/30 via-bc-dark/85 to-bc-dark"></div>
+      </div>
+      <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <p class="text-bc-cyan uppercase tracking-[0.24em] text-sm font-black mb-4">Community leaderboard</p>
+        <h1 class="max-w-4xl text-5xl sm:text-6xl lg:text-7xl font-black leading-tight mb-6">Builders who keep showing up and shipping.</h1>
+        <p class="max-w-3xl text-xl text-slate-300 leading-relaxed">A lighthearted scoreboard for public community signals: badges, projects, Hack Hours check-ins, and Hack the Valley awards. Private participant details stay private, and names use first name + last initial.</p>
+        <div class="mt-8 flex flex-col sm:flex-row gap-4">
+          <a href="/projects/" class="bg-bc-cyan text-bc-dark px-6 py-3 rounded-lg font-black hover:bg-cyan-300 text-center">Explore projects</a>
+          <a href="/login/?next=/me/" class="border-2 border-bc-orange text-bc-orange px-6 py-3 rounded-lg font-black hover:bg-bc-orange/10 text-center">See your badges</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="py-14 bg-bc-dark">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid lg:grid-cols-[1fr_22rem] gap-6 items-start">
+          <div>
+            <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
+              <div>
+                <p class="text-bc-orange uppercase tracking-[0.2em] text-xs font-black mb-3">Top builders</p>
+                <h2 class="text-3xl sm:text-4xl font-black">Leaderboard</h2>
+              </div>
+              <div id="leaderboard-count" class="text-sm text-slate-400">Loading leaderboard…</div>
+            </div>
+            <div id="leaderboard-error" class="hidden rounded-2xl border border-red-500/40 bg-red-950/40 p-5 text-red-100"></div>
+            <div id="leaderboard-list" class="space-y-4"></div>
+          </div>
+
+          <aside class="rounded-3xl border border-slate-700 bg-bc-navy/70 p-6 shadow-2xl shadow-black/20 lg:sticky lg:top-24">
+            <p class="text-bc-cyan uppercase tracking-[0.18em] text-xs font-black">Scoring</p>
+            <h3 class="mt-2 text-2xl font-black">How points work</h3>
+            <dl id="scoring-list" class="mt-5 space-y-3 text-sm text-slate-300">
+              <div class="flex justify-between gap-3"><dt>HTV 2026 attendance</dt><dd class="font-black text-white">+3</dd></div>
+              <div class="flex justify-between gap-3"><dt>Submitted project</dt><dd class="font-black text-white">+5</dd></div>
+              <div class="flex justify-between gap-3"><dt>Hack Hours check-in</dt><dd class="font-black text-white">+2 each</dd></div>
+              <div class="flex justify-between gap-3"><dt>HTV 2026 prize</dt><dd class="font-black text-white">+10</dd></div>
+              <div class="flex justify-between gap-3"><dt>Overall winner</dt><dd class="font-black text-white">+20</dd></div>
+            </dl>
+            <p class="mt-6 text-xs leading-relaxed text-slate-400">This page only shows public-safe community facts. Contact details, emergency info, full last names, and private submission payloads are not part of the leaderboard API.</p>
+          </aside>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-slate-800 py-8 text-center text-sm text-slate-500">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <p>Hack the Valley celebrates builders. The leaderboard is community signal, not a ranking of human worth. Obviously.</p>
+    </div>
+  </footer>
+
+  <script>
+    const list = document.querySelector('#leaderboard-list');
+    const count = document.querySelector('#leaderboard-count');
+    const errorBox = document.querySelector('#leaderboard-error');
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+    }
+
+    function badgeMarkup(badges = []) {
+      if (!badges.length) return '<span class="text-sm text-slate-500">No badges yet</span>';
+      return badges.map((badge) => `
+        <span class="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/70 px-3 py-1 text-xs font-bold text-slate-200" title="${escapeHtml(badge.description || badge.name)}">
+          <img src="${escapeHtml(badge.icon_url || `/images/badges/${badge.slug || 'community'}.svg`)}" alt="" class="h-5 w-5 rounded-full bg-slate-900" loading="lazy">
+          ${escapeHtml(badge.name || badge.slug || 'Badge')}
+        </span>
+      `).join('');
+    }
+
+    function metric(label, value) {
+      return `
+        <div class="rounded-2xl border border-slate-700 bg-slate-950/50 px-4 py-3">
+          <div class="text-2xl font-black text-white">${escapeHtml(value)}</div>
+          <div class="text-xs uppercase tracking-[0.14em] text-slate-500 font-bold">${escapeHtml(label)}</div>
+        </div>
+      `;
+    }
+
+    function projectMarkup(projects = [], total = 0) {
+      if (!projects.length) return '';
+      const extra = Math.max(0, Number(total) - projects.length);
+      return `
+        <div class="mt-4 text-sm text-slate-300">
+          <span class="text-slate-500">Projects:</span>
+          ${projects.map((project) => `<span class="font-bold text-white">${escapeHtml(project.title)}</span>`).join('<span class="text-slate-600"> · </span>')}
+          ${extra ? `<span class="text-slate-500"> +${extra} more</span>` : ''}
+        </div>
+      `;
+    }
+
+    function leaderboardCard(entry) {
+      const metrics = entry.metrics || {};
+      const rankTone = entry.rank === 1 ? 'border-bc-orange/70 bg-bc-orange/10 text-bc-orange' : entry.rank <= 3 ? 'border-bc-cyan/60 bg-bc-cyan/10 text-bc-cyan' : 'border-slate-700 bg-slate-950 text-slate-300';
+      return `
+        <article class="rounded-3xl border border-slate-700 bg-bc-navy/70 p-5 sm:p-6 shadow-2xl shadow-black/20">
+          <div class="flex flex-col lg:flex-row lg:items-start gap-5">
+            <div class="flex items-center gap-4 min-w-0 flex-1">
+              <div class="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border ${rankTone} text-2xl font-black">#${escapeHtml(entry.rank)}</div>
+              <div class="min-w-0">
+                <h3 class="text-2xl sm:text-3xl font-black leading-tight truncate">${escapeHtml(entry.display_name || 'Community member')}</h3>
+                <p class="mt-1 text-sm text-slate-400">${escapeHtml(entry.badge_count || 0)} badge${entry.badge_count === 1 ? '' : 's'} · ${escapeHtml(entry.score || 0)} points</p>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 lg:w-[28rem]">
+              ${metric('Projects', metrics.projects || 0)}
+              ${metric('Hack Hours', metrics.hack_hours_checkins || 0)}
+              ${metric('Prizes', metrics.htv_2026_prize_awards || 0)}
+              ${metric('Score', entry.score || 0)}
+            </div>
+          </div>
+          <div class="mt-5 flex flex-wrap gap-2">${badgeMarkup(entry.badges || [])}</div>
+          ${projectMarkup(entry.projects || [], metrics.projects || 0)}
+        </article>
+      `;
+    }
+
+    async function loadLeaderboard() {
+      try {
+        const response = await fetch('/api/leaderboard?limit=50', { headers: { Accept: 'application/json' } });
+        const data = await response.json();
+        if (!response.ok || data.ok === false) throw new Error(data.error || 'Could not load leaderboard.');
+        const rows = data.leaderboard || [];
+        count.textContent = `${rows.length} ranked builder${rows.length === 1 ? '' : 's'}`;
+        list.innerHTML = rows.length ? rows.map(leaderboardCard).join('') : '<p class="rounded-2xl border border-slate-700 bg-slate-950/50 p-5 text-slate-400">No leaderboard entries yet.</p>';
+      } catch (error) {
+        console.error(error);
+        count.textContent = 'Leaderboard unavailable';
+        errorBox.classList.remove('hidden');
+        errorBox.textContent = error.message || 'Could not load the leaderboard.';
+      }
+    }
+
+    loadLeaderboard();
+  </script>
+</body>
+</html>

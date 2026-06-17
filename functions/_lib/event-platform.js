@@ -728,6 +728,136 @@ export async function listPublicProjects(db, { eventSlug = null, includeHidden =
   return (result.results || []).map(sanitizePublicProjectRow);
 }
 
+function leaderboardScore(row = {}) {
+  return (Number(row.attended_htv_2026) > 0 ? 3 : 0)
+    + (Number(row.project_count) > 0 ? 5 : 0)
+    + (Number(row.hack_hours_checkins) || 0) * 2
+    + (Number(row.prize_awards) > 0 ? 10 : 0)
+    + (Number(row.overall_winner) > 0 ? 20 : 0);
+}
+
+function derivedLeaderboardBadges(row = {}) {
+  const badges = [];
+  if (Number(row.attended_htv_2026) > 0) badges.push(decorateBadge({ slug: "attended-htv-2026" }));
+  if (Number(row.hack_hours_checkins) > 0) badges.push(decorateBadge({ slug: "attended-hack-hours" }));
+  if (Number(row.project_count) > 0) badges.push(decorateBadge({ slug: "submitted-project" }));
+  if (Number(row.prize_awards) > 0) badges.push(decorateBadge({ slug: "won-prize-htv-2026" }));
+  if (Number(row.overall_winner) > 0) badges.push(decorateBadge({ slug: "won-overall-htv-2026" }));
+  return badges;
+}
+
+function safeLeaderboardProject(row = {}) {
+  return {
+    slug: row.slug,
+    title: row.title,
+    team_name: row.team_name || null,
+    event_slug: row.event_slug || null,
+    submitted_at: row.submitted_at || null
+  };
+}
+
+function publicLeaderboardDisplayName(value) {
+  const cleaned = String(value || "").trim().replace(/\s+/g, " ");
+  if (!cleaned || cleaned === "Community member") return "Community member";
+  const parts = cleaned.split(" ").filter(Boolean);
+  if (parts.length === 1) return parts[0];
+  const first = parts[0];
+  const last = parts[parts.length - 1].replace(/[^\p{L}\p{N}]/gu, "");
+  return last ? `${first} ${last.charAt(0).toUpperCase()}.` : first;
+}
+
+export async function listCommunityLeaderboard(db, { limit = 50 } = {}) {
+  const safeLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 50, 1), 100);
+  const result = await db.prepare(`
+    WITH facts AS (
+      SELECT
+        u.id AS user_id,
+        COALESCE(
+          NULLIF(TRIM(u.name), ''),
+          NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''),
+          'Community member'
+        ) AS display_name,
+        COUNT(DISTINCT CASE WHEN eps.id IS NOT NULL THEN p.id END) AS project_count,
+        COUNT(DISTINCT CASE WHEN epe.event_slug = 'hack-hours' AND epe.event_type = 'checked_in' THEN epe.id END) AS hack_hours_checkins,
+        MAX(CASE WHEN epe.event_slug = 'hack-the-valley-2026' AND epe.event_type = 'checked_in' THEN 1 ELSE 0 END) AS attended_htv_2026,
+        COUNT(DISTINCT epa.id) AS prize_awards,
+        MAX(CASE WHEN epa.award_slug = 'overall' OR lower(epa.award_title) LIKE '%overall%' THEN 1 ELSE 0 END) AS overall_winner
+      FROM users u
+      LEFT JOIN project_members pm ON pm.user_id = u.id OR (pm.email IS NOT NULL AND lower(pm.email) = lower(u.email))
+      LEFT JOIN projects p ON p.id = pm.project_id
+      LEFT JOIN event_project_submissions eps ON eps.project_id = p.id AND eps.status NOT IN ('hidden', 'rejected')
+      LEFT JOIN event_project_awards epa ON epa.project_id = p.id AND epa.event_slug = 'hack-the-valley-2026' AND eps.event_slug = epa.event_slug
+      LEFT JOIN event_participant_events epe ON epe.user_id = u.id
+      GROUP BY u.id, u.name, u.first_name, u.last_name
+    ), ranked AS (
+      SELECT
+        *,
+        ((CASE WHEN attended_htv_2026 > 0 THEN 3 ELSE 0 END)
+          + (CASE WHEN project_count > 0 THEN 5 ELSE 0 END)
+          + (hack_hours_checkins * 2)
+          + (CASE WHEN prize_awards > 0 THEN 10 ELSE 0 END)
+          + (CASE WHEN overall_winner > 0 THEN 20 ELSE 0 END)) AS score
+      FROM facts
+      WHERE project_count > 0
+        OR prize_awards > 0
+        OR overall_winner > 0
+    )
+    SELECT *
+    FROM ranked
+    ORDER BY score DESC, (project_count + hack_hours_checkins + prize_awards + overall_winner + attended_htv_2026) DESC, lower(display_name) ASC
+    LIMIT ?
+  `).bind(safeLimit).all();
+
+  const rows = result.results || [];
+  const userIds = rows.map((row) => row.user_id).filter(Boolean);
+  const projectsByUser = new Map();
+
+  if (userIds.length) {
+    const placeholders = userIds.map(() => "?").join(", ");
+    const projects = await db.prepare(`
+      SELECT DISTINCT u.id AS user_id, p.id AS project_id, p.slug, p.title, p.team_name, eps.event_slug, MIN(eps.created_at) AS submitted_at
+      FROM users u
+      JOIN project_members pm ON pm.user_id = u.id OR (pm.email IS NOT NULL AND lower(pm.email) = lower(u.email))
+      JOIN projects p ON p.id = pm.project_id
+      JOIN event_project_submissions eps ON eps.project_id = p.id AND eps.status NOT IN ('hidden', 'rejected')
+      WHERE u.id IN (${placeholders})
+      GROUP BY u.id, p.id, p.slug, p.title, p.team_name, eps.event_slug
+      ORDER BY lower(p.title) ASC
+    `).bind(...userIds).all();
+
+    for (const project of projects.results || []) {
+      const list = projectsByUser.get(project.user_id) || [];
+      if (list.length < 3) list.push(safeLeaderboardProject(project));
+      projectsByUser.set(project.user_id, list);
+    }
+  }
+
+  return rows.map((row, index) => {
+    const badges = dedupeBadges(derivedLeaderboardBadges(row)).map(({ slug, name, description, badge_type, icon_url }) => ({
+      slug,
+      name,
+      description,
+      badge_type,
+      icon_url
+    }));
+    return {
+      rank: index + 1,
+      display_name: publicLeaderboardDisplayName(row.display_name),
+      score: Number(row.score) || leaderboardScore(row),
+      badge_count: badges.length,
+      badges,
+      metrics: {
+        projects: Number(row.project_count) || 0,
+        hack_hours_checkins: Number(row.hack_hours_checkins) || 0,
+        attended_htv_2026: Number(row.attended_htv_2026) > 0,
+        htv_2026_prize_awards: Number(row.prize_awards) || 0,
+        htv_2026_overall_winner: Number(row.overall_winner) > 0
+      },
+      projects: projectsByUser.get(row.user_id) || []
+    };
+  });
+}
+
 export async function getPublicProjectHeroMedia(db, { eventSlug, projectSlug } = {}) {
   if (!eventSlug) throw Object.assign(new Error("event is required"), { status: 400 });
   if (!projectSlug) throw Object.assign(new Error("project is required"), { status: 400 });

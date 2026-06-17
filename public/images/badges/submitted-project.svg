@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">PROJECT SHIPPER badge</title>
+  <desc id="desc">Hack the Valley badge logo for PROJECT SHIPPER.</desc>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#22d3ee"/><stop offset="50%" stop-color="#f97316"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#020617"/>
+  <circle cx="104" cy="24" r="32" fill="url(#g)" opacity=".28"/>
+  <circle cx="24" cy="108" r="42" fill="#22d3ee" opacity=".16"/>
+  <path d="M25 73l38-43 40 43H78v24H50V73H25z" fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <text x="64" y="68" text-anchor="middle" font-size="24" font-family="Inter, Arial, sans-serif" font-weight="900" fill="#f8fafc">🚀</text>
+  <text x="64" y="103" text-anchor="middle" font-size="12" font-family="Inter, Arial, sans-serif" font-weight="900" letter-spacing="1.4" fill="#e2e8f0">PROJECT</text>
+  <text x="64" y="117" text-anchor="middle" font-size="10" font-family="Inter, Arial, sans-serif" font-weight="800" letter-spacing="1.2" fill="#67e8f9">SHIPPER</text>
+</svg>

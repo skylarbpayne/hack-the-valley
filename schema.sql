@@ -317,6 +317,19 @@ CREATE TABLE IF NOT EXISTS badges (
 CREATE INDEX IF NOT EXISTS idx_badges_slug ON badges(slug);
 CREATE INDEX IF NOT EXISTS idx_badges_type_active ON badges(badge_type, active);
 
+INSERT OR IGNORE INTO badges (id, slug, name, description, badge_type, rule_json, active, created_at, updated_at)
+VALUES
+  ('bdg_first_attendance', 'first-attendance', 'First Attendance', 'Showed up to a Hack the Valley event.', 'attendance', NULL, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('bdg_repeat_attendee', 'repeat-attendee', 'Repeat Attendee', 'Came back for another Hack the Valley event.', 'attendance', NULL, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('bdg_three_time_attendee', 'three-time-attendee', '3x Attendee', 'Attended three Hack the Valley sessions.', 'attendance', NULL, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('bdg_shared_demo', 'shared-demo', 'Shared a Demo', 'Shared a project or demo with the community.', 'demo', NULL, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('bdg_helped_mentor', 'helped-mentor', 'Helped or Mentored', 'Helped another builder, mentored, or organized.', 'contribution', NULL, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('bdg_attended_htv_2026', 'attended-htv-2026', 'HTV 2026 Attendee', 'Checked in at Hack the Valley 2026.', 'attendance', '{"derived_from":"event_participant_events","event_slug":"hack-the-valley-2026","event_type":"checked_in","icon":"/images/badges/attended-htv-2026.svg"}', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('bdg_won_prize_htv_2026', 'won-prize-htv-2026', 'HTV 2026 Prize Winner', 'Won a prize at Hack the Valley 2026.', 'award', '{"derived_from":"event_project_awards","event_slug":"hack-the-valley-2026","icon":"/images/badges/won-prize-htv-2026.svg"}', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('bdg_won_overall_htv_2026', 'won-overall-htv-2026', 'HTV 2026 Overall Winner', 'Won the Overall Prize at Hack the Valley 2026.', 'award', '{"derived_from":"event_project_awards","event_slug":"hack-the-valley-2026","award_slug":"overall","icon":"/images/badges/won-overall-htv-2026.svg"}', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('bdg_submitted_project', 'submitted-project', 'Project Shipper', 'Submitted a project to the Hack the Valley community.', 'project', '{"derived_from":"project_members","icon":"/images/badges/submitted-project.svg"}', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('bdg_attended_hack_hours', 'attended-hack-hours', 'Hack Hours Regular', 'Checked in at a Hack Hours event.', 'attendance', '{"derived_from":"event_participant_events","event_slug":"hack-hours","event_type":"checked_in","icon":"/images/badges/attended-hack-hours.svg"}', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
 CREATE TABLE IF NOT EXISTS user_badges (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

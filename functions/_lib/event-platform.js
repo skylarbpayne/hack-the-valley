@@ -347,6 +347,31 @@ function normalizeAwards(value) {
   })).filter((award) => award.title);
 }
 
+function isPublicProjectMedia(upload = {}) {
+  const key = String(upload.key || "");
+  const contentType = String(upload.contentType || upload.content_type || "").toLowerCase();
+  const kind = String(upload.kind || "").toLowerCase();
+  return key.startsWith("submissions/") && (kind === "image" || kind === "video" || contentType.startsWith("image/") || contentType.startsWith("video/"));
+}
+
+function firstPublicProjectMedia(uploadsJson) {
+  return parseJsonArray(uploadsJson).find(isPublicProjectMedia) || null;
+}
+
+function publicProjectHeroMedia(row = {}) {
+  const media = firstPublicProjectMedia(row.hero_uploads_json);
+  if (!media || !row.event_slug || !row.slug) return null;
+  const contentType = media.contentType || media.content_type || "application/octet-stream";
+  const kind = String(media.kind || "").toLowerCase() || (String(contentType).startsWith("video/") ? "video" : "image");
+  return {
+    kind,
+    content_type: contentType,
+    filename: media.filename || media.originalFilename || "Project media",
+    url: `/api/projects/media?event=${encodeURIComponent(row.event_slug)}&project=${encodeURIComponent(row.slug)}`,
+    alt: `${row.title || "Project"} ${kind === "video" ? "video" : "image"}`
+  };
+}
+
 function sanitizePublicProjectRow(row = {}) {
   return {
     id: row.project_id || row.id,
@@ -360,6 +385,7 @@ function sanitizePublicProjectRow(row = {}) {
     event_slug: row.event_slug || null,
     status: row.status || "showcased",
     awards: normalizeAwards(row.awards_json),
+    hero_media: publicProjectHeroMedia(row),
     submitted_at: row.submission_created_at || row.created_at || null,
     updated_at: row.updated_at || null
   };
@@ -617,6 +643,17 @@ export async function listPublicProjects(db, { eventSlug = null, includeHidden =
       p.demo_url,
       p.tracks_json,
       MIN(s.created_at) AS submission_created_at,
+      (
+        SELECT s2.uploads_json
+        FROM event_project_submissions eps2
+        JOIN submissions s2 ON s2.id = eps2.submission_id
+        WHERE eps2.event_slug = eps.event_slug
+          AND eps2.project_id = p.id
+          AND s2.uploads_json IS NOT NULL
+          AND s2.uploads_json != '[]'
+        ORDER BY s2.created_at ASC
+        LIMIT 1
+      ) AS hero_uploads_json,
       COALESCE(
         json_group_array(
           CASE WHEN epa.id IS NOT NULL THEN json_object(
@@ -637,6 +674,28 @@ export async function listPublicProjects(db, { eventSlug = null, includeHidden =
     ORDER BY CASE WHEN COUNT(epa.id) > 0 THEN 0 ELSE 1 END, lower(p.title) ASC
   `).bind(...args).all();
   return (result.results || []).map(sanitizePublicProjectRow);
+}
+
+export async function getPublicProjectHeroMedia(db, { eventSlug, projectSlug } = {}) {
+  if (!eventSlug) throw Object.assign(new Error("event is required"), { status: 400 });
+  if (!projectSlug) throw Object.assign(new Error("project is required"), { status: 400 });
+  const result = await db.prepare(`
+    SELECT s.uploads_json
+    FROM event_project_submissions eps
+    JOIN projects p ON p.id = eps.project_id
+    JOIN submissions s ON s.id = eps.submission_id
+    WHERE eps.event_slug = ?
+      AND p.slug = ?
+      AND eps.status NOT IN ('hidden', 'rejected')
+      AND s.uploads_json IS NOT NULL
+      AND s.uploads_json != '[]'
+    ORDER BY s.created_at ASC
+  `).bind(eventSlug, projectSlug).all();
+  for (const row of result.results || []) {
+    const media = firstPublicProjectMedia(row.uploads_json);
+    if (media) return media;
+  }
+  return null;
 }
 
 export async function ensureBadge(db, { slug, name, description = null, badge_type = "community", rule_json = null } = {}) {

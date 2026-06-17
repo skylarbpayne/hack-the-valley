@@ -15,6 +15,7 @@ import {
   getCurrentUserFromSession,
   getEventFollowupPacket,
   getUserCommunityState,
+  getPublicProjectHeroMedia,
   linkProjectSubmission,
   listEventPhotos,
   listEventProjectSubmissions,
@@ -888,6 +889,7 @@ test("package check script covers all event cockpit route modules", () => {
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/projects\/index\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/photos\/index\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/projects\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/projects\/media\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/users\/\[id\]\/state\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/users\/\[id\]\/badges\.js/);
 });
@@ -1121,6 +1123,9 @@ test("participant projects workspace lives under /me/projects while /projects is
   assert.match(publicProjects, /Student project showcase/);
   assert.match(publicProjects, /\/api\/projects\?event=hack-the-valley-2026/);
   assert.match(publicProjects, /Contact details and private submission metadata stay out of this view/);
+  assert.match(publicProjects, /function heroMarkup\(project\)/);
+  assert.match(publicProjects, /<img class="h-48 w-full object-cover"/);
+  assert.match(publicProjects, /<video class="h-48 w-full object-cover"/);
   assert.doesNotMatch(publicProjects, /id="project-create-form"/);
   assert.match(manageProjects, /id="project-create-form"/);
   assert.match(homepage, /\/login\/\?next=\/me\/projects\//);
@@ -1148,6 +1153,7 @@ test("public project listing returns safe public fields and awards", async () =>
             demo_url: null,
             tracks_json: JSON.stringify(["Education", "Social Impact", "AI"]),
             submission_created_at: "2026-05-30T23:44:23.846Z",
+            hero_uploads_json: JSON.stringify([{ key: "submissions/kern-coders/screenshot.png", kind: "image", filename: "screenshot.png", contentType: "image/png", size: 1234 }]),
             awards_json: JSON.stringify([{ award_slug: "social-impact", award_title: "Best Social Impact", award_rank: 1, prize_amount_cents: 20000 }]),
             contact_email: "must-not-leak@example.com",
             uploads_json: JSON.stringify([{ key: "private-r2-key" }])
@@ -1164,6 +1170,9 @@ test("public project listing returns safe public fields and awards", async () =>
   assert.equal(projects[0].awards[0].prize_amount_cents, 20000);
   assert.equal(projects[0].contact_email, undefined);
   assert.equal(projects[0].uploads_json, undefined);
+  assert.equal(projects[0].hero_media.url, "/api/projects/media?event=hack-the-valley-2026&project=techpath-kern");
+  assert.equal(projects[0].hero_media.kind, "image");
+  assert.equal(projects[0].hero_media.key, undefined);
   assert.match(statements.join("\n"), /event_project_awards/);
   assert.match(statements.join("\n"), /MIN\(s\.created_at\) AS submission_created_at/);
   assert.match(statements.join("\n"), /MAX\(eps\.updated_at\) AS updated_at/);
@@ -1200,6 +1209,46 @@ test("worker exposes public projects API without admin auth", async () => {
   assert.equal(body.ok, true);
   assert.equal(body.count, 1);
   assert.equal(body.projects[0].title, "decode it");
+});
+
+test("public project media endpoint serves only media attached to a public project", async () => {
+  const imageBytes = new Uint8Array([137, 80, 78, 71]);
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async all() {
+          assert.deepEqual(this.args, ["hack-the-valley-2026", "techpath-kern"]);
+          assert.match(sql, /eps\.status NOT IN \('hidden', 'rejected'\)/);
+          return { results: [{ uploads_json: JSON.stringify([
+            { key: "submissions/kern-coders/readme.txt", kind: "file", contentType: "text/plain" },
+            { key: "submissions/kern-coders/screenshot.png", kind: "image", filename: "screenshot.png", contentType: "image/png" }
+          ]) }] };
+        }
+      };
+    }
+  };
+  const media = await getPublicProjectHeroMedia(db, { eventSlug: "hack-the-valley-2026", projectSlug: "techpath-kern" });
+  assert.equal(media.key, "submissions/kern-coders/screenshot.png");
+
+  const response = await worker.fetch(new Request("https://hackthevalley.org/api/projects/media?event=hack-the-valley-2026&project=techpath-kern"), {
+    HTV_DB: db,
+    SUBMISSIONS_MEDIA: {
+      async get(key) {
+        assert.equal(key, "submissions/kern-coders/screenshot.png");
+        return {
+          body: imageBytes,
+          httpEtag: '"abc"',
+          customMetadata: { originalFilename: "screenshot.png" },
+          writeHttpMetadata(headers) { headers.set("content-type", "image/png"); }
+        };
+      }
+    }
+  }, {});
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "image/png");
+  assert.match(response.headers.get("cache-control") || "", /public/);
+  assert.equal(await response.arrayBuffer().then((buffer) => new Uint8Array(buffer)[1]), 80);
 });
 
 test("schema and migrations add public project awards table", () => {

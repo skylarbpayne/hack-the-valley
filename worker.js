@@ -18,6 +18,7 @@ import * as eventSlug from './functions/api/events/[slug].js';
 import * as eventsIndex from './functions/api/events/index.js';
 import * as media from './functions/api/media.js';
 import * as projectsPublic from './functions/api/projects.js';
+import * as projectsMedia from './functions/api/projects/media.js';
 import * as register from './functions/api/register.js';
 import * as submissions from './functions/api/submissions.js';
 import * as subscribe from './functions/api/subscribe.js';
@@ -99,6 +100,10 @@ function matchApiRoute(pathname) {
 
   if (pathname === '/api/auth/magic-login') {
     return { routeModule: authMagicLogin, params: {} };
+  }
+
+  if (pathname === '/api/projects/media') {
+    return { routeModule: projectsMedia, params: {} };
   }
 
   const meProjectMaterialsMatch = pathname.match(/^\/api\/me\/projects\/([^/]+)\/materials\/?$/);

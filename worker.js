@@ -17,6 +17,7 @@ import * as eventImage from './functions/api/events/[slug]/image.js';
 import * as eventSlug from './functions/api/events/[slug].js';
 import * as eventsIndex from './functions/api/events/index.js';
 import * as media from './functions/api/media.js';
+import * as projectsPublic from './functions/api/projects.js';
 import * as register from './functions/api/register.js';
 import * as submissions from './functions/api/submissions.js';
 import * as subscribe from './functions/api/subscribe.js';
@@ -31,6 +32,7 @@ const API_ROUTES = {
   '/api/media': media,
   '/api/me': me,
   '/api/me/projects': meProjects,
+  '/api/projects': projectsPublic,
   '/api/register': register,
   '/api/submissions': submissions,
   '/api/subscribe': subscribe,
@@ -212,7 +214,7 @@ export default {
     }
 
     if (url.pathname === '/submit' || url.pathname === '/submit/') {
-      return Response.redirect(new URL('/projects/', url), 302);
+      return Response.redirect(new URL('/me/projects/', url), 302);
     }
 
     if (isEventPagePath(url.pathname)) {

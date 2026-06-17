@@ -338,6 +338,33 @@ function sanitizeProjectRow(row = {}) {
   return safe;
 }
 
+function normalizeAwards(value) {
+  return parseJsonArray(value).map((award) => ({
+    slug: award.award_slug || award.slug || slugify(award.award_title || award.title || "award"),
+    title: award.award_title || award.title || "Award",
+    rank: Number(award.award_rank || award.rank || 1),
+    prize_amount_cents: award.prize_amount_cents ?? null
+  })).filter((award) => award.title);
+}
+
+function sanitizePublicProjectRow(row = {}) {
+  return {
+    id: row.project_id || row.id,
+    slug: row.slug,
+    title: row.title,
+    team_name: row.team_name,
+    description: row.description,
+    repo_url: row.repo_url || null,
+    demo_url: row.demo_url || null,
+    tracks: parseJsonArray(row.tracks_json, normalizeTracks(row.tracks_json)),
+    event_slug: row.event_slug || null,
+    status: row.status || "showcased",
+    awards: normalizeAwards(row.awards_json),
+    submitted_at: row.submission_created_at || row.created_at || null,
+    updated_at: row.updated_at || null
+  };
+}
+
 export async function upsertProject(db, input = {}) {
   const { project, errors } = normalizeProjectInput(input);
   if (errors.length) throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
@@ -563,6 +590,53 @@ export async function listEventProjectSubmissions(db, eventSlug, eventInstanceId
     ORDER BY lower(p.title) ASC
   `).bind(...args).all();
   return (result.results || []).map(sanitizeProjectRow);
+}
+
+export async function listPublicProjects(db, { eventSlug = null, includeHidden = false } = {}) {
+  const filters = [];
+  const args = [];
+  if (eventSlug) {
+    filters.push("eps.event_slug = ?");
+    args.push(eventSlug);
+  }
+  if (!includeHidden) {
+    filters.push("eps.status NOT IN ('hidden', 'rejected')");
+  }
+  const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+  const result = await db.prepare(`
+    SELECT
+      eps.event_slug,
+      eps.status,
+      MAX(eps.updated_at) AS updated_at,
+      p.id AS project_id,
+      p.slug,
+      p.title,
+      p.team_name,
+      p.description,
+      p.repo_url,
+      p.demo_url,
+      p.tracks_json,
+      MIN(s.created_at) AS submission_created_at,
+      COALESCE(
+        json_group_array(
+          CASE WHEN epa.id IS NOT NULL THEN json_object(
+            'award_slug', epa.award_slug,
+            'award_title', epa.award_title,
+            'award_rank', epa.award_rank,
+            'prize_amount_cents', epa.prize_amount_cents
+          ) END
+        ) FILTER (WHERE epa.id IS NOT NULL),
+        '[]'
+      ) AS awards_json
+    FROM event_project_submissions eps
+    JOIN projects p ON p.id = eps.project_id
+    LEFT JOIN submissions s ON s.id = eps.submission_id
+    LEFT JOIN event_project_awards epa ON epa.event_slug = eps.event_slug AND epa.project_id = p.id
+    ${where}
+    GROUP BY eps.event_slug, eps.status, p.id, p.slug, p.title, p.team_name, p.description, p.repo_url, p.demo_url, p.tracks_json
+    ORDER BY CASE WHEN COUNT(epa.id) > 0 THEN 0 ELSE 1 END, lower(p.title) ASC
+  `).bind(...args).all();
+  return (result.results || []).map(sanitizePublicProjectRow);
 }
 
 export async function ensureBadge(db, { slug, name, description = null, badge_type = "community", rule_json = null } = {}) {

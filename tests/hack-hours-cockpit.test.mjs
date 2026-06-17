@@ -18,6 +18,7 @@ import {
   linkProjectSubmission,
   listEventPhotos,
   listEventProjectSubmissions,
+  listPublicProjects,
   normalizeEmergencyContactInput,
   normalizeProjectInput,
   normalizeSignupInput,
@@ -83,7 +84,7 @@ test("participant login page requests a code, verifies it, and reads /api/me", (
 test("homepage exposes clear participant login CTAs", () => {
   const html = read("public/index.html");
   assert.match(html, /href="\/login\/"[^>]*>Log in</);
-  assert.match(html, /href="\/login\/\?next=\/projects\//);
+  assert.match(html, /href="\/login\/\?next=\/me\/projects\//);
   assert.match(html, /Open your profile and projects/);
 });
 
@@ -100,9 +101,9 @@ test("participant profile shows editable profile info, badges, and project summa
   assert.match(html, /id="attendance-list"/);
   assert.match(html, /id="project-summary-list"/);
   assert.match(html, /id="badge-list"/);
-  assert.match(html, /\/projects\//);
+  assert.match(html, /\/me\/projects\//);
   assert.match(html, /\/login\//);
-  assert.match(html, /Open project workspace/);
+  assert.match(html, /Manage your project workspace/);
   assert.match(html, /Badges/);
   assert.doesNotMatch(html, /id="project-create-form"/);
   assert.doesNotMatch(html, /Showcase event slug|name="event_slug"/);
@@ -110,7 +111,7 @@ test("participant profile shows editable profile info, badges, and project summa
 });
 
 test("participant projects workspace lets signed-in users create, edit, upload, and submit projects", () => {
-  const html = read("public/projects/index.html");
+  const html = read("public/me/projects/index.html");
   assert.match(html, /id="participant-projects"/);
   assert.match(html, /id="project-create-form"/);
   assert.match(html, /name="title"/);
@@ -133,9 +134,9 @@ test("participant projects workspace lets signed-in users create, edit, upload, 
 
 test("event pages can launch contextual project submission without raw event slug fields", () => {
   const eventHtml = read("public/events/hack-the-valley-2026/index.html");
-  const projectsHtml = read("public/projects/index.html");
+  const projectsHtml = read("public/me/projects/index.html");
   assert.match(eventHtml, /Submit a project for this event/);
-  assert.match(eventHtml, /\/projects\/\?event=hack-the-valley-2026&eventName=Hack%20the%20Valley%202026/);
+  assert.match(eventHtml, /\/me\/projects\/\?event=hack-the-valley-2026&eventName=Hack%20the%20Valley%202026/);
   assert.match(projectsHtml, /id="event-context-banner"/);
   assert.match(projectsHtml, /new URLSearchParams\(window\.location\.search\)/);
   assert.match(projectsHtml, /payload\.event_slug = eventContext\.slug/);
@@ -148,7 +149,7 @@ test("legacy submit paths redirect to the project workspace", async () => {
   for (const path of ["/submit", "/submit/"]) {
     const response = await worker.fetch(new Request(`https://hackthevalley.org${path}`), {}, {});
     assert.equal(response.status, 302);
-    assert.equal(response.headers.get("location"), "https://hackthevalley.org/projects/");
+    assert.equal(response.headers.get("location"), "https://hackthevalley.org/me/projects/");
   }
 });
 
@@ -886,6 +887,7 @@ test("package check script covers all event cockpit route modules", () => {
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/followup\/index\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/projects\/index\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/events\/\[slug\]\/instances\/\[instanceId\]\/photos\/index\.js/);
+  assert.match(pkg.scripts.check, /functions\/api\/projects\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/users\/\[id\]\/state\.js/);
   assert.match(pkg.scripts.check, /functions\/api\/users\/\[id\]\/badges\.js/);
 });
@@ -1108,6 +1110,106 @@ test("worker routes admin soft-cleanup for event-linked projects", async () => {
   const list = await worker.fetch(new Request("https://hackthevalley.org/api/events/hack-the-valley-2026/projects", { headers: { "x-admin-token": "secret" } }), { HTV_DB: fakeDb, SUBMISSIONS_ADMIN_TOKEN: "secret" }, {});
   assert.equal(list.status, 200);
   assert.equal((await list.json()).count, 0);
+});
+
+test("participant projects workspace lives under /me/projects while /projects is public showcase", () => {
+  const publicProjects = read("public/projects/index.html");
+  const manageProjects = read("public/me/projects/index.html");
+  const homepage = read("public/index.html");
+  const recap = read("public/events/hack-the-valley-2026/index.html");
+
+  assert.match(publicProjects, /Student project showcase/);
+  assert.match(publicProjects, /\/api\/projects\?event=hack-the-valley-2026/);
+  assert.match(publicProjects, /Contact details and private submission metadata stay out of this view/);
+  assert.doesNotMatch(publicProjects, /id="project-create-form"/);
+  assert.match(manageProjects, /id="project-create-form"/);
+  assert.match(homepage, /\/login\/\?next=\/me\/projects\//);
+  assert.match(recap, /\/me\/projects\/\?event=hack-the-valley-2026/);
+});
+
+test("public project listing returns safe public fields and awards", async () => {
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      statements.push(sql);
+      return {
+        bind(...args) { this.args = args; return this; },
+        async all() {
+          return { results: [{
+            event_slug: "hack-the-valley-2026",
+            status: "showcased",
+            updated_at: "2026-06-16T00:00:00.000Z",
+            project_id: "prj_techpath_kern",
+            slug: "techpath-kern",
+            title: "TechPath Kern",
+            team_name: "Kern Coders",
+            description: "Opportunity navigator for Kern County students.",
+            repo_url: "https://github.com/JCVB51/techpath-kern",
+            demo_url: null,
+            tracks_json: JSON.stringify(["Education", "Social Impact", "AI"]),
+            submission_created_at: "2026-05-30T23:44:23.846Z",
+            awards_json: JSON.stringify([{ award_slug: "social-impact", award_title: "Best Social Impact", award_rank: 1, prize_amount_cents: 20000 }]),
+            contact_email: "must-not-leak@example.com",
+            uploads_json: JSON.stringify([{ key: "private-r2-key" }])
+          }] };
+        }
+      };
+    }
+  };
+  const projects = await listPublicProjects(db, { eventSlug: "hack-the-valley-2026" });
+  assert.equal(projects.length, 1);
+  assert.equal(projects[0].title, "TechPath Kern");
+  assert.deepEqual(projects[0].tracks, ["Education", "Social Impact", "AI"]);
+  assert.equal(projects[0].awards[0].title, "Best Social Impact");
+  assert.equal(projects[0].awards[0].prize_amount_cents, 20000);
+  assert.equal(projects[0].contact_email, undefined);
+  assert.equal(projects[0].uploads_json, undefined);
+  assert.match(statements.join("\n"), /event_project_awards/);
+  assert.match(statements.join("\n"), /MIN\(s\.created_at\) AS submission_created_at/);
+  assert.match(statements.join("\n"), /MAX\(eps\.updated_at\) AS updated_at/);
+  assert.doesNotMatch(statements.join("\n"), /GROUP BY[\s\S]*s\.created_at/);
+  assert.doesNotMatch(statements.join("\n"), /GROUP BY[\s\S]*eps\.updated_at/);
+});
+
+test("worker exposes public projects API without admin auth", async () => {
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async all() {
+          return { results: [{
+            event_slug: this.args?.[0] || "hack-the-valley-2026",
+            status: "showcased",
+            project_id: "prj_decode_it",
+            slug: "decode-it",
+            title: "decode it",
+            team_name: "aiden michael sawyer preston",
+            description: "Guided document walkthrough platform.",
+            repo_url: "https://github.com/prest2323/decode-this.git",
+            demo_url: null,
+            tracks_json: JSON.stringify(["Education", "Social Impact", "AI"]),
+            awards_json: "[]"
+          }] };
+        }
+      };
+    }
+  };
+  const response = await worker.fetch(new Request("https://hackthevalley.org/api/projects?event=hack-the-valley-2026"), { HTV_DB: fakeDb }, {});
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.count, 1);
+  assert.equal(body.projects[0].title, "decode it");
+});
+
+test("schema and migrations add public project awards table", () => {
+  const schema = read("schema.sql");
+  const migration = read("migrations/0013_event_project_awards.sql");
+  for (const text of [schema, migration]) {
+    assert.match(text, /CREATE TABLE IF NOT EXISTS event_project_awards/);
+    assert.match(text, /UNIQUE\(event_slug, project_id, award_slug\)/);
+    assert.match(text, /idx_event_project_awards_event/);
+  }
 });
 
 test("worker routes user state and badge award APIs behind admin auth", async () => {

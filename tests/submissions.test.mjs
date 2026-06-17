@@ -79,15 +79,18 @@ test('validateSubmission allows no track and accepts multiple official tracks', 
   assert.equal(multiTrack.ok, true);
 });
 
-test('project workspace replaces the legacy submit form and exposes upload workflow', () => {
-  const projectsHtml = readFileSync(new URL('../public/projects/index.html', import.meta.url), 'utf8');
+test('project workspace moved under /me/projects and legacy submit redirects there', () => {
+  const projectsHtml = readFileSync(new URL('../public/me/projects/index.html', import.meta.url), 'utf8');
+  const publicProjectsHtml = readFileSync(new URL('../public/projects/index.html', import.meta.url), 'utf8');
   const submitHtml = readFileSync(new URL('../public/submit.html', import.meta.url), 'utf8');
   assert.match(projectsHtml, /id="participant-projects"/);
   assert.match(projectsHtml, /data-project-upload/);
   assert.match(projectsHtml, /\/api\/upload/);
   assert.match(projectsHtml, /\/api\/me\/projects/);
-  assert.match(submitHtml, /url=\/projects\//);
-  assert.match(submitHtml, /window\.location\.replace\('\/projects\/'\)/);
+  assert.match(publicProjectsHtml, /Student project showcase/);
+  assert.match(publicProjectsHtml, /\/api\/projects\?event=hack-the-valley-2026/);
+  assert.match(submitHtml, /url=\/me\/projects\//);
+  assert.match(submitHtml, /window\.location\.replace\('\/me\/projects\/'\)/);
   assert.doesNotMatch(projectsHtml, /Showcase event slug|id="track"[^>]*required/);
 });
 

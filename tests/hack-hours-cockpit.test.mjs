@@ -106,6 +106,8 @@ test("participant profile shows editable profile info, badges, and project summa
   assert.match(html, /\/login\//);
   assert.match(html, /Manage your project workspace/);
   assert.match(html, /Badges/);
+  assert.match(html, /badge\.icon_url/);
+  assert.match(html, /\/images\/badges\//);
   assert.doesNotMatch(html, /id="project-create-form"/);
   assert.doesNotMatch(html, /Showcase event slug|name="event_slug"/);
   assert.doesNotMatch(html, /HTV_ADMIN_TOKEN|data-award-badge/i);
@@ -684,6 +686,7 @@ test("/api/me returns participant community state for the signed-in user", async
           if (/FROM roles/.test(sql)) return { results: [] };
           if (/FROM event_participant_events/.test(sql)) return { results: [{ event_slug: "hack-hours", event_instance_id: "inst_1", event_type: "checked_in", occurred_at: "2026-06-20T15:05:00.000Z" }] };
           if (/FROM user_badges/.test(sql)) return { results: [{ slug: "first-attendance", name: "First Attendance", badge_type: "attendance", awarded_at: "2026-06-20T15:05:00.000Z" }] };
+          if (/event_project_awards/.test(sql)) return { results: [] };
           if (/FROM project_members/.test(sql)) return { results: [{ project_id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep", submission_id: "sub_1", event_slug: "hack-the-valley-2026", status: "accepted" }] };
           return { results: [] };
         }
@@ -698,8 +701,46 @@ test("/api/me returns participant community state for the signed-in user", async
   const body = await response.json();
   assert.equal(body.user.email, "maya@example.com");
   assert.deepEqual(body.attendance.map((event) => event.event_slug), ["hack-hours"]);
-  assert.deepEqual(body.badges.map((badge) => badge.slug), ["first-attendance"]);
+  assert.deepEqual(body.badges.map((badge) => badge.slug), ["first-attendance", "attended-hack-hours", "submitted-project"]);
+  assert.equal(body.badges[0].icon_url, "/images/badges/first-attendance.svg");
   assert.deepEqual(body.projects.map((project) => project.title), ["Valley SAT Prep"]);
+});
+
+test("community state derives requested profile badges from attendance, projects, and awards", async () => {
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async first() {
+          if (/FROM users/.test(sql)) return { id: "usr_aiden", email: "aiden@example.com", name: "Aiden" };
+          return null;
+        },
+        async all() {
+          if (/FROM roles/.test(sql)) return { results: [] };
+          if (/FROM event_participant_events/.test(sql)) return { results: [
+            { event_slug: "hack-the-valley-2026", event_instance_id: "inst_htv_2026", event_type: "checked_in", occurred_at: "2026-05-30T16:00:00.000Z" },
+            { event_slug: "hack-hours", event_instance_id: "inst_hh_1", event_type: "checked_in", occurred_at: "2026-06-20T15:05:00.000Z" }
+          ] };
+          if (/FROM user_badges/.test(sql)) return { results: [] };
+          if (/event_project_awards/.test(sql)) return { results: [
+            { event_slug: "hack-the-valley-2026", project_id: "prj_decode_it", award_slug: "overall", award_title: "Overall Winner", awarded_at: "2026-05-31T00:00:00.000Z" }
+          ] };
+          if (/FROM project_members/.test(sql)) return { results: [{ project_id: "prj_decode_it", slug: "decode-it", title: "decode it", event_slug: "hack-the-valley-2026", status: "winner" }] };
+          return { results: [] };
+        }
+      };
+    }
+  };
+  const state = await getUserCommunityState(fakeDb, "usr_aiden");
+  assert.deepEqual(state.badges.map((badge) => badge.slug), [
+    "attended-htv-2026",
+    "attended-hack-hours",
+    "submitted-project",
+    "won-prize-htv-2026",
+    "won-overall-htv-2026"
+  ]);
+  assert.ok(state.badges.every((badge) => /\/images\/badges\/.+\.svg$/.test(badge.icon_url)));
 });
 
 test("schema and migrations add project submission links and badge awards", () => {
@@ -715,6 +756,20 @@ test("schema and migrations add project submission links and badge awards", () =
     assert.match(text, /CREATE TABLE IF NOT EXISTS badges/);
     assert.match(text, /CREATE TABLE IF NOT EXISTS user_badges/);
     assert.match(text, /UNIQUE\(user_id, badge_id, event_instance_id\)/);
+  }
+  const badgeCatalog = read("migrations/0015_community_badge_catalog.sql");
+  for (const slug of ["attended-htv-2026", "won-prize-htv-2026", "won-overall-htv-2026", "submitted-project", "attended-hack-hours"]) {
+    assert.match(schema, new RegExp(slug));
+    assert.match(badgeCatalog, new RegExp(slug));
+  }
+});
+
+test("badge logo assets exist for the requested profile badges", () => {
+  for (const slug of ["attended-htv-2026", "won-prize-htv-2026", "won-overall-htv-2026", "submitted-project", "attended-hack-hours"]) {
+    const svg = read(`public/images/badges/${slug}.svg`);
+    assert.match(svg, /<svg/);
+    assert.match(svg, /viewBox="0 0 128 128"/);
+    assert.match(svg, /<title id="title">/);
   }
 });
 
@@ -813,6 +868,7 @@ test("user community state includes roles, attendance, badges, and submitted pro
           if (/FROM roles/.test(sql)) return { results: [{ role: "organizer", scope_type: "event", scope_id: "hack-hours" }] };
           if (/FROM event_participant_events/.test(sql)) return { results: [{ event_slug: "hack-hours", event_instance_id: "inst_1", event_type: "checked_in", occurred_at: "2026-06-20T15:05:00.000Z" }] };
           if (/FROM user_badges/.test(sql)) return { results: [{ slug: "first-attendance", name: "First Attendance", event_instance_id: "inst_1" }] };
+          if (/event_project_awards/.test(sql)) return { results: [] };
           if (/FROM project_members/.test(sql)) return { results: [{ project_id: "prj_valley_sat_prep", title: "Valley SAT Prep", submission_id: "sub_1", event_slug: "hack-the-valley-2026" }] };
           return { results: [] };
         }
@@ -823,7 +879,7 @@ test("user community state includes roles, attendance, badges, and submitted pro
   const state = await getUserCommunityState(db, "usr_maya");
   assert.equal(state.user.email, "maya@example.com");
   assert.deepEqual(state.roles.map((role) => role.role), ["organizer"]);
-  assert.deepEqual(state.badges.map((badge) => badge.slug), ["first-attendance"]);
+  assert.deepEqual(state.badges.map((badge) => badge.slug), ["first-attendance", "attended-hack-hours", "submitted-project"]);
   assert.deepEqual(state.projects.map((project) => project.title), ["Valley SAT Prep"]);
   assert.match(statements.map((s) => s.sql).join("\n"), /lower\(pm\.email\) = lower\(\?\)/);
   assert.ok(statements.some((s) => s.args.includes("maya@example.com")));

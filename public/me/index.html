@@ -156,9 +156,12 @@
     function renderBadges(badges = []) {
       $("badge-count").textContent = `${badges.length} badge${badges.length === 1 ? "" : "s"}`;
       $("badge-list").innerHTML = badges.length ? badges.map((badge) => `
-        <li class="rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
-          <div class="font-bold text-white">🏅 ${escapeHtml(badge.name || badge.slug || "Badge")}</div>
-          <div class="text-sm text-slate-400">${escapeHtml(badge.description || badge.badge_type || "earned")}</div>
+        <li class="rounded-2xl border border-slate-700 bg-slate-950/50 p-4 flex gap-4 items-center">
+          <img src="${escapeHtml(badge.icon_url || `/images/badges/${badge.slug || "community"}.svg`)}" alt="" class="h-14 w-14 shrink-0 rounded-2xl border border-slate-700 bg-slate-900 object-cover" loading="lazy">
+          <div>
+            <div class="font-bold text-white">${escapeHtml(badge.name || badge.slug || "Badge")}</div>
+            <div class="text-sm text-slate-400">${escapeHtml(badge.description || badge.badge_type || "earned")}</div>
+          </div>
         </li>
       `).join("") : emptyItem("No badges yet. Check in at an event or submit a project to earn one.");
     }

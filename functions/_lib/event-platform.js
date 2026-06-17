@@ -310,7 +310,12 @@ const DEFAULT_BADGES = {
   "repeat-attendee": { id: "bdg_repeat_attendee", name: "Repeat Attendee", description: "Came back for another Hack the Valley event.", badge_type: "attendance" },
   "three-time-attendee": { id: "bdg_three_time_attendee", name: "3x Attendee", description: "Attended three Hack the Valley sessions.", badge_type: "attendance" },
   "shared-demo": { id: "bdg_shared_demo", name: "Shared a Demo", description: "Shared a project or demo with the community.", badge_type: "demo" },
-  "helped-mentor": { id: "bdg_helped_mentor", name: "Helped or Mentored", description: "Helped another builder, mentored, or organized.", badge_type: "contribution" }
+  "helped-mentor": { id: "bdg_helped_mentor", name: "Helped or Mentored", description: "Helped another builder, mentored, or organized.", badge_type: "contribution" },
+  "attended-htv-2026": { id: "bdg_attended_htv_2026", name: "HTV 2026 Attendee", description: "Checked in at Hack the Valley 2026.", badge_type: "attendance" },
+  "won-prize-htv-2026": { id: "bdg_won_prize_htv_2026", name: "HTV 2026 Prize Winner", description: "Won a prize at Hack the Valley 2026.", badge_type: "award" },
+  "won-overall-htv-2026": { id: "bdg_won_overall_htv_2026", name: "HTV 2026 Overall Winner", description: "Won the Overall Prize at Hack the Valley 2026.", badge_type: "award" },
+  "submitted-project": { id: "bdg_submitted_project", name: "Project Shipper", description: "Submitted a project to the Hack the Valley community.", badge_type: "project" },
+  "attended-hack-hours": { id: "bdg_attended_hack_hours", name: "Hack Hours Regular", description: "Checked in at a Hack Hours event.", badge_type: "attendance" }
 };
 
 function defaultBadgeForSlug(slug) {
@@ -320,6 +325,53 @@ function defaultBadgeForSlug(slug) {
     description: null,
     badge_type: "community"
   };
+}
+
+function badgeIconUrl(slug) {
+  return `/images/badges/${encodeURIComponent(slug || "community")}.svg`;
+}
+
+function decorateBadge(row = {}) {
+  const defaults = defaultBadgeForSlug(row.slug || "community");
+  const slug = row.slug || defaults.id.replace(/^bdg_/, "").replace(/_/g, "-");
+  return {
+    slug,
+    name: row.name || defaults.name,
+    description: row.description ?? defaults.description,
+    badge_type: row.badge_type || defaults.badge_type,
+    event_instance_id: row.event_instance_id || null,
+    project_id: row.project_id || null,
+    source: row.source || "derived",
+    awarded_by: row.awarded_by || null,
+    awarded_at: row.awarded_at || row.occurred_at || null,
+    icon_url: row.icon_url || badgeIconUrl(slug)
+  };
+}
+
+function dedupeBadges(badges = []) {
+  const seen = new Set();
+  const output = [];
+  for (const badge of badges.map(decorateBadge)) {
+    if (!badge.slug || seen.has(badge.slug)) continue;
+    seen.add(badge.slug);
+    output.push(badge);
+  }
+  return output;
+}
+
+function derivedBadgesForState({ attendance = [], projects = [], projectAwards = [] } = {}) {
+  const derived = [];
+  const hasCheckedIn = (slug) => attendance.some((event) => event.event_slug === slug && event.event_type === "checked_in");
+  if (hasCheckedIn("hack-the-valley-2026")) derived.push(decorateBadge({ slug: "attended-htv-2026", awarded_at: attendance.find((event) => event.event_slug === "hack-the-valley-2026")?.occurred_at }));
+  if (hasCheckedIn("hack-hours")) derived.push(decorateBadge({ slug: "attended-hack-hours", awarded_at: attendance.find((event) => event.event_slug === "hack-hours")?.occurred_at }));
+  if (projects.length > 0) derived.push(decorateBadge({ slug: "submitted-project", project_id: projects[0]?.project_id, awarded_at: projects[0]?.submission_created_at || projects[0]?.created_at }));
+  if (projectAwards.length > 0) {
+    const firstAward = projectAwards[0];
+    derived.push(decorateBadge({ slug: "won-prize-htv-2026", project_id: firstAward.project_id, awarded_at: firstAward.awarded_at || firstAward.created_at }));
+  }
+  const overall = projectAwards.find((award) => award.award_slug === "overall" || /overall/i.test(award.award_title || ""));
+  if (overall) derived.push(decorateBadge({ slug: "won-overall-htv-2026", project_id: overall.project_id, awarded_at: overall.awarded_at || overall.created_at }));
+  return derived;
 }
 
 function sanitizeProjectRow(row = {}) {
@@ -744,7 +796,7 @@ export async function awardBadge(db, { userId, badgeSlug, badge = null, eventIns
 export async function getUserCommunityState(db, userId) {
   const user = await getUserById(db, userId);
   if (!user) throw Object.assign(new Error("User not found"), { status: 404 });
-  const [roles, attendance, badges, projects] = await Promise.all([
+  const [roles, attendance, badges, projects, projectAwards] = await Promise.all([
     db.prepare(`
       SELECT role, scope_type, scope_id, created_at, revoked_at
       FROM roles
@@ -775,14 +827,26 @@ export async function getUserCommunityState(db, userId) {
       LEFT JOIN event_project_submissions eps ON eps.project_id = p.id AND eps.status != 'hidden'
       WHERE (pm.user_id = ? OR lower(pm.email) = lower(?))
       ORDER BY lower(p.title) ASC
+    `).bind(userId, user.email || "").all(),
+    db.prepare(`
+      SELECT DISTINCT epa.event_slug, epa.project_id, epa.award_slug, epa.award_title, epa.created_at AS awarded_at
+      FROM project_members pm
+      JOIN event_project_awards epa ON epa.project_id = pm.project_id
+      WHERE epa.event_slug = 'hack-the-valley-2026'
+        AND (pm.user_id = ? OR lower(pm.email) = lower(?))
+      ORDER BY CASE WHEN epa.award_slug = 'overall' THEN 0 ELSE 1 END, epa.award_rank ASC, epa.award_title ASC
     `).bind(userId, user.email || "").all()
   ]);
+  const attendanceRows = attendance.results || [];
+  const projectRows = (projects.results || []).map(sanitizeProjectRow);
+  const storedBadges = badges.results || [];
+  const derivedBadges = derivedBadgesForState({ attendance: attendanceRows, projects: projectRows, projectAwards: projectAwards.results || [] });
   return {
     user,
     roles: roles.results || [],
-    attendance: attendance.results || [],
-    badges: badges.results || [],
-    projects: (projects.results || []).map(sanitizeProjectRow)
+    attendance: attendanceRows,
+    badges: dedupeBadges([...storedBadges, ...derivedBadges]),
+    projects: projectRows
   };
 }
 

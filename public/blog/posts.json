@@ -1,0 +1,11 @@
+{
+  "posts": [
+    {
+      "slug": "welcome-to-the-hack-the-valley-blog",
+      "title": "Welcome to the Hack the Valley blog",
+      "description": "Why we started a blog, and what you can expect to find here.",
+      "excerpt": "We are turning one hackathon into a year-round community. Here is where we will share recaps, project highlights, and what comes next.",
+      "date": "2026-06-18"
+    }
+  ]
+}

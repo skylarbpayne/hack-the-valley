@@ -1,6 +1,13 @@
 {
   "posts": [
     {
+      "slug": "project-spotlight-continuum",
+      "title": "Project Spotlight: Continuum",
+      "description": "Continuum, built by Hack the Valley participant Mofe, captures an AI chat and resumes it in a fresh one so you never lose context to length limits.",
+      "excerpt": "A weekend idea now live on Chrome and Firefox: Mofe's Continuum captures an AI chat and resumes it in a fresh one, so you never lose context to length limits.",
+      "date": "2026-06-18"
+    },
+    {
       "slug": "welcome-to-the-hack-the-valley-blog",
       "title": "Welcome to the Hack the Valley blog",
       "description": "Why we started a blog, and what you can expect to find here.",

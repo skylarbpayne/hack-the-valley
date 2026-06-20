@@ -129,11 +129,6 @@
           <h2 class="text-xl font-black mt-2">Review submitted projects</h2>
           <p class="text-slate-400 text-sm mt-2">Jump to the private submissions table and media review tools.</p>
         </a>
-        <a href="#blog-blast" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
-          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Blog</div>
-          <h2 class="text-xl font-black mt-2">Email blast a post</h2>
-          <p class="text-slate-400 text-sm mt-2">Send a published blog post to the Hack the Valley email list via Resend.</p>
-        </a>
         <a href="#helper-interest-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Helper interest</div>
           <h2 class="text-xl font-black mt-2">Review helpers</h2>
@@ -262,32 +257,6 @@
         </form>
         <div id="admin-role-list" class="overflow-x-auto text-sm text-slate-300"></div>
       </section>
-
-      <section id="blog-blast" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
-        <div class="mb-4">
-          <h2 class="text-2xl font-black">Blog email blast</h2>
-          <p class="text-sm text-slate-400 mt-1">Send a published post to the Hack the Valley email list via Resend. Preview first — nothing sends until you confirm.</p>
-        </div>
-        <div class="grid lg:grid-cols-[1fr_1.2fr] gap-6">
-          <div class="space-y-4">
-            <label class="block"><span class="text-sm font-semibold">Post</span>
-              <select id="blog-post-select" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></select>
-            </label>
-            <label class="block"><span class="text-sm font-semibold">Subject line <span class="text-slate-500 font-normal">optional</span></span>
-              <input id="blog-subject" placeholder="(defaults to the post title)" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white">
-            </label>
-            <div class="flex flex-wrap gap-3">
-              <button id="blog-preview" type="button" class="border border-bc-cyan text-bc-cyan px-5 py-3 rounded-lg font-bold hover:bg-bc-cyan hover:text-bc-dark">Preview email</button>
-              <button id="blog-send" type="button" class="bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400 disabled:opacity-50">Send to the list</button>
-            </div>
-            <p id="blog-blast-status" class="text-sm text-slate-300"></p>
-          </div>
-          <div>
-            <p class="text-sm font-semibold text-slate-300 mb-2">Preview</p>
-            <iframe id="blog-preview-frame" class="w-full h-[520px] rounded-2xl border border-slate-700 bg-white" title="Email preview"></iframe>
-          </div>
-        </div>
-      </section>
     </section>
   </main>
 
@@ -364,7 +333,6 @@
       if (loadData) {
         await loadEvents();
         await loadUsers();
-        await loadBlogPosts();
         await loadHelperInterests();
         if (hasSuperAdminRole(me.roles || [])) await loadAdminRoles();
       }
@@ -1211,58 +1179,6 @@
     $("load-events").addEventListener("click", () => loadEvents().catch(() => {}));
     $("new-event").addEventListener("click", resetForm);
     $("logout").addEventListener("click", switchAccount);
-    $("blog-preview").addEventListener("click", () => previewBlogBlast());
-    $("blog-send").addEventListener("click", () => sendBlogBlast());
-
-    function setBlogStatus(message, error = false) {
-      $("blog-blast-status").className = `text-sm ${error ? "text-red-300" : "text-slate-300"}`;
-      $("blog-blast-status").textContent = message;
-    }
-
-    async function loadBlogPosts() {
-      try {
-        const response = await fetch("/blog/posts.json", { headers: { Accept: "application/json" } });
-        const data = response.ok ? await response.json() : { posts: [] };
-        const posts = Array.isArray(data.posts) ? data.posts : [];
-        $("blog-post-select").innerHTML = posts.map((post) => `<option value="${escapeHtml(post.slug)}">${escapeHtml(post.title || post.slug)}</option>`).join("");
-        if (!posts.length) setBlogStatus("No published posts found in /blog/posts.json.", true);
-      } catch {
-        setBlogStatus("Could not load /blog/posts.json.", true);
-      }
-    }
-
-    function blogBlastPayload(extra = {}) {
-      const slug = $("blog-post-select").value;
-      const subject = $("blog-subject").value.trim();
-      return JSON.stringify({ slug, ...(subject ? { subject } : {}), ...extra });
-    }
-
-    async function previewBlogBlast() {
-      setBlogStatus("Rendering preview…");
-      try {
-        const data = await api("/api/blog/broadcast", { method: "POST", body: blogBlastPayload({ dryRun: true }) });
-        $("blog-preview-frame").srcdoc = data.html;
-        setBlogStatus(`Preview ready — subject: "${data.subject}". Nothing has been sent.`);
-      } catch (error) {
-        setBlogStatus(error.message, true);
-      }
-    }
-
-    async function sendBlogBlast() {
-      const slug = $("blog-post-select").value;
-      if (!slug) return;
-      if (!confirm(`Send "${slug}" to the entire Hack the Valley email list? This cannot be undone.`)) return;
-      $("blog-send").disabled = true;
-      setBlogStatus("Sending…");
-      try {
-        const data = await api("/api/blog/broadcast", { method: "POST", body: blogBlastPayload() });
-        setBlogStatus(`Sent! Resend broadcast ${data.broadcastId} created for "${data.subject}".`);
-      } catch (error) {
-        setBlogStatus(error.message, true);
-      } finally {
-        $("blog-send").disabled = false;
-      }
-    }
 
     function escapeHtml(value) {
       return String(value ?? "")

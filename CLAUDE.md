@@ -42,15 +42,6 @@ The project submission flow lives on `/submit` with a private admin review page 
 - Admin media access goes through `/api/media`; legacy token access is kept for submissions/recovery paths, while the main admin surface is session + roles based.
 - Full Cloudflare setup/deploy instructions are in `SUBMISSIONS-DEPLOYMENT.md`.
 
-## Blog
-
-The blog is a manual list of static HTML pages under `public/blog/` (no database, no build step). See `public/blog/README.md` for how to author a post.
-
-- The index at `/blog/` renders cards from `public/blog/posts.json`.
-- Each post is `public/blog/<slug>/index.html`, served at `/blog/<slug>`. Article bodies are wrapped in `<!-- POST:START -->`/`<!-- POST:END -->` markers, and every post carries a "Sign up for our next event" CTA linking to `/events`.
-- "Publishing" a post as an email blast goes through `POST /api/blog/broadcast` (admin session + roles required), which reuses the post content to create and send a Resend broadcast. The control lives in the "Blog email blast" section of the `/admin` organizer page. Pass `{ dryRun: true }` to preview the rendered email without sending.
-- Broadcast env vars: `RESEND_API_KEY` (shared with the mailing list) and `RESEND_BROADCAST_FROM` (a verified sender). The audience is auto-discovered when the Resend account has exactly one audience; set `RESEND_AUDIENCE_ID` only to disambiguate when there are several. Optional `SITE_BASE_URL` makes in-email links/images absolute (defaults to the request origin).
-
 ## Architecture
 
 Static site with Cloudflare Worker + Assets API routes:

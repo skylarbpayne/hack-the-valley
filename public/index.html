@@ -70,6 +70,7 @@
           <div class="flex flex-col sm:flex-row gap-4">
             <a href="#updates" class="bg-bc-cyan text-bc-dark px-8 py-4 rounded-lg text-lg font-bold hover:bg-cyan-400 transition text-center">Get community updates</a>
             <a href="/events/hack-the-valley-2026" class="border-2 border-bc-cyan text-bc-cyan px-8 py-4 rounded-lg text-lg font-bold hover:bg-bc-cyan/10 transition text-center">See Hack the Valley 2026</a>
+            <a href="#help" class="border-2 border-bc-orange text-bc-orange px-8 py-4 rounded-lg text-lg font-bold hover:bg-bc-orange/10 transition text-center">Offer to help</a>
             <a href="/leaderboard/" class="border-2 border-bc-orange text-bc-orange px-8 py-4 rounded-lg text-lg font-bold hover:bg-bc-orange/10 transition text-center">View leaderboard</a>
             <a href="/login/?next=/me/projects/" class="border-2 border-slate-500 text-white px-8 py-4 rounded-lg text-lg font-bold hover:border-bc-cyan hover:bg-bc-cyan/10 transition text-center">Open your profile and projects</a>
           </div>
@@ -177,13 +178,36 @@
     </section>
 
     <section id="help" class="py-20 bg-bc-dark">
-      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <p class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-3">Help build the next one</p>
-        <h2 class="text-4xl sm:text-5xl font-black mb-5">A tech community does not happen by accident.</h2>
-        <p class="text-lg text-slate-300 mb-8">We need people to organize, mentor, host workshops, recruit students, sponsor, take photos, promote, judge, and keep showing up after the first event glow wears off.</p>
-        <div class="flex flex-col sm:flex-row gap-4 justify-center">
-          <a href="mailto:contact@hackthevalley.org?subject=I%20want%20to%20help%20with%20Hack%20the%20Valley" class="bg-bc-cyan text-bc-dark px-8 py-4 rounded-lg text-lg font-bold hover:bg-cyan-400 transition">Tell us how you can help</a>
-          <a href="/events" class="border-2 border-bc-cyan text-bc-cyan px-8 py-4 rounded-lg text-lg font-bold hover:bg-bc-cyan/10 transition">Browse events</a>
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid lg:grid-cols-[0.9fr_1.1fr] gap-8 items-start">
+          <div>
+            <p class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-3">Help build the next one</p>
+            <h2 class="text-4xl sm:text-5xl font-black mb-5">A tech community does not happen by accident.</h2>
+            <p class="text-lg text-slate-300 mb-6">We need people to organize, mentor, host workshops, recruit students, sponsor, take photos, promote, judge, and keep showing up after the first event glow wears off.</p>
+            <p class="text-sm text-slate-400">Submit your interest here instead of emailing manually. Organizers will keep your contact details private and follow up from the admin dashboard.</p>
+            <a href="/events" class="inline-block mt-8 border-2 border-bc-cyan text-bc-cyan px-6 py-3 rounded-lg font-bold hover:bg-bc-cyan/10 transition">Browse events</a>
+          </div>
+          <form id="helper-interest-form" class="bg-bc-navy border border-slate-700 rounded-3xl p-6 sm:p-8 space-y-4 shadow-2xl shadow-bc-cyan/10">
+            <input type="hidden" name="source" value="homepage-help-section">
+            <div>
+              <h3 class="text-2xl font-black">Tell us how you want to help</h3>
+              <p class="text-sm text-slate-400 mt-1">If you are logged in, we will attach your Hack the Valley account when available.</p>
+            </div>
+            <div class="grid sm:grid-cols-2 gap-4">
+              <label class="block"><span class="block text-sm font-semibold text-slate-300 mb-2">Name *</span><input required name="name" autocomplete="name" class="w-full rounded-lg border border-slate-700 bg-bc-dark px-4 py-3 text-white placeholder:text-slate-500 focus:border-bc-cyan focus:outline-none" placeholder="Your name"></label>
+              <label class="block"><span class="block text-sm font-semibold text-slate-300 mb-2">Email</span><input name="email" type="email" autocomplete="email" class="w-full rounded-lg border border-slate-700 bg-bc-dark px-4 py-3 text-white placeholder:text-slate-500 focus:border-bc-cyan focus:outline-none" placeholder="you@example.com"></label>
+            </div>
+            <label class="block"><span class="block text-sm font-semibold text-slate-300 mb-2">Best contact method <span class="text-slate-500 font-normal">required if no email</span></span><input name="contact" autocomplete="tel" class="w-full rounded-lg border border-slate-700 bg-bc-dark px-4 py-3 text-white placeholder:text-slate-500 focus:border-bc-cyan focus:outline-none" placeholder="Phone, Discord, LinkedIn, or other contact"></label>
+            <div class="grid sm:grid-cols-2 gap-4">
+              <label class="block"><span class="block text-sm font-semibold text-slate-300 mb-2">Role interest *</span><select required name="role_interest" class="w-full rounded-lg border border-slate-700 bg-bc-dark px-4 py-3 text-white focus:border-bc-cyan focus:outline-none"><option value="">Choose one…</option><option value="volunteer">Volunteer</option><option value="mentor">Mentor</option><option value="judge">Judge</option><option value="workshop_host">Workshop host</option><option value="sponsor">Sponsor</option><option value="organizer">Organizer</option><option value="other">Other</option></select></label>
+              <label class="block"><span class="block text-sm font-semibold text-slate-300 mb-2">Availability / event interest</span><input name="availability" class="w-full rounded-lg border border-slate-700 bg-bc-dark px-4 py-3 text-white placeholder:text-slate-500 focus:border-bc-cyan focus:outline-none" placeholder="Weeknights, hackathon day, next workshop…"></label>
+            </div>
+            <label class="block"><span class="block text-sm font-semibold text-slate-300 mb-2">Skills or ways you can help</span><textarea name="skills" rows="3" class="w-full rounded-lg border border-slate-700 bg-bc-dark px-4 py-3 text-white placeholder:text-slate-500 focus:border-bc-cyan focus:outline-none" placeholder="AI, web, recruiting, venue, food, judging, photography, sponsor intros…"></textarea></label>
+            <label class="block"><span class="block text-sm font-semibold text-slate-300 mb-2">Notes</span><textarea name="notes" rows="3" class="w-full rounded-lg border border-slate-700 bg-bc-dark px-4 py-3 text-white placeholder:text-slate-500 focus:border-bc-cyan focus:outline-none" placeholder="Anything organizers should know before reaching out"></textarea></label>
+            <label class="flex gap-3 text-sm text-slate-300"><input required name="consent_contact" type="checkbox" class="mt-1 h-4 w-4 rounded border-slate-600 bg-bc-dark text-bc-cyan"><span>I consent to Hack the Valley organizers contacting me about helping, volunteering, mentoring, judging, sponsoring, or organizing.</span></label>
+            <button type="submit" class="w-full bg-bc-cyan text-bc-dark px-6 py-3 rounded-lg font-bold hover:bg-cyan-400 transition disabled:cursor-not-allowed disabled:opacity-70">Submit helper interest</button>
+            <p id="helper-interest-status" class="text-sm text-slate-400" aria-live="polite">Private contact details are visible only to authorized admins.</p>
+          </form>
         </div>
       </div>
     </section>
@@ -203,5 +227,6 @@
     </div>
   </footer>
   <script src="/mailing-list.js" defer></script>
+  <script src="/helper-interest.js" defer></script>
 </body>
 </html>

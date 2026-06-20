@@ -5,9 +5,12 @@ import { readFileSync } from "node:fs";
 import {
   addSignupToEmailList,
   checkInAttendee,
+  createHelperInterest,
   csvEscape,
   listEvents,
+  listHelperInterests,
   normalizeEventInput,
+  normalizeHelperInterestInput,
   normalizeSignupInput,
   requireAdmin,
   requireSuperAdminAccess,
@@ -200,6 +203,137 @@ test("signup input requires name and valid email", () => {
   const { errors } = normalizeSignupInput({ name: "", email: "bad" }, "hack-hours-panera");
   assert.match(errors.join(";"), /name is required/);
   assert.match(errors.join(";"), /valid email is required/);
+});
+
+test("helper interest input captures volunteer leads without treating them as participants", () => {
+  const { helperInterest, errors } = normalizeHelperInterestInput({
+    role_interest: "Workshop Host",
+    availability: "Weeknights",
+    skills: "AI mentoring and sponsor intros",
+    consent_contact: "yes"
+  }, {
+    id: "usr_helper",
+    email: "HELPER@Example.COM",
+    name: "Helper Person"
+  });
+
+  assert.deepEqual(errors, []);
+  assert.equal(helperInterest.user_id, "usr_helper");
+  assert.equal(helperInterest.name, "Helper Person");
+  assert.equal(helperInterest.email, "helper@example.com");
+  assert.equal(helperInterest.role_interest, "workshop_host");
+  assert.equal(helperInterest.status, "new");
+});
+
+test("helper interest input requires contact, allowed role, and consent", () => {
+  const { errors } = normalizeHelperInterestInput({ name: "No Consent", role_interest: "speaker" });
+  assert.match(errors.join(";"), /email or contact method is required/);
+  assert.match(errors.join(";"), /role interest must be/);
+  assert.match(errors.join(";"), /consent to be contacted is required/);
+});
+
+test("helper interest records persist privately and list only through the admin helper", async () => {
+  const rows = [];
+  const db = {
+    prepare(sql) {
+      return {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async run() {
+          assert.match(sql, /INSERT INTO helper_interests/);
+          const [id, created_at, updated_at, user_id, name, email, contact, role_interest, availability, event_interest, skills, notes, consent_contact, source, status, metadata_json] = this.args;
+          rows.push({ id, created_at, updated_at, user_id, name, email, contact, role_interest, availability, event_interest, skills, notes, consent_contact, source, status, metadata_json });
+          return { success: true };
+        },
+        async first() {
+          assert.match(sql, /SELECT \* FROM helper_interests WHERE id = \?/);
+          return rows.find((row) => row.id === this.args[0]);
+        },
+        async all() {
+          assert.match(sql, /FROM helper_interests hi/);
+          return { results: rows.map((row) => ({ ...row, account_email: null, account_name: null })) };
+        }
+      };
+    }
+  };
+
+  const saved = await createHelperInterest(db, {
+    id: "hlp_test",
+    name: "Ada Helper",
+    email: "ada@example.com",
+    role_interest: "mentor",
+    skills: "Web and AI",
+    notes: "Can judge finals",
+    consent_contact: true,
+    metadata: { source_detail: "test" }
+  });
+  assert.equal(saved.id, "hlp_test");
+  assert.equal(saved.email, "ada@example.com");
+
+  const [listed] = await listHelperInterests(db);
+  assert.equal(listed.email, "ada@example.com");
+  assert.equal(listed.consent_contact, true);
+  assert.deepEqual(listed.metadata, { source_detail: "test" });
+});
+
+test("worker exposes helper interest POST publicly but keeps the list admin-only", async () => {
+  const rows = [];
+  const db = {
+    prepare(sql) {
+      return {
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async run() {
+          if (/INSERT INTO helper_interests/.test(sql)) {
+            const [id, created_at, updated_at, user_id, name, email, contact, role_interest, availability, event_interest, skills, notes, consent_contact, source, status, metadata_json] = this.args;
+            rows.push({ id, created_at, updated_at, user_id, name, email, contact, role_interest, availability, event_interest, skills, notes, consent_contact, source, status, metadata_json });
+            return { success: true };
+          }
+          throw new Error(`Unexpected run() query: ${sql}`);
+        },
+        async first() {
+          if (/SELECT \* FROM helper_interests WHERE id = \?/.test(sql)) return rows.find((row) => row.id === this.args[0]);
+          if (/FROM user_sessions/.test(sql)) {
+            return {
+              id: "usr_admin",
+              email: "admin@example.com",
+              name: "Admin User",
+              session_id: "ses_admin",
+              session_expires_at: "2099-01-01T00:00:00.000Z"
+            };
+          }
+          if (/FROM roles/.test(sql)) return { role: "admin", scope_type: "global", scope_id: "*", created_at: "2026-01-01T00:00:00.000Z" };
+          throw new Error(`Unexpected first() query: ${sql}`);
+        },
+        async all() {
+          if (/FROM helper_interests hi/.test(sql)) return { results: rows.map((row) => ({ ...row, account_email: null, account_name: null })) };
+          return { results: [] };
+        }
+      };
+    }
+  };
+
+  const postResponse = await worker.fetch(new Request("https://hackthevalley.org/api/helper-interest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Ada Helper", email: "ada@example.com", role_interest: "mentor", consent_contact: true })
+  }), { HTV_DB: db }, {});
+  assert.equal(postResponse.status, 201);
+  const publicBody = await postResponse.json();
+  assert.equal(publicBody.success, true);
+  assert.equal(publicBody.helper_interest.role_interest, "mentor");
+  assert.equal(publicBody.helper_interest.email, undefined);
+  assert.equal(publicBody.helper_interest.contact, undefined);
+  assert.equal(publicBody.helper_interest.name, undefined);
+
+  const unauthorizedList = await worker.fetch(new Request("https://hackthevalley.org/api/helper-interest"), { HTV_DB: db }, {});
+  assert.equal(unauthorizedList.status, 401);
+
+  const adminList = await worker.fetch(new Request("https://hackthevalley.org/api/helper-interest", { headers: { cookie: "htv_session=test-session" } }), { HTV_DB: db }, {});
+  assert.equal(adminList.status, 200);
+  const adminBody = await adminList.json();
+  assert.equal(adminBody.helper_interests[0].email, "ada@example.com");
 });
 
 test("Resend sync creates/updates a contact; per-event signup state stays in the app D1 database", async () => {

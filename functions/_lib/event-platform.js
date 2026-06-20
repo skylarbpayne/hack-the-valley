@@ -6,6 +6,7 @@ const JSON_HEADERS = {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const OPEN_STATUSES = new Set(["draft", "open", "closed", "archived"]);
+const HELPER_INTEREST_ROLES = new Set(["volunteer", "mentor", "judge", "workshop_host", "sponsor", "organizer", "other"]);
 
 export function jsonResponse(body, init = {}) {
   return new Response(JSON.stringify(body, null, 2), {
@@ -183,6 +184,48 @@ export function normalizeEmergencyContactInput(input = {}) {
   const phoneDigits = String(contact.phone || "").replace(/\D/g, "");
   if (contact.phone && phoneDigits.length < 7) errors.push("emergency contact phone must include at least 7 digits");
   return { contact, errors };
+}
+
+export function normalizeHelperInterestInput(input = {}, currentUser = null) {
+  const nested = input.helper_interest && typeof input.helper_interest === "object" ? input.helper_interest : {};
+  const email = normalizeEmail(input.email ?? nested.email ?? currentUser?.email);
+  const suppliedName = trimOrNull(input.name ?? nested.name);
+  const name = suppliedName || trimOrNull(currentUser?.name) || trimOrNull(`${currentUser?.first_name || ""} ${currentUser?.last_name || ""}`) || null;
+  const contact = trimOrNull(input.contact ?? input.contact_method ?? nested.contact ?? nested.contact_method ?? input.phone ?? currentUser?.phone);
+  const roleInterest = String(input.role_interest ?? input.roleInterest ?? nested.role_interest ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  const consentRaw = input.consent_contact ?? input.consentToContact ?? nested.consent_contact;
+  const consentContact = consentRaw === true || consentRaw === 1 || ["1", "true", "yes", "on"].includes(String(consentRaw || "").toLowerCase());
+  const metadata = input.metadata ?? nested.metadata ?? null;
+
+  const helperInterest = {
+    user_id: currentUser?.id || trimOrNull(input.user_id ?? nested.user_id),
+    name,
+    email: email || null,
+    contact,
+    role_interest: roleInterest,
+    availability: trimOrNull(input.availability ?? nested.availability),
+    event_interest: trimOrNull(input.event_interest ?? input.eventInterest ?? nested.event_interest),
+    skills: trimOrNull(input.skills ?? nested.skills),
+    notes: trimOrNull(input.notes ?? input.message ?? nested.notes),
+    consent_contact: consentContact ? 1 : 0,
+    source: trimOrNull(input.source ?? nested.source) || "helper-interest-form",
+    status: trimOrNull(input.status ?? nested.status) || "new",
+    metadata_json: stringifyJson(metadata)
+  };
+
+  const errors = [];
+  if (!helperInterest.name) errors.push("name is required");
+  if (helperInterest.email && !EMAIL_RE.test(helperInterest.email)) errors.push("valid email is required when email is provided");
+  if (!helperInterest.email && !helperInterest.contact) errors.push("email or contact method is required");
+  if (!HELPER_INTEREST_ROLES.has(helperInterest.role_interest)) {
+    errors.push("role interest must be volunteer, mentor, judge, workshop host, sponsor, organizer, or other");
+  }
+  if (!helperInterest.consent_contact) errors.push("consent to be contacted is required");
+
+  return { helperInterest, errors };
 }
 
 export function normalizeSignupInput(input, eventSlug, { requireEmergencyContact = true } = {}) {
@@ -1478,6 +1521,63 @@ export async function listSignups(db, eventSlug, { eventInstanceId = null } = {}
     ? await statement.bind(eventSlug, eventInstanceId).all()
     : await statement.bind(eventSlug).all();
   return result.results || [];
+}
+
+export async function createHelperInterest(db, input, currentUser = null) {
+  const { helperInterest, errors } = normalizeHelperInterestInput(input, currentUser);
+  if (errors.length) {
+    throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
+  }
+
+  const now = new Date().toISOString();
+  const id = input.id && String(input.id).startsWith("hlp_") ? String(input.id) : generateId("hlp");
+  await db.prepare(`
+    INSERT INTO helper_interests (
+      id, created_at, updated_at, user_id, name, email, contact, role_interest,
+      availability, event_interest, skills, notes, consent_contact, source, status, metadata_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    id,
+    now,
+    now,
+    helperInterest.user_id,
+    helperInterest.name,
+    helperInterest.email,
+    helperInterest.contact,
+    helperInterest.role_interest,
+    helperInterest.availability,
+    helperInterest.event_interest,
+    helperInterest.skills,
+    helperInterest.notes,
+    helperInterest.consent_contact,
+    helperInterest.source,
+    helperInterest.status,
+    helperInterest.metadata_json
+  ).run();
+
+  return await db.prepare("SELECT * FROM helper_interests WHERE id = ?").bind(id).first();
+}
+
+export async function listHelperInterests(db, { limit = 200, status = null } = {}) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 200, 1000));
+  const cleanStatus = trimOrNull(status);
+  const sql = `
+    SELECT hi.*, u.email AS account_email, u.name AS account_name
+    FROM helper_interests hi
+    LEFT JOIN users u ON u.id = hi.user_id
+    ${cleanStatus ? "WHERE hi.status = ?" : ""}
+    ORDER BY hi.created_at DESC
+    LIMIT ?
+  `;
+  const statement = db.prepare(sql);
+  const result = cleanStatus
+    ? await statement.bind(cleanStatus, safeLimit).all()
+    : await statement.bind(safeLimit).all();
+  return (result.results || []).map((row) => ({
+    ...row,
+    consent_contact: Boolean(row.consent_contact),
+    metadata: parseJsonObject(row.metadata_json, null)
+  }));
 }
 
 export async function upsertUser(db, input) {

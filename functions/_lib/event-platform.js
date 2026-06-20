@@ -1246,7 +1246,11 @@ export async function listEvents(db, { includeArchived = false } = {}) {
     ? `${baseSelect} ORDER BY COALESCE(e.starts_at, e.created_at) DESC`
     : `${baseSelect} WHERE e.status != 'archived' ORDER BY COALESCE(e.starts_at, e.created_at) DESC`;
   const result = await db.prepare(sql).all();
-  return result.results || [];
+  const events = result.results || [];
+  return await Promise.all(events.map(async (event) => ({
+    ...event,
+    instances: await listEventInstances(db, event.slug)
+  })));
 }
 
 export async function getEvent(db, slug) {

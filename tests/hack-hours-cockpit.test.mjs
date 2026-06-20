@@ -17,6 +17,7 @@ import {
   getUserCommunityState,
   getPublicProjectHeroMedia,
   linkProjectSubmission,
+  listSignups,
   listEventPhotos,
   listEventProjectSubmissions,
   listPublicProjects,
@@ -82,9 +83,9 @@ test("participant login page requests a code, verifies it, and reads /api/me", (
   assert.doesNotMatch(html, /admin password|HTV_ADMIN_TOKEN/i);
 });
 
-test("homepage exposes clear participant login CTAs", () => {
+test("homepage exposes clear participant account CTAs", () => {
   const html = read("public/index.html");
-  assert.match(html, /href="\/login\/"[^>]*>Log in</);
+  assert.match(html, /data-nav-link="profile" href="\/login\/\?next=\/me\/"[^>]*>Profile</);
   assert.match(html, /href="\/login\/\?next=\/me\/projects\//);
   assert.match(html, /Open your profile and projects/);
 });
@@ -105,6 +106,11 @@ test("participant profile shows editable profile info, badges, and project summa
   assert.match(html, /\/me\/projects\//);
   assert.match(html, /\/login\//);
   assert.match(html, /Manage your project workspace/);
+  assert.match(html, /Emergency contact/);
+  assert.match(html, /Private event-safety details/);
+  assert.match(html, /id="emergency-contact-fields"/);
+  assert.match(html, /data-emergency-contact/);
+  assert.match(html, /emergency_contacts/);
   assert.match(html, /Badges/);
   assert.match(html, /badge\.icon_url/);
   assert.match(html, /\/images\/badges\//);
@@ -309,6 +315,125 @@ test("/api/me lets the signed-in user update basic profile info", async () => {
   assert.equal(body.user.first_name, "Maya");
   assert.equal(body.user.school, "CSUB");
   assert.match(statements.map((s) => s.sql).join("\n"), /UPDATE users/);
+});
+
+test("/api/me lets the signed-in user update private emergency contact info for their event signups", async () => {
+  const statements = [];
+  const fakeDb = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya Rivera", first_name: "Maya", last_name: "Rivera", phone: "661-555-0100", school: "CSUB" };
+          if (/FROM emergency_contacts/.test(sql)) return { id: "emc_maya", event_instance_id: "inst_hack_hours_20260620", user_id: "usr_maya", signup_id: "sgn_maya", name: "Aunt Elena", relationship: "Aunt", phone: "661-555-0199", source: "profile" };
+          return null;
+        },
+        async all() {
+          if (/FROM signups\s+WHERE user_id/.test(sql)) return { results: [{ id: "sgn_maya", event_instance_id: "inst_hack_hours_20260620" }] };
+          if (/FROM signups s\s+JOIN events e/.test(sql)) return { results: [{ event_slug: "hack-hours", event_title: "Hack Hours", event_instance_id: "inst_hack_hours_20260620", signup_id: "sgn_maya", instance_key: "2026-06-20", name: "Aunt Elena", relationship: "Aunt", phone: "661-555-0199", source: "profile", present: 1 }] };
+          return { results: [] };
+        }
+      };
+      return statement;
+    }
+  };
+
+  const response = await worker.fetch(new Request("https://hackthevalley.org/api/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Cookie: "htv_session=test-session-token" },
+    body: JSON.stringify({
+      first_name: "Maya",
+      last_name: "Rivera",
+      emergency_contacts: [{
+        event_instance_id: "inst_hack_hours_20260620",
+        name: "Aunt Elena",
+        relationship: "Aunt",
+        phone: "661-555-0199"
+      }]
+    })
+  }), { HTV_DB: fakeDb }, {});
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.emergency_contacts[0].name, "Aunt Elena");
+  assert.equal(body.emergency_contacts[0].present, true);
+  const sql = statements.map((s) => s.sql).join("\n");
+  assert.match(sql, /SELECT id, event_instance_id\s+FROM signups/);
+  assert.match(sql, /INSERT INTO emergency_contacts/);
+  const contactWrite = statements.find((s) => /INSERT INTO emergency_contacts/.test(s.sql));
+  assert.ok(contactWrite.args.includes("inst_hack_hours_20260620"));
+  assert.ok(contactWrite.args.includes("usr_maya"));
+  assert.ok(contactWrite.args.includes("profile"));
+});
+
+test("/api/me rejects emergency contact updates for event instances the participant does not own", async () => {
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya" };
+          return null;
+        },
+        async all() {
+          if (/FROM signups\s+WHERE user_id/.test(sql)) return { results: [{ id: "sgn_maya", event_instance_id: "inst_owned" }] };
+          return { results: [] };
+        }
+      };
+    }
+  };
+  const response = await worker.fetch(new Request("https://hackthevalley.org/api/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Cookie: "htv_session=test-session-token" },
+    body: JSON.stringify({ emergency_contacts: [{ event_instance_id: "inst_someone_else", name: "Nope", phone: "661-555-0199" }] })
+  }), { HTV_DB: fakeDb }, {});
+  assert.equal(response.status, 403);
+  assert.match(await response.text(), /own event signups/);
+});
+
+test("authorized event signup exports include the latest emergency contact details", async () => {
+  const db = {
+    prepare(sql) {
+      assert.match(sql, /LEFT JOIN emergency_contacts ec/);
+      assert.match(sql, /emergency_contact_name/);
+      return {
+        bind(...args) { this.args = args; return this; },
+        async all() {
+          assert.deepEqual(this.args, ["hack-hours", "inst_hack_hours_20260620"]);
+          return { results: [{
+            id: "sgn_maya",
+            event_slug: "hack-hours",
+            event_instance_id: "inst_hack_hours_20260620",
+            user_id: "usr_maya",
+            email: "maya@example.com",
+            name: "Maya Rivera",
+            emergency_contact_present: 1,
+            emergency_contact_name: "Aunt Elena",
+            emergency_contact_relationship: "Aunt",
+            emergency_contact_phone: "661-555-0199",
+            emergency_contact_source: "profile"
+          }] };
+        }
+      };
+    }
+  };
+  const signups = await listSignups(db, "hack-hours", { eventInstanceId: "inst_hack_hours_20260620" });
+  assert.equal(signups[0].emergency_contact_name, "Aunt Elena");
+  assert.equal(signups[0].emergency_contact_source, "profile");
+});
+
+test("public project and leaderboard surfaces still omit emergency contact details", () => {
+  const projectsSource = read("functions/api/projects.js");
+  const leaderboardSource = read("functions/api/leaderboard.js");
+  const platformSource = read("functions/_lib/event-platform.js");
+  assert.doesNotMatch(projectsSource, /emergency_contacts|emergency_contact_name|emergency_contact_phone/);
+  assert.match(platformSource, /function sanitizePublicProjectRow/);
+  assert.match(leaderboardSource, /privacy: "Public leaderboard fields intentionally omit email, phone, emergency contact/);
 });
 
 test("/api/me/projects can create a project and associate it with an event context", async () => {
@@ -1040,8 +1165,9 @@ test("cockpit helper returns summary, roster, emergency state, progression label
         },
         async all() {
           if (/FROM signups s/.test(sql)) return { results: [
-            { user_id: "usr_maya", signup_id: "sgn_maya", event_instance_id: "inst_hack_hours_20260620", name: "Maya R.", email: "maya@example.com", signed_up_at: "2026-06-13T10:00:00.000Z", checked_in_at: null, emergency_contact_present: 1, attendance_count: 1 },
-            { user_id: "usr_no_contact", signup_id: "sgn_no_contact", event_instance_id: "inst_hack_hours_20260620", name: "No Contact", email: "nocontact@example.com", signed_up_at: "2026-06-13T10:01:00.000Z", checked_in_at: "2026-06-20T17:10:00.000Z", emergency_contact_present: 0, attendance_count: 3 }
+            { user_id: "usr_maya", signup_id: "sgn_maya", event_instance_id: "inst_hack_hours_20260620", name: "Maya R.", email: "maya@example.com", signed_up_at: "2026-06-13T10:00:00.000Z", checked_in_at: null, emergency_contact_present: 1, attendance_count: 1, prior_attendance_count: 1 },
+            { user_id: "usr_no_contact", signup_id: "sgn_no_contact", event_instance_id: "inst_hack_hours_20260620", name: "No Contact", email: "nocontact@example.com", signed_up_at: "2026-06-13T10:01:00.000Z", checked_in_at: "2026-06-20T17:10:00.000Z", emergency_contact_present: 0, attendance_count: 3, prior_attendance_count: 2 },
+            { user_id: "usr_new", signup_id: "sgn_new", event_instance_id: "inst_hack_hours_20260620", name: "New Builder", email: "new@example.com", signed_up_at: "2026-06-13T10:02:00.000Z", checked_in_at: null, emergency_contact_present: 1, attendance_count: 0, prior_attendance_count: 0 }
           ] };
           if (/FROM event_photos/.test(sql)) return { results: [{ id: "pho_1", kind: "photo", storage_key: "event-photos/inst_hack_hours_20260620/pho_1-photo.jpg", created_at: "2026-06-20T18:00:00.000Z" }] };
           return { results: [] };
@@ -1050,15 +1176,17 @@ test("cockpit helper returns summary, roster, emergency state, progression label
     }
   };
   const cockpit = await getEventCockpit(db, "hack-hours", "inst_hack_hours_20260620");
-  assert.equal(cockpit.summary.signed_up_count, 2);
+  assert.equal(cockpit.summary.signed_up_count, 3);
   assert.equal(cockpit.summary.checked_in_count, 1);
   assert.equal(cockpit.summary.missing_emergency_contact_count, 1);
   assert.equal(cockpit.summary.event_photo_count, 9);
   assert.equal(cockpit.photos.count, 9);
   assert.equal(cockpit.photos.recent.length, 1);
-  assert.equal(cockpit.summary.repeat_attendee_count, 1);
-  assert.deepEqual(cockpit.roster[0].progression_labels, ["first-time"]);
+  assert.equal(cockpit.summary.repeat_attendee_count, 2);
+  assert.equal(cockpit.roster[0].prior_attendance_count, 1);
+  assert.deepEqual(cockpit.roster[0].progression_labels, ["repeat"]);
   assert.deepEqual(cockpit.roster[1].progression_labels, ["repeat", "3x attendee"]);
+  assert.deepEqual(cockpit.roster[2].progression_labels, ["first-time"]);
   assert.equal(Object.hasOwn(cockpit.roster[0], "school"), false);
   assert.equal(Object.hasOwn(cockpit.roster[0], "notes"), false);
 });
@@ -1402,7 +1530,7 @@ test("worker routes cockpit API and requires admin", async () => {
   assert.equal(body.instance.id, "inst_123");
 });
 
-test("check-in blocks missing emergency contact and exposes idempotent already checked-in state", async () => {
+test("check-in allows existing users without emergency contact and keeps manual walk-up contact gate", async () => {
   const sqls = [];
   const db = {
     prepare(sql) {
@@ -1419,11 +1547,20 @@ test("check-in blocks missing emergency contact and exposes idempotent already c
       };
     }
   };
-  await assert.rejects(
-    () => checkInAttendee(db, { slug: "hack-hours", title: "Hack Hours" }, { user_id: "usr_maya" }, { eventInstance: { id: "inst_hack_hours_20260620", event_slug: "hack-hours" } }),
-    (error) => error.status === 409 && error.code === "missing_emergency_contact"
+
+  const result = await checkInAttendee(
+    db,
+    { slug: "hack-hours", title: "Hack Hours" },
+    { user_id: "usr_maya" },
+    { eventInstance: { id: "inst_hack_hours_20260620", event_slug: "hack-hours" } }
   );
-  assert.match(sqls.join("\n"), /FROM emergency_contacts/);
+  assert.equal(result.signup.user_id, "usr_maya");
+  assert.doesNotMatch(sqls.join("\n"), /FROM emergency_contacts/);
+
+  await assert.rejects(
+    () => checkInAttendee(db, { slug: "hack-hours", title: "Hack Hours" }, { name: "New Person", email: "new@example.com" }, { eventInstance: { id: "inst_hack_hours_20260620", event_slug: "hack-hours" } }),
+    (error) => error.status === 400 && /emergency contact/.test(error.message)
+  );
 });
 
 test("event photo helpers validate instance scope and write metadata with event-only linkage", async () => {

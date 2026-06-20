@@ -5,8 +5,12 @@ import { readFileSync } from "node:fs";
 import {
   addSignupToEmailList,
   checkInAttendee,
+  createHelperInterest,
   csvEscape,
+  listEvents,
+  listHelperInterests,
   normalizeEventInput,
+  normalizeHelperInterestInput,
   normalizeSignupInput,
   requireAdmin,
   requireSuperAdminAccess,
@@ -201,6 +205,137 @@ test("signup input requires name and valid email", () => {
   assert.match(errors.join(";"), /valid email is required/);
 });
 
+test("helper interest input captures volunteer leads without treating them as participants", () => {
+  const { helperInterest, errors } = normalizeHelperInterestInput({
+    role_interest: "Workshop Host",
+    availability: "Weeknights",
+    skills: "AI mentoring and sponsor intros",
+    consent_contact: "yes"
+  }, {
+    id: "usr_helper",
+    email: "HELPER@Example.COM",
+    name: "Helper Person"
+  });
+
+  assert.deepEqual(errors, []);
+  assert.equal(helperInterest.user_id, "usr_helper");
+  assert.equal(helperInterest.name, "Helper Person");
+  assert.equal(helperInterest.email, "helper@example.com");
+  assert.equal(helperInterest.role_interest, "workshop_host");
+  assert.equal(helperInterest.status, "new");
+});
+
+test("helper interest input requires contact, allowed role, and consent", () => {
+  const { errors } = normalizeHelperInterestInput({ name: "No Consent", role_interest: "speaker" });
+  assert.match(errors.join(";"), /email or contact method is required/);
+  assert.match(errors.join(";"), /role interest must be/);
+  assert.match(errors.join(";"), /consent to be contacted is required/);
+});
+
+test("helper interest records persist privately and list only through the admin helper", async () => {
+  const rows = [];
+  const db = {
+    prepare(sql) {
+      return {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async run() {
+          assert.match(sql, /INSERT INTO helper_interests/);
+          const [id, created_at, updated_at, user_id, name, email, contact, role_interest, availability, event_interest, skills, notes, consent_contact, source, status, metadata_json] = this.args;
+          rows.push({ id, created_at, updated_at, user_id, name, email, contact, role_interest, availability, event_interest, skills, notes, consent_contact, source, status, metadata_json });
+          return { success: true };
+        },
+        async first() {
+          assert.match(sql, /SELECT \* FROM helper_interests WHERE id = \?/);
+          return rows.find((row) => row.id === this.args[0]);
+        },
+        async all() {
+          assert.match(sql, /FROM helper_interests hi/);
+          return { results: rows.map((row) => ({ ...row, account_email: null, account_name: null })) };
+        }
+      };
+    }
+  };
+
+  const saved = await createHelperInterest(db, {
+    id: "hlp_test",
+    name: "Ada Helper",
+    email: "ada@example.com",
+    role_interest: "mentor",
+    skills: "Web and AI",
+    notes: "Can judge finals",
+    consent_contact: true,
+    metadata: { source_detail: "test" }
+  });
+  assert.equal(saved.id, "hlp_test");
+  assert.equal(saved.email, "ada@example.com");
+
+  const [listed] = await listHelperInterests(db);
+  assert.equal(listed.email, "ada@example.com");
+  assert.equal(listed.consent_contact, true);
+  assert.deepEqual(listed.metadata, { source_detail: "test" });
+});
+
+test("worker exposes helper interest POST publicly but keeps the list admin-only", async () => {
+  const rows = [];
+  const db = {
+    prepare(sql) {
+      return {
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async run() {
+          if (/INSERT INTO helper_interests/.test(sql)) {
+            const [id, created_at, updated_at, user_id, name, email, contact, role_interest, availability, event_interest, skills, notes, consent_contact, source, status, metadata_json] = this.args;
+            rows.push({ id, created_at, updated_at, user_id, name, email, contact, role_interest, availability, event_interest, skills, notes, consent_contact, source, status, metadata_json });
+            return { success: true };
+          }
+          throw new Error(`Unexpected run() query: ${sql}`);
+        },
+        async first() {
+          if (/SELECT \* FROM helper_interests WHERE id = \?/.test(sql)) return rows.find((row) => row.id === this.args[0]);
+          if (/FROM user_sessions/.test(sql)) {
+            return {
+              id: "usr_admin",
+              email: "admin@example.com",
+              name: "Admin User",
+              session_id: "ses_admin",
+              session_expires_at: "2099-01-01T00:00:00.000Z"
+            };
+          }
+          if (/FROM roles/.test(sql)) return { role: "admin", scope_type: "global", scope_id: "*", created_at: "2026-01-01T00:00:00.000Z" };
+          throw new Error(`Unexpected first() query: ${sql}`);
+        },
+        async all() {
+          if (/FROM helper_interests hi/.test(sql)) return { results: rows.map((row) => ({ ...row, account_email: null, account_name: null })) };
+          return { results: [] };
+        }
+      };
+    }
+  };
+
+  const postResponse = await worker.fetch(new Request("https://hackthevalley.org/api/helper-interest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Ada Helper", email: "ada@example.com", role_interest: "mentor", consent_contact: true })
+  }), { HTV_DB: db }, {});
+  assert.equal(postResponse.status, 201);
+  const publicBody = await postResponse.json();
+  assert.equal(publicBody.success, true);
+  assert.equal(publicBody.helper_interest.role_interest, "mentor");
+  assert.equal(publicBody.helper_interest.email, undefined);
+  assert.equal(publicBody.helper_interest.contact, undefined);
+  assert.equal(publicBody.helper_interest.name, undefined);
+
+  const unauthorizedList = await worker.fetch(new Request("https://hackthevalley.org/api/helper-interest"), { HTV_DB: db }, {});
+  assert.equal(unauthorizedList.status, 401);
+
+  const adminList = await worker.fetch(new Request("https://hackthevalley.org/api/helper-interest", { headers: { cookie: "htv_session=test-session" } }), { HTV_DB: db }, {});
+  assert.equal(adminList.status, 200);
+  const adminBody = await adminList.json();
+  assert.equal(adminBody.helper_interests[0].email, "ada@example.com");
+});
+
 test("Resend sync creates/updates a contact; per-event signup state stays in the app D1 database", async () => {
   const calls = [];
   const originalFetch = globalThis.fetch;
@@ -325,16 +460,22 @@ test("admin role helpers require session roles and keep token bootstrap opt-in o
   assert.equal(bootstrap.bootstrap, true);
 });
 
-test("admin page can list users and per-event signups without school/org or notes clutter", () => {
+test("admin page lists event instances as flat rows without dropdowns", () => {
   const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
   assert.match(html, /id="users-admin"/);
   assert.match(html, /id="users-list"/);
   assert.match(html, /function loadUsers/);
   assert.match(html, /\/api\/users/);
   assert.match(html, /id="event-signups"/);
-  assert.match(html, /function loadEventSignups/);
-  assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(slug\)\}\/signups/);
-  assert.match(html, /data-signups=/);
+  assert.match(html, /function loadEventSignups\(slug, title = slug, instanceId = null/);
+  assert.match(html, /params\.set\("instance_id", instanceId\)/);
+  assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(slug\)\}\/signups\$\{query\}/);
+  assert.match(html, /function eventInstanceRows\(events\)/);
+  assert.match(html, /data-signups-row=/);
+  assert.match(html, /View signups/);
+  assert.match(html, /Export CSV/);
+  assert.doesNotMatch(html, /data-instance-select=/);
+  assert.doesNotMatch(html, /selectedInstanceFor\(event\)/);
   assert.doesNotMatch(html, /<th[^>]*>School<\/th>/);
   assert.doesNotMatch(html, /<th[^>]*>Notes<\/th>/);
   assert.doesNotMatch(html, /user\.school/);
@@ -425,6 +566,13 @@ test("manual attendee check-in can create/signup/check in and stores a checked_i
   assert.match(source, /event_instance_id/);
 });
 
+test("admin check-in can reuse existing users without emergency contact", () => {
+  const source = readFileSync(new URL("../functions/_lib/event-platform.js", import.meta.url), "utf8");
+  assert.match(source, /normalizeSignupInput\(input, eventSlug, \{ requireEmergencyContact = true \} = \{\}\)/);
+  assert.match(source, /requireEmergencyContact: !input\.user_id/);
+  assert.match(source, /if \(!input\.user_id\) \{/);
+});
+
 test("admin portal exposes event check-in search and manual walk-up form", () => {
   const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
   assert.match(html, /id="event-checkin"/);
@@ -439,6 +587,12 @@ test("admin portal exposes event check-in search and manual walk-up form", () =>
   assert.match(html, /loadCheckinCandidates\(\)\.catch/);
   assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(currentCheckinEvent\.slug\)\}\/checkins/);
   assert.match(html, /data-checkin-user=/);
+  assert.match(html, /Not signed up for this instance yet/);
+  assert.match(html, /function setCheckinError/);
+  assert.doesNotMatch(html, /data-walkup-user=/);
+  assert.doesNotMatch(html, /Use walk-up form/);
+  assert.doesNotMatch(html, /function prefillManualCheckin/);
+  assert.doesNotMatch(html, /checkInUser\(\{ user_id: button\.dataset\.checkinUser \}\)\.catch\(\(\) => \{\}\)/);
 });
 
 test("admin event form supports image uploads, auto-populates slug, and avoids async currentTarget reset bug", () => {
@@ -512,11 +666,39 @@ test("event schema supports reusable Hack Hours slug with concrete instances and
   assert.match(migration, /WHERE slug = 'hack-hours' \|\| '-1'/i);
   assert.match(migration, /DELETE FROM events WHERE slug = 'hack-hours' \|\| '-1'/i);
   assert.match(migration, /INSERT OR IGNORE INTO event_instances/);
+  assert.match(admin, /eventInstanceRows\(events\)/);
+  assert.match(admin, /data-cockpit-row=/);
   const oldSlugPattern = new RegExp("hack-hours" + "-1");
   assert.doesNotMatch(schema, oldSlugPattern);
   assert.doesNotMatch(migration, oldSlugPattern);
   assert.doesNotMatch(admin, oldSlugPattern);
   assert.doesNotMatch(publicEvents, oldSlugPattern);
+});
+
+test("event list includes past and active instances for admin selection", async () => {
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async all() {
+          if (/FROM events e/.test(sql)) {
+            return { results: [{ slug: "hack-hours", title: "Hack Hours", active_instance_id: "inst_hack_hours_20260620", active_instance_key: "2026-06-20", instance_count: 2 }] };
+          }
+          if (/FROM event_instances/.test(sql)) {
+            assert.equal(this.args[0], "hack-hours");
+            return { results: [
+              { id: "inst_hack_hours_20260613", instance_key: "2026-06-13", status: "closed" },
+              { id: "inst_hack_hours_20260620", instance_key: "2026-06-20", status: "open" }
+            ] };
+          }
+          return { results: [] };
+        }
+      };
+    }
+  };
+
+  const events = await listEvents(db, { includeArchived: true });
+  assert.deepEqual(events[0].instances.map((instance) => instance.instance_key), ["2026-06-13", "2026-06-20"]);
 });
 
 test("signup resolution chooses an open concrete event instance for a reusable slug", async () => {
@@ -613,9 +795,13 @@ test("worker routes dynamic event APIs on the deployed Worker surface", async ()
   const fakeDb = {
     prepare(sql) {
       return {
-        all: async () => {
-          assert.match(sql, /FROM events/);
-          return { results: [{ slug: "hack-hours-panera", title: "Hack Hours at Panera", status: "open" }] };
+        bind(...args) { this.args = args; return this; },
+        async all() {
+          if (/FROM events e/.test(sql)) {
+            return { results: [{ slug: "hack-hours-panera", title: "Hack Hours at Panera", status: "open" }] };
+          }
+          if (/FROM event_instances/.test(sql)) return { results: [{ id: "inst_hack_hours_panera", instance_key: "2026-06-20", status: "open" }] };
+          return { results: [] };
         }
       };
     }

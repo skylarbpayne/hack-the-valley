@@ -24,6 +24,7 @@ import * as register from './functions/api/register.js';
 import * as submissions from './functions/api/submissions.js';
 import * as subscribe from './functions/api/subscribe.js';
 import * as blogBroadcast from './functions/api/blog/broadcast.js';
+import * as helperInterest from './functions/api/helper-interest.js';
 import { getDb, getEvent, handleErrors, renderEventPageHtml } from './functions/_lib/event-platform.js';
 import * as upload from './functions/api/upload.js';
 import * as users from './functions/api/users/index.js';
@@ -42,6 +43,7 @@ const API_ROUTES = {
   '/api/submissions': submissions,
   '/api/subscribe': subscribe,
   '/api/blog/broadcast': blogBroadcast,
+  '/api/helper-interest': helperInterest,
   '/api/upload': upload,
   '/api/users': users,
 };

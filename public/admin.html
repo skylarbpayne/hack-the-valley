@@ -108,7 +108,7 @@
         </div>
       </section>
 
-      <section class="grid md:grid-cols-5 gap-4 mb-8">
+      <section class="grid md:grid-cols-6 gap-4 mb-8">
         <a href="#events-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Events</div>
           <h2 class="text-xl font-black mt-2">Create / update event</h2>
@@ -133,6 +133,11 @@
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Blog</div>
           <h2 class="text-xl font-black mt-2">Email blast a post</h2>
           <p class="text-slate-400 text-sm mt-2">Send a published blog post to the Hack the Valley email list via Resend.</p>
+        </a>
+        <a href="#helper-interest-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
+          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Helper interest</div>
+          <h2 class="text-xl font-black mt-2">Review helpers</h2>
+          <p class="text-slate-400 text-sm mt-2">Volunteer, mentor, judge, sponsor, and organizer leads separate from participant signups.</p>
         </a>
         <a href="/projects/" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Public tools</div>
@@ -192,6 +197,17 @@
           </div>
         </div>
         <div id="event-signups-list" class="overflow-x-auto text-sm text-slate-300"></div>
+      </section>
+
+      <section id="helper-interest-admin" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div>
+            <h2 class="text-2xl font-black">Helper interest</h2>
+            <p id="helper-interest-admin-status" class="text-sm text-slate-400 mt-1">Volunteer, mentor, judge, workshop host, sponsor, organizer, and other helper leads. These are not participant registrations.</p>
+          </div>
+          <button id="load-helper-interests" class="border border-slate-600 px-4 py-2 rounded-lg text-sm hover:border-bc-cyan">Load helper interest</button>
+        </div>
+        <div id="helper-interest-list" class="overflow-x-auto text-sm text-slate-300"></div>
       </section>
 
       <section id="event-checkin" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
@@ -349,6 +365,7 @@
         await loadEvents();
         await loadUsers();
         await loadBlogPosts();
+        await loadHelperInterests();
         if (hasSuperAdminRole(me.roles || [])) await loadAdminRoles();
       }
       return me;
@@ -453,9 +470,21 @@
       return `<div class="rounded-2xl border border-slate-700 bg-bc-dark p-4"><div class="text-xs uppercase tracking-[0.16em] text-slate-500">${label}</div><div class="text-2xl font-black ${tone}">${escapeHtml(value)}</div></div>`;
     }
 
-    function openCockpit(event) {
+    function instanceLabel(instance) {
+      return instance?.instance_key || instance?.starts_at || instance?.id || "all instances";
+    }
+
+    function eventInstanceRows(events) {
+      return events.flatMap((event) => {
+        const instances = event.instances || [];
+        if (!instances.length) return [{ key: `${event.slug}:event`, event, instance: null }];
+        return instances.map((instance) => ({ key: `${event.slug}:${instance.id}`, event, instance }));
+      });
+    }
+
+    function openCockpit(event, instance = null) {
       currentCockpitEvent = event;
-      currentCockpitInstanceId = event.active_instance_id || currentCockpitInstanceId;
+      currentCockpitInstanceId = instance?.id || event.active_instance_id || currentCockpitInstanceId;
       currentCheckinEvent = event;
       currentCheckinInstanceId = currentCockpitInstanceId;
       loadEventCockpit(event.slug, currentCockpitInstanceId).catch(() => {});
@@ -734,6 +763,50 @@
         </table>`;
     }
 
+    async function loadHelperInterests() {
+      const status = $("helper-interest-admin-status");
+      try {
+        status.className = "text-sm text-slate-400 mt-1";
+        status.textContent = "Loading helper interest…";
+        const data = await api("/api/helper-interest?limit=500");
+        renderHelperInterests(data.helper_interests || []);
+        status.textContent = `Loaded ${data.count ?? (data.helper_interests || []).length} helper interest record(s). Private contact details are admin-only.`;
+      } catch (error) {
+        status.textContent = error.message;
+        status.className = "text-sm text-red-300 mt-1";
+        throw error;
+      }
+    }
+
+    function helperRoleLabel(role) {
+      return String(role || "").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "—";
+    }
+
+    function renderHelperInterests(interests) {
+      const container = $("helper-interest-list");
+      if (!interests.length) {
+        container.innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">No helper interest submitted yet.</div>`;
+        return;
+      }
+      container.innerHTML = `
+        <table class="min-w-full border-separate border-spacing-y-2">
+          <thead class="text-left text-xs uppercase tracking-[0.16em] text-slate-500"><tr><th class="pr-4">Role</th><th class="pr-4">Name</th><th class="pr-4">Email / contact</th><th class="pr-4">Availability</th><th class="pr-4">Skills / notes</th><th class="pr-4">Status</th><th class="pr-4">Submitted</th></tr></thead>
+          <tbody>
+            ${interests.map((interest) => `
+              <tr class="bg-bc-dark border border-slate-700 align-top">
+                <td class="p-3 rounded-l-xl font-black text-bc-cyan">${escapeHtml(helperRoleLabel(interest.role_interest))}</td>
+                <td class="p-3 font-semibold">${escapeHtml(interest.name || interest.account_name || "—")}${interest.user_id ? `<div class="font-mono text-xs text-slate-500 mt-1">${escapeHtml(interest.user_id)}</div>` : ""}</td>
+                <td class="p-3"><div>${escapeHtml(interest.email || interest.account_email || "")}</div>${interest.contact ? `<div class="text-slate-400 mt-1">${escapeHtml(interest.contact)}</div>` : ""}</td>
+                <td class="p-3">${escapeHtml(interest.availability || interest.event_interest || "—")}</td>
+                <td class="p-3 max-w-sm"><div>${escapeHtml(interest.skills || "")}</div>${interest.notes ? `<div class="text-slate-400 mt-1">${escapeHtml(interest.notes)}</div>` : ""}</td>
+                <td class="p-3">${escapeHtml(interest.status || "new")}</td>
+                <td class="p-3 rounded-r-xl text-xs text-slate-400">${escapeHtml(interest.created_at || "")}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>`;
+    }
+
     async function loadAdminRoles() {
       const status = $("role-admin-status");
       try {
@@ -791,13 +864,17 @@
       }
     }
 
-    async function loadEventSignups(slug, title = slug) {
+    async function loadEventSignups(slug, title = slug, instanceId = null, instanceKey = "") {
       const status = $("event-signups-status");
       try {
-        status.textContent = `Loading signups for ${title}…`;
-        const data = await api(`/api/events/${encodeURIComponent(slug)}/signups`);
+        const instanceLabel = instanceKey || instanceId || "all instances";
+        status.textContent = `Loading signups for ${title} (${instanceLabel})…`;
+        const params = new URLSearchParams();
+        if (instanceId) params.set("instance_id", instanceId);
+        const query = params.toString() ? `?${params.toString()}` : "";
+        const data = await api(`/api/events/${encodeURIComponent(slug)}/signups${query}`);
         renderEventSignups(data.event || { slug, title }, data.signups || []);
-        status.textContent = `${data.count ?? (data.signups || []).length} signups for ${data.event?.title || title}.`;
+        status.textContent = `${data.count ?? (data.signups || []).length} signups for ${data.event?.title || title} (${instanceLabel}).`;
         $("event-signups").scrollIntoView({ behavior: "smooth", block: "start" });
       } catch (error) {
         status.textContent = error.message;
@@ -806,14 +883,14 @@
       }
     }
 
-    function openCheckin(event) {
+    function openCheckin(event, instance = null) {
       currentCheckinEvent = event;
-      currentCheckinInstanceId = event.active_instance_id || null;
+      currentCheckinInstanceId = instance?.id || event.active_instance_id || null;
       $("checkin-search").value = "";
       $("checkin-results").innerHTML = "";
       $("checkin-event-title").textContent = currentCheckinEvent.title || currentCheckinEvent.slug;
       $("checkin-status").className = "text-sm text-slate-400 mt-1";
-      $("checkin-status").textContent = `Showing signups for ${event.title || event.slug}${event.active_instance_key ? ` (${event.active_instance_key})` : ""}. Type to search all users.`;
+      $("checkin-status").textContent = `Showing signups for ${event.title || event.slug}${instance ? ` (${instanceLabel(instance)})` : ""}. Type to search all users.`;
       loadCheckinCandidates().catch(() => {});
       $("event-checkin").scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -840,24 +917,36 @@
       }
     }
 
+    function setCheckinError(message) {
+      $("checkin-status").className = "text-sm text-red-300 mt-1";
+      $("checkin-status").textContent = message;
+    }
+
+    function candidateName(user) {
+      return user.name || `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unnamed user";
+    }
+
     function renderCheckinCandidates(candidates) {
       const container = $("checkin-results");
       if (!candidates.length) {
         container.innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">No signups match yet. Type a name or email to search all users, or use manual walk-up check-in.</div>`;
         return;
       }
-      container.innerHTML = candidates.map((user) => `
+      container.innerHTML = candidates.map((user) => {
+        const name = candidateName(user);
+        const signedUp = Boolean(user.is_signed_up);
+        return `
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-slate-700 bg-bc-dark p-3">
           <div>
-            <div class="font-bold">${escapeHtml(user.name || `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unnamed user")}</div>
+            <div class="font-bold">${escapeHtml(name)}</div>
             <div class="text-slate-400">${escapeHtml(user.email || "")}</div>
-            <div class="text-xs mt-1 ${user.is_signed_up ? "text-bc-cyan" : "text-slate-500"}">${user.is_signed_up ? "Signed up" : "Not signed up yet"}${user.checked_in_at ? ` • Checked in ${escapeHtml(user.checked_in_at)}` : ""}</div>
+            <div class="text-xs mt-1 ${signedUp ? "text-bc-cyan" : "text-slate-500"}">${signedUp ? "Signed up" : "Not signed up for this instance yet"}${user.checked_in_at ? ` • Checked in ${escapeHtml(user.checked_in_at)}` : ""}</div>
           </div>
           <button data-checkin-user="${escapeHtml(user.id)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan ${user.checked_in_at ? "text-green-300" : ""}">${user.checked_in_at ? "Checked in" : "Check in"}</button>
-        </div>
-      `).join("");
+        </div>`;
+      }).join("");
       container.querySelectorAll("[data-checkin-user]").forEach((button) => {
-        button.addEventListener("click", () => checkInUser({ user_id: button.dataset.checkinUser }).catch(() => {}));
+        button.addEventListener("click", () => checkInUser({ user_id: button.dataset.checkinUser }).catch((error) => setCheckinError(error.message)));
       });
     }
 
@@ -876,7 +965,7 @@
         : `Checked in ${data.signup?.name || data.signup?.email || "attendee"}.`;
       await loadCheckinCandidates();
       if (currentCockpitEvent && currentCockpitInstanceId) await loadEventCockpit(currentCockpitEvent.slug, currentCockpitInstanceId).catch(() => {});
-      await loadEventSignups(currentCheckinEvent.slug, currentCheckinEvent.title || currentCheckinEvent.slug).catch(() => {});
+      await loadEventSignups(currentCheckinEvent.slug, currentCheckinEvent.title || currentCheckinEvent.slug, currentCheckinInstanceId).catch(() => {});
       return data;
     }
 
@@ -905,61 +994,70 @@
 
     function renderEvents(events) {
       const container = $("events");
-      if (!events.length) {
-        container.innerHTML = `<div class="bg-bc-navy border border-slate-700 rounded-xl p-5 text-slate-400">No events yet.</div>`;
+      const rows = eventInstanceRows(events);
+      if (!rows.length) {
+        container.innerHTML = `<div class="bg-bc-navy border border-slate-700 rounded-xl p-5 text-slate-400">No event instances yet.</div>`;
         return;
       }
-      container.innerHTML = events.map((event) => `
+      container.innerHTML = rows.map(({ key, event, instance }) => {
+        const label = instanceLabel(instance);
+        const isActive = instance?.id && instance.id === event.active_instance_id;
+        return `
         <article class="bg-bc-navy border border-slate-700 rounded-xl p-5">
           <div class="flex gap-4">
             ${event.image_url ? `<img src="${escapeHtml(event.image_url)}" alt="${escapeHtml(event.title)}" class="hidden sm:block w-24 h-24 object-cover rounded-xl border border-slate-700">` : ""}
             <div class="flex-1 flex flex-col sm:flex-row sm:justify-between gap-3">
               <div>
-                <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">${escapeHtml(event.status)} • ${escapeHtml(event.slug)}</div>
-                <h3 class="text-xl font-black mt-1">${escapeHtml(event.title)}</h3>
+                <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">${escapeHtml(event.slug)} • ${escapeHtml(instance?.status || event.status || "event")}${isActive ? " • active" : ""}</div>
+                <h3 class="text-xl font-black mt-1">${escapeHtml(event.title)}${instance ? ` — ${escapeHtml(label)}` : ""}</h3>
                 <p class="text-slate-400 text-sm mt-2">${escapeHtml(event.description || "")}</p>
-                <p class="text-slate-500 text-sm mt-2">${escapeHtml(event.starts_at || "Time TBA")} ${event.venue_name ? `• ${escapeHtml(event.venue_name)}` : ""}${event.capacity ? ` • cap ${escapeHtml(event.capacity)}` : " • no cap"}</p>
-                <p class="text-slate-500 text-xs mt-2">${escapeHtml(event.instance_count || 0)} instance${Number(event.instance_count || 0) === 1 ? "" : "s"}${event.active_instance_key ? ` • active ${escapeHtml(event.active_instance_key)}` : ""}</p>
+                <p class="text-slate-500 text-sm mt-2">${escapeHtml(instance?.starts_at || event.starts_at || "Time TBA")} ${event.venue_name ? `• ${escapeHtml(event.venue_name)}` : ""}${event.capacity ? ` • cap ${escapeHtml(event.capacity)}` : " • no cap"}</p>
+                <p class="text-slate-500 text-xs mt-2">${instance ? `Instance ${escapeHtml(instance.id)}` : "No concrete instance yet"}</p>
               </div>
               <div class="flex flex-wrap gap-2 sm:justify-end sm:content-start">
-                <button data-cockpit="${escapeHtml(event.slug)}" class="bg-bc-cyan text-bc-dark px-3 py-2 rounded-lg text-sm font-black hover:bg-cyan-400">Open cockpit</button>
-                <button data-edit="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Edit</button>
+                <button data-cockpit-row="${escapeHtml(key)}" class="bg-bc-cyan text-bc-dark px-3 py-2 rounded-lg text-sm font-black hover:bg-cyan-400">Open cockpit</button>
+                <button data-edit-row="${escapeHtml(key)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Edit</button>
                 <a href="/events/${encodeURIComponent(event.slug)}" target="_blank" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Event page</a>
-                <button data-signups="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">View signups</button>
-                <button data-checkins="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Check in</button>
-                <button data-export="${escapeHtml(event.slug)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Export CSV</button>
+                <button data-signups-row="${escapeHtml(key)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">View signups</button>
+                <button data-checkins-row="${escapeHtml(key)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Check in</button>
+                <button data-export-row="${escapeHtml(key)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Export CSV</button>
               </div>
             </div>
           </div>
         </article>
-      `).join("");
+      `;
+      }).join("");
 
-      container.querySelectorAll("[data-cockpit]").forEach((button) => {
+      const rowFor = (key) => rows.find((row) => row.key === key);
+      container.querySelectorAll("[data-cockpit-row]").forEach((button) => {
         button.addEventListener("click", () => {
-          const event = events.find((candidate) => candidate.slug === button.dataset.cockpit);
-          if (event) openCockpit(event);
+          const row = rowFor(button.dataset.cockpitRow);
+          if (row) openCockpit(row.event, row.instance);
         });
       });
-      container.querySelectorAll("[data-edit]").forEach((button) => {
+      container.querySelectorAll("[data-edit-row]").forEach((button) => {
         button.addEventListener("click", () => {
-          const event = events.find((candidate) => candidate.slug === button.dataset.edit);
-          fillForm(event);
+          const row = rowFor(button.dataset.editRow);
+          if (row) fillForm(row.event);
         });
       });
-      container.querySelectorAll("[data-signups]").forEach((button) => {
+      container.querySelectorAll("[data-signups-row]").forEach((button) => {
         button.addEventListener("click", () => {
-          const event = events.find((candidate) => candidate.slug === button.dataset.signups);
-          loadEventSignups(button.dataset.signups, event?.title || button.dataset.signups).catch(() => {});
+          const row = rowFor(button.dataset.signupsRow);
+          if (row) loadEventSignups(row.event.slug, row.event.title || row.event.slug, row.instance?.id || null, instanceLabel(row.instance)).catch(() => {});
         });
       });
-      container.querySelectorAll("[data-checkins]").forEach((button) => {
+      container.querySelectorAll("[data-checkins-row]").forEach((button) => {
         button.addEventListener("click", () => {
-          const event = events.find((candidate) => candidate.slug === button.dataset.checkins);
-          if (event) openCheckin(event);
+          const row = rowFor(button.dataset.checkinsRow);
+          if (row) openCheckin(row.event, row.instance);
         });
       });
-      container.querySelectorAll("[data-export]").forEach((button) => {
-        button.addEventListener("click", () => downloadCsv(button.dataset.export));
+      container.querySelectorAll("[data-export-row]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const row = rowFor(button.dataset.exportRow);
+          if (row) downloadCsv(row.event.slug, row.instance?.id || null, instanceLabel(row.instance));
+        });
       });
     }
 
@@ -988,9 +1086,11 @@
       eventForm.scrollIntoView({ behavior: "smooth" });
     }
 
-    async function downloadCsv(slug) {
+    async function downloadCsv(slug, instanceId = null, instanceKey = "") {
       try {
-        const response = await fetch(`/api/events/${encodeURIComponent(slug)}/signups?format=csv`, { headers: headers() });
+        const params = new URLSearchParams({ format: "csv" });
+        if (instanceId) params.set("instance_id", instanceId);
+        const response = await fetch(`/api/events/${encodeURIComponent(slug)}/signups?${params.toString()}`, { headers: headers() });
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
           throw new Error(data.error || "Export failed");
@@ -998,8 +1098,9 @@
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
+        const suffix = instanceKey || instanceId || "all";
         link.href = url;
-        link.download = `${slug}-signups.csv`;
+        link.download = `${slug}-${suffix}-signups.csv`;
         link.click();
         URL.revokeObjectURL(url);
       } catch (error) {
@@ -1104,6 +1205,7 @@
       }
     });
     $("load-users").addEventListener("click", () => loadUsers().catch(() => {}));
+    $("load-helper-interests").addEventListener("click", () => loadHelperInterests().catch(() => {}));
     $("load-admin-roles").addEventListener("click", () => loadAdminRoles().catch(() => {}));
     $("admin-role-form").addEventListener("submit", applyAdminRoleChange);
     $("load-events").addEventListener("click", () => loadEvents().catch(() => {}));

@@ -6,6 +6,7 @@ import {
   addSignupToEmailList,
   checkInAttendee,
   csvEscape,
+  listEvents,
   normalizeEventInput,
   normalizeSignupInput,
   requireAdmin,
@@ -325,7 +326,7 @@ test("admin role helpers require session roles and keep token bootstrap opt-in o
   assert.equal(bootstrap.bootstrap, true);
 });
 
-test("admin page can list users and active-instance signups without school/org or notes clutter", () => {
+test("admin page lists event instances as flat rows without dropdowns", () => {
   const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
   assert.match(html, /id="users-admin"/);
   assert.match(html, /id="users-list"/);
@@ -335,10 +336,12 @@ test("admin page can list users and active-instance signups without school/org o
   assert.match(html, /function loadEventSignups\(slug, title = slug, instanceId = null/);
   assert.match(html, /params\.set\("instance_id", instanceId\)/);
   assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(slug\)\}\/signups\$\{query\}/);
-  assert.match(html, /data-signups=/);
-  assert.match(html, /View active signups/);
-  assert.match(html, /Export active CSV/);
-  assert.match(html, /event\?\.active_instance_id/);
+  assert.match(html, /function eventInstanceRows\(events\)/);
+  assert.match(html, /data-signups-row=/);
+  assert.match(html, /View signups/);
+  assert.match(html, /Export CSV/);
+  assert.doesNotMatch(html, /data-instance-select=/);
+  assert.doesNotMatch(html, /selectedInstanceFor\(event\)/);
   assert.doesNotMatch(html, /<th[^>]*>School<\/th>/);
   assert.doesNotMatch(html, /<th[^>]*>Notes<\/th>/);
   assert.doesNotMatch(html, /user\.school/);
@@ -529,11 +532,39 @@ test("event schema supports reusable Hack Hours slug with concrete instances and
   assert.match(migration, /WHERE slug = 'hack-hours' \|\| '-1'/i);
   assert.match(migration, /DELETE FROM events WHERE slug = 'hack-hours' \|\| '-1'/i);
   assert.match(migration, /INSERT OR IGNORE INTO event_instances/);
+  assert.match(admin, /eventInstanceRows\(events\)/);
+  assert.match(admin, /data-cockpit-row=/);
   const oldSlugPattern = new RegExp("hack-hours" + "-1");
   assert.doesNotMatch(schema, oldSlugPattern);
   assert.doesNotMatch(migration, oldSlugPattern);
   assert.doesNotMatch(admin, oldSlugPattern);
   assert.doesNotMatch(publicEvents, oldSlugPattern);
+});
+
+test("event list includes past and active instances for admin selection", async () => {
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async all() {
+          if (/FROM events e/.test(sql)) {
+            return { results: [{ slug: "hack-hours", title: "Hack Hours", active_instance_id: "inst_hack_hours_20260620", active_instance_key: "2026-06-20", instance_count: 2 }] };
+          }
+          if (/FROM event_instances/.test(sql)) {
+            assert.equal(this.args[0], "hack-hours");
+            return { results: [
+              { id: "inst_hack_hours_20260613", instance_key: "2026-06-13", status: "closed" },
+              { id: "inst_hack_hours_20260620", instance_key: "2026-06-20", status: "open" }
+            ] };
+          }
+          return { results: [] };
+        }
+      };
+    }
+  };
+
+  const events = await listEvents(db, { includeArchived: true });
+  assert.deepEqual(events[0].instances.map((instance) => instance.instance_key), ["2026-06-13", "2026-06-20"]);
 });
 
 test("signup resolution chooses an open concrete event instance for a reusable slug", async () => {
@@ -630,9 +661,13 @@ test("worker routes dynamic event APIs on the deployed Worker surface", async ()
   const fakeDb = {
     prepare(sql) {
       return {
-        all: async () => {
-          assert.match(sql, /FROM events/);
-          return { results: [{ slug: "hack-hours-panera", title: "Hack Hours at Panera", status: "open" }] };
+        bind(...args) { this.args = args; return this; },
+        async all() {
+          if (/FROM events e/.test(sql)) {
+            return { results: [{ slug: "hack-hours-panera", title: "Hack Hours at Panera", status: "open" }] };
+          }
+          if (/FROM event_instances/.test(sql)) return { results: [{ id: "inst_hack_hours_panera", instance_key: "2026-06-20", status: "open" }] };
+          return { results: [] };
         }
       };
     }

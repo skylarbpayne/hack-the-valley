@@ -181,6 +181,8 @@ export function normalizeEmergencyContactInput(input = {}) {
   const errors = [];
   if (!contact.name) errors.push("emergency contact name is required");
   if (!contact.phone) errors.push("emergency contact phone is required");
+  const phoneDigits = String(contact.phone || "").replace(/\D/g, "");
+  if (contact.phone && phoneDigits.length < 7) errors.push("emergency contact phone must include at least 7 digits");
   return { contact, errors };
 }
 
@@ -969,7 +971,7 @@ export async function awardBadge(db, { userId, badgeSlug, badge = null, eventIns
 export async function getUserCommunityState(db, userId) {
   const user = await getUserById(db, userId);
   if (!user) throw Object.assign(new Error("User not found"), { status: 404 });
-  const [roles, attendance, badges, projects, projectAwards] = await Promise.all([
+  const [roles, attendance, badges, projects, projectAwards, emergencyContacts] = await Promise.all([
     db.prepare(`
       SELECT role, scope_type, scope_id, created_at, revoked_at
       FROM roles
@@ -1008,7 +1010,31 @@ export async function getUserCommunityState(db, userId) {
       WHERE epa.event_slug = 'hack-the-valley-2026'
         AND (pm.user_id = ? OR lower(pm.email) = lower(?))
       ORDER BY CASE WHEN epa.award_slug = 'overall' THEN 0 ELSE 1 END, epa.award_rank ASC, epa.award_title ASC
-    `).bind(userId, user.email || "").all()
+    `).bind(userId, user.email || "").all(),
+    db.prepare(`
+      SELECT
+        s.event_slug,
+        s.event_instance_id,
+        s.id AS signup_id,
+        e.title AS event_title,
+        ei.instance_key,
+        ei.title AS instance_title,
+        ei.starts_at AS instance_starts_at,
+        ec.id,
+        ec.name,
+        ec.relationship,
+        ec.phone,
+        ec.source,
+        ec.updated_at,
+        CASE WHEN ec.id IS NOT NULL AND length(trim(COALESCE(ec.name, ''))) > 0 AND length(trim(COALESCE(ec.phone, ''))) > 0 THEN 1 ELSE 0 END AS present
+      FROM signups s
+      JOIN events e ON e.slug = s.event_slug
+      LEFT JOIN event_instances ei ON ei.id = s.event_instance_id
+      LEFT JOIN emergency_contacts ec
+        ON ec.event_instance_id = s.event_instance_id AND ec.user_id = s.user_id
+      WHERE s.user_id = ?
+      ORDER BY COALESCE(ei.starts_at, s.created_at) DESC, s.created_at DESC
+    `).bind(userId).all()
   ]);
   const attendanceRows = attendance.results || [];
   const projectRows = (projects.results || []).map(sanitizeProjectRow);
@@ -1018,6 +1044,21 @@ export async function getUserCommunityState(db, userId) {
     user,
     roles: roles.results || [],
     attendance: attendanceRows,
+    emergency_contacts: (emergencyContacts.results || []).map((row) => ({
+      event_slug: row.event_slug,
+      event_title: row.event_title,
+      event_instance_id: row.event_instance_id,
+      signup_id: row.signup_id,
+      instance_key: row.instance_key,
+      instance_title: row.instance_title,
+      instance_starts_at: row.instance_starts_at,
+      name: row.name || "",
+      relationship: row.relationship || "",
+      phone: row.phone || "",
+      source: row.source || null,
+      updated_at: row.updated_at || null,
+      present: Boolean(row.present)
+    })),
     badges: dedupeBadges([...storedBadges, ...derivedBadges]),
     projects: projectRows
   };
@@ -1459,12 +1500,20 @@ export async function listSignups(db, eventSlug, { eventInstanceId = null } = {}
       pcs.signed_up_at,
       pcs.checked_in_at,
       pcs.checked_out_at,
-      pcs.cancelled_at
+      pcs.cancelled_at,
+      ec.name AS emergency_contact_name,
+      ec.relationship AS emergency_contact_relationship,
+      ec.phone AS emergency_contact_phone,
+      ec.source AS emergency_contact_source,
+      ec.updated_at AS emergency_contact_updated_at,
+      CASE WHEN ec.id IS NOT NULL AND length(trim(COALESCE(ec.name, ''))) > 0 AND length(trim(COALESCE(ec.phone, ''))) > 0 THEN 1 ELSE 0 END AS emergency_contact_present
     FROM signups s
     JOIN users u ON u.id = s.user_id
     LEFT JOIN event_instances ei ON ei.id = s.event_instance_id
     LEFT JOIN event_participant_current_state pcs
       ON pcs.event_instance_id = s.event_instance_id AND pcs.user_id = s.user_id
+    LEFT JOIN emergency_contacts ec
+      ON ec.event_instance_id = s.event_instance_id AND ec.user_id = s.user_id
     WHERE ${where}
     ORDER BY COALESCE(ei.starts_at, s.created_at) ASC, s.created_at ASC
   `);
@@ -1597,7 +1646,42 @@ export async function updateUserProfile(db, userId, input = {}) {
     WHERE id = ?
   `).bind(name, firstName, lastName, phone, school, metadata, now, userId).run();
 
+  if (Array.isArray(input.emergency_contacts)) {
+    await updateUserProfileEmergencyContacts(db, userId, input.emergency_contacts);
+  }
+
   return await getUserById(db, userId);
+}
+
+async function updateUserProfileEmergencyContacts(db, userId, contacts = []) {
+  const signupRows = await db.prepare(`
+    SELECT id, event_instance_id
+    FROM signups
+    WHERE user_id = ? AND event_instance_id IS NOT NULL
+  `).bind(userId).all();
+  const signupsByInstance = new Map((signupRows.results || []).map((row) => [row.event_instance_id, row]));
+  const seen = new Set();
+
+  for (const rawContact of contacts) {
+    const eventInstanceId = trimOrNull(rawContact?.event_instance_id ?? rawContact?.eventInstanceId);
+    if (!eventInstanceId || seen.has(eventInstanceId)) continue;
+    seen.add(eventInstanceId);
+    const signup = signupsByInstance.get(eventInstanceId);
+    if (!signup) {
+      throw Object.assign(new Error("Emergency contact can only be updated for your own event signups."), { status: 403 });
+    }
+    await upsertEmergencyContact(db, {
+      eventInstanceId,
+      userId,
+      signupId: signup.id,
+      contact: {
+        name: rawContact.name ?? rawContact.emergency_contact_name,
+        relationship: rawContact.relationship ?? rawContact.emergency_contact_relationship,
+        phone: rawContact.phone ?? rawContact.emergency_contact_phone
+      },
+      source: "profile"
+    });
+  }
 }
 
 export async function upsertSignup(db, eventSlug, input, mailingListResult, eventInstance = null, { requireEmergencyContact = true, source = "signup-api" } = {}) {
@@ -1736,11 +1820,16 @@ export async function getEmergencyContactStatus(db, eventInstanceId, userId) {
   return { present, contact: contact || null };
 }
 
-function progressionLabels(attendanceCount) {
+function progressionLabels(attendanceCount, priorAttendanceCount = 0) {
   const count = Number(attendanceCount || 0);
+  const priorCount = Number(priorAttendanceCount || 0);
   if (count >= 3) return ["repeat", "3x attendee"];
-  if (count >= 2) return ["repeat"];
+  if (count >= 2 || priorCount >= 1) return ["repeat"];
   return ["first-time"];
+}
+
+function isRepeatAttendee(row) {
+  return (row.progression_labels || []).includes("repeat");
 }
 
 export async function listEventPhotos(db, eventSlug, eventInstanceId, { limit = 20 } = {}) {
@@ -1830,12 +1919,24 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
       1 AS is_signed_up,
       COALESCE(pcs.signed_up_at, s.created_at) AS signed_up_at,
       pcs.checked_in_at,
+      ec.name AS emergency_contact_name,
+      ec.relationship AS emergency_contact_relationship,
+      ec.phone AS emergency_contact_phone,
+      ec.updated_at AS emergency_contact_updated_at,
       CASE WHEN ec.id IS NOT NULL AND length(trim(COALESCE(ec.name, ''))) > 0 AND length(trim(COALESCE(ec.phone, ''))) > 0 THEN 1 ELSE 0 END AS emergency_contact_present,
       (
         SELECT COUNT(DISTINCT epe.event_instance_id)
         FROM event_participant_events epe
         WHERE epe.user_id = u.id AND epe.event_type = 'checked_in'
-      ) AS attendance_count
+      ) AS attendance_count,
+      (
+        SELECT COUNT(DISTINCT epe.event_instance_id)
+        FROM event_participant_events epe
+        WHERE epe.user_id = u.id
+          AND epe.event_type = 'checked_in'
+          AND epe.event_instance_id IS NOT NULL
+          AND epe.event_instance_id <> s.event_instance_id
+      ) AS prior_attendance_count
     FROM signups s
     JOIN users u ON u.id = s.user_id
     LEFT JOIN event_participant_current_state pcs
@@ -1847,6 +1948,7 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
   `).bind(eventSlug, eventInstanceId).all();
   const roster = (rosterResult.results || []).map((row) => {
     const attendanceCount = Number(row.attendance_count || 0);
+    const priorAttendanceCount = Number(row.prior_attendance_count || 0);
     return {
       user_id: row.user_id,
       signup_id: row.signup_id,
@@ -1856,9 +1958,16 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
       is_signed_up: Boolean(row.is_signed_up),
       signed_up_at: row.signed_up_at,
       checked_in_at: row.checked_in_at,
+      emergency_contact: row.emergency_contact_present ? {
+        name: row.emergency_contact_name,
+        relationship: row.emergency_contact_relationship || null,
+        phone: row.emergency_contact_phone,
+        updated_at: row.emergency_contact_updated_at || null
+      } : null,
       emergency_contact_present: Boolean(row.emergency_contact_present),
       attendance_count: attendanceCount,
-      progression_labels: progressionLabels(attendanceCount)
+      prior_attendance_count: priorAttendanceCount,
+      progression_labels: progressionLabels(attendanceCount, priorAttendanceCount)
     };
   });
   const summary = {
@@ -1866,7 +1975,7 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
     checked_in_count: roster.filter((row) => row.checked_in_at).length,
     missing_emergency_contact_count: roster.filter((row) => !row.emergency_contact_present).length,
     event_photo_count: eventPhotoCount,
-    repeat_attendee_count: roster.filter((row) => row.attendance_count >= 2).length
+    repeat_attendee_count: roster.filter(isRepeatAttendee).length
   };
   return {
     event: { slug: event.slug, title: event.title },
@@ -1888,8 +1997,8 @@ export async function getEventFollowupPacket(db, eventSlug, eventInstanceId) {
   const cockpit = await getEventCockpit(db, eventSlug, eventInstanceId);
   const attended = cockpit.roster.filter((row) => row.checked_in_at);
   const noShow = cockpit.roster.filter((row) => !row.checked_in_at);
-  const firstTime = attended.filter((row) => Number(row.attendance_count || 0) <= 1);
-  const repeat = attended.filter((row) => Number(row.attendance_count || 0) >= 2);
+  const firstTime = attended.filter((row) => !isRepeatAttendee(row));
+  const repeat = attended.filter(isRepeatAttendee);
   const toSegmentRows = (rows, segment) => rows.map((row) => ({
     email: row.email,
     name: row.name,
@@ -2202,7 +2311,9 @@ export function csvEscape(value) {
 export function signupsToCsv(signups) {
   const columns = [
     "created_at", "updated_at", "event_slug", "event_instance_id", "instance_key", "user_id", "name", "email", "phone", "school", "year",
-    "experience", "notes", "email_list_opt_in", "signed_up_at", "checked_in_at", "checked_out_at", "cancelled_at", "metadata_json", "mailing_list_status", "mailing_list_detail"
+    "experience", "notes", "email_list_opt_in", "signed_up_at", "checked_in_at", "checked_out_at", "cancelled_at",
+    "emergency_contact_present", "emergency_contact_name", "emergency_contact_relationship", "emergency_contact_phone", "emergency_contact_source", "emergency_contact_updated_at",
+    "metadata_json", "mailing_list_status", "mailing_list_detail"
   ];
   return [
     columns.join(","),
@@ -2294,12 +2405,12 @@ export function renderEventPageHtml(event) {
   <title>${title} — Hack the Valley</title>
   <meta name="description" content="${description}">
   <style>
-    body{margin:0;background:#0f172a;color:#f8fafc;font-family:Inter,ui-sans-serif,system-ui,sans-serif}a{color:#67e8f9}.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 72px}.nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:48px}.brand{font-weight:900;text-decoration:none;color:#fff}.back{text-decoration:none;color:#94a3b8}.hero{display:grid;gap:28px}.kicker{text-transform:uppercase;letter-spacing:.24em;color:#67e8f9;font-weight:800;font-size:.8rem}h1{font-size:clamp(2.5rem,7vw,5.5rem);line-height:.92;margin:.25em 0}.lede{font-size:1.25rem;color:#cbd5e1;max-width:760px}.event-hero-image{width:100%;max-height:520px;object-fit:cover;border-radius:28px;border:1px solid #334155}.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:28px 0}.meta div,.content,.signup-card{background:#111827;border:1px solid #334155;border-radius:22px;padding:22px}.content{font-size:1.08rem;line-height:1.7;color:#dbeafe}.content p{margin:0 0 1em}.signup-card{margin-top:28px;max-width:680px}.signup-card label{display:block;margin:14px 0;color:#cbd5e1}.signup-card input,.signup-card textarea{box-sizing:border-box;width:100%;margin-top:6px;border-radius:12px;border:1px solid #475569;background:#020617;color:#fff;padding:12px}.signup-card .checkbox{display:flex;gap:10px;align-items:center}.signup-card .checkbox input{width:auto}.signup-card button{border:0;border-radius:14px;background:#67e8f9;color:#0f172a;font-weight:900;padding:14px 22px;cursor:pointer}.signup-card button:disabled{opacity:.7;cursor:not-allowed}
+    body{margin:0;background:#0f172a;color:#f8fafc;font-family:Inter,ui-sans-serif,system-ui,sans-serif}a{color:#67e8f9}.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 72px}.nav{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;margin-bottom:48px}.brand{font-weight:900;text-decoration:none;color:#fff}.participant-nav{display:flex;flex-wrap:wrap;gap:8px;font-size:.9rem;font-weight:800}.participant-nav a{border-radius:999px;padding:8px 12px;text-decoration:none;color:#cbd5e1}.participant-nav a:hover{background:#1e293b;color:#67e8f9}.participant-nav a[aria-current="page"]{background:rgba(103,232,249,.14);box-shadow:inset 0 0 0 1px rgba(103,232,249,.36);color:#67e8f9}.hero{display:grid;gap:28px}.kicker{text-transform:uppercase;letter-spacing:.24em;color:#67e8f9;font-weight:800;font-size:.8rem}h1{font-size:clamp(2.5rem,7vw,5.5rem);line-height:.92;margin:.25em 0}.lede{font-size:1.25rem;color:#cbd5e1;max-width:760px}.event-hero-image{width:100%;max-height:520px;object-fit:cover;border-radius:28px;border:1px solid #334155}.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:28px 0}.meta div,.content,.signup-card{background:#111827;border:1px solid #334155;border-radius:22px;padding:22px}.content{font-size:1.08rem;line-height:1.7;color:#dbeafe}.content p{margin:0 0 1em}.signup-card{margin-top:28px;max-width:680px}.signup-card label{display:block;margin:14px 0;color:#cbd5e1}.signup-card input,.signup-card textarea{box-sizing:border-box;width:100%;margin-top:6px;border-radius:12px;border:1px solid #475569;background:#020617;color:#fff;padding:12px}.signup-card .checkbox{display:flex;gap:10px;align-items:center}.signup-card .checkbox input{width:auto}.signup-card button{border:0;border-radius:14px;background:#67e8f9;color:#0f172a;font-weight:900;padding:14px 22px;cursor:pointer}.signup-card button:disabled{opacity:.7;cursor:not-allowed}
   </style>
 </head>
 <body data-event-detail-page="${slug}">
   <main class="wrap">
-    <nav class="nav"><a class="brand" href="/">Hack the Valley</a><a class="back" href="/events">All events</a></nav>
+    <nav class="nav" aria-label="Participant"><a class="brand" href="/">Hack the Valley</a><div data-participant-nav class="participant-nav"><a data-nav-link="events" href="/events" aria-current="page">Events</a><a data-nav-link="projects" href="/projects/">Projects</a><a data-nav-link="profile" href="/login/?next=/me/">Profile</a><a data-nav-link="leaderboard" href="/leaderboard/">Leaderboard</a></div></nav>
     <section class="hero">
       <div><p class="kicker">Event page</p><h1>${title}</h1><p class="lede">${description}</p></div>
       ${image}

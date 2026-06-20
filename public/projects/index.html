@@ -15,18 +15,17 @@
 </head>
 <body class="bg-bc-dark text-white font-sans">
   <header class="sticky top-0 z-50 bg-bc-dark/90 backdrop-blur-md border-b border-slate-700">
-    <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-      <div class="flex justify-between items-center">
-        <a href="/" class="flex items-center gap-3">
+    <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3" aria-label="Participant">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <a href="/" class="flex items-center gap-3 min-w-0">
           <img src="/images/HackTheValleyLogo.PNG" alt="Hack the Valley" class="h-10 w-auto">
-          <span class="font-black text-xl">Hack the Valley</span>
+          <span class="font-black text-xl truncate">Hack the Valley</span>
         </a>
-        <div class="hidden md:flex items-center gap-6 text-sm font-medium">
-          <a href="/" class="text-slate-300 hover:text-bc-cyan">Home</a>
-          <a href="/events" class="text-slate-300 hover:text-bc-cyan">Events</a>
-          <a href="/projects/" class="text-bc-cyan font-bold">Projects</a>
-          <a href="/leaderboard/" class="text-slate-300 hover:text-bc-cyan">Leaderboard</a>
-          <a href="/login/?next=/me/projects/" class="rounded-lg border border-bc-cyan px-4 py-2 text-bc-cyan hover:bg-bc-cyan/10">Manage yours</a>
+        <div data-participant-nav class="flex flex-wrap items-center gap-2 text-sm font-bold">
+          <a data-nav-link="events" href="/events" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Events</a>
+          <a data-nav-link="projects" href="/projects/" aria-current="page" class="rounded-full bg-bc-cyan/15 px-3 py-2 text-bc-cyan ring-1 ring-bc-cyan/40">Projects</a>
+          <a data-nav-link="profile" href="/login/?next=/me/" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Profile</a>
+          <a data-nav-link="leaderboard" href="/leaderboard/" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Leaderboard</a>
         </div>
       </div>
     </nav>

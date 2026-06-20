@@ -83,9 +83,9 @@ test("participant login page requests a code, verifies it, and reads /api/me", (
   assert.doesNotMatch(html, /admin password|HTV_ADMIN_TOKEN/i);
 });
 
-test("homepage exposes clear participant login CTAs", () => {
+test("homepage exposes clear participant account CTAs", () => {
   const html = read("public/index.html");
-  assert.match(html, /href="\/login\/"[^>]*>Log in</);
+  assert.match(html, /data-nav-link="profile" href="\/login\/\?next=\/me\/"[^>]*>Profile</);
   assert.match(html, /href="\/login\/\?next=\/me\/projects\//);
   assert.match(html, /Open your profile and projects/);
 });

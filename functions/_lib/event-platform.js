@@ -183,7 +183,7 @@ export function normalizeEmergencyContactInput(input = {}) {
   return { contact, errors };
 }
 
-export function normalizeSignupInput(input, eventSlug) {
+export function normalizeSignupInput(input, eventSlug, { requireEmergencyContact = true } = {}) {
   const email = normalizeEmail(input.email);
   const name = String(input.name || `${input.first_name || ""} ${input.last_name || ""}`).trim();
   const nameParts = splitName(name);
@@ -212,7 +212,7 @@ export function normalizeSignupInput(input, eventSlug) {
   if (!signup.event_slug) errors.push("event slug is required");
   if (!signup.name) errors.push("name is required");
   if (!EMAIL_RE.test(email)) errors.push("valid email is required");
-  errors.push(...emergency.errors);
+  if (requireEmergencyContact) errors.push(...emergency.errors);
 
   return { signup, errors };
 }
@@ -1496,8 +1496,8 @@ export async function updateUserProfile(db, userId, input = {}) {
   return await getUserById(db, userId);
 }
 
-export async function upsertSignup(db, eventSlug, input, mailingListResult, eventInstance = null) {
-  const { signup, errors } = normalizeSignupInput(input, eventSlug);
+export async function upsertSignup(db, eventSlug, input, mailingListResult, eventInstance = null, { requireEmergencyContact = true, source = "signup-api" } = {}) {
+  const { signup, errors } = normalizeSignupInput(input, eventSlug, { requireEmergencyContact });
   if (errors.length) {
     throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
   }
@@ -1557,24 +1557,27 @@ export async function upsertSignup(db, eventSlug, input, mailingListResult, even
     WHERE s.event_slug = ? AND s.event_instance_id = ? AND s.user_id = ?
   `).bind(signup.event_slug, resolvedInstance.id, user.id).first();
 
-  await upsertEmergencyContact(db, {
-    eventInstanceId: resolvedInstance.id,
-    userId: user.id,
-    signupId: savedSignup.id,
-    contact: signup.emergency_contact,
-    source: "signup"
-  });
+  if (requireEmergencyContact || signup.emergency_contact.name || signup.emergency_contact.phone) {
+    await upsertEmergencyContact(db, {
+      eventInstanceId: resolvedInstance.id,
+      userId: user.id,
+      signupId: savedSignup.id,
+      contact: signup.emergency_contact,
+      source: "signup"
+    });
+  }
 
   await db.prepare(`
     INSERT OR IGNORE INTO event_participant_events (
       id, event_slug, event_instance_id, user_id, signup_id, event_type, actor, source, data_json, occurred_at, created_at
-    ) VALUES (?, ?, ?, ?, ?, 'signed_up', NULL, 'signup-api', NULL, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, 'signed_up', NULL, ?, NULL, ?, ?)
   `).bind(
     `evt_${savedSignup.id}_signed_up`,
     savedSignup.event_slug,
     savedSignup.event_instance_id,
     savedSignup.user_id,
     savedSignup.id,
+    source,
     savedSignup.created_at || now,
     now
   ).run();
@@ -1961,12 +1964,15 @@ export async function checkInAttendee(db, event, input, { eventInstance = null, 
     : null;
 
   if (!savedSignup) {
-    const { signup, errors } = normalizeSignupInput(userInput, event.slug);
+    const { signup, errors } = normalizeSignupInput(userInput, event.slug, { requireEmergencyContact: !input.user_id });
     if (errors.length) throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
     const mailingListResult = syncEmailList
       ? await syncEmailList(signup)
       : { status: "skipped_not_configured", detail: "No email-list sync callback configured" };
-    savedSignup = await upsertSignup(db, event.slug, userInput, mailingListResult, resolvedInstance);
+    savedSignup = await upsertSignup(db, event.slug, userInput, mailingListResult, resolvedInstance, {
+      requireEmergencyContact: !input.user_id,
+      source
+    });
   } else if (input.emergency_contact_name || input.emergency_contact_phone || input.emergency_contact?.name || input.emergency_contact?.phone) {
     const { contact, errors } = normalizeEmergencyContactInput(input);
     if (errors.length) throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
@@ -1979,9 +1985,11 @@ export async function checkInAttendee(db, event, input, { eventInstance = null, 
     });
   }
 
-  const emergency = await getEmergencyContactStatus(db, resolvedInstance.id, savedSignup.user_id);
-  if (!emergency.present) {
-    throw Object.assign(new Error("Emergency contact is required before check-in."), { status: 409, code: "missing_emergency_contact" });
+  if (!input.user_id) {
+    const emergency = await getEmergencyContactStatus(db, resolvedInstance.id, savedSignup.user_id);
+    if (!emergency.present) {
+      throw Object.assign(new Error("Emergency contact is required before check-in."), { status: 409, code: "missing_emergency_contact" });
+    }
   }
 
   const alreadyCheckedIn = Boolean(savedSignup.checked_in_at);

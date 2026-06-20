@@ -1040,8 +1040,9 @@ test("cockpit helper returns summary, roster, emergency state, progression label
         },
         async all() {
           if (/FROM signups s/.test(sql)) return { results: [
-            { user_id: "usr_maya", signup_id: "sgn_maya", event_instance_id: "inst_hack_hours_20260620", name: "Maya R.", email: "maya@example.com", signed_up_at: "2026-06-13T10:00:00.000Z", checked_in_at: null, emergency_contact_present: 1, attendance_count: 1 },
-            { user_id: "usr_no_contact", signup_id: "sgn_no_contact", event_instance_id: "inst_hack_hours_20260620", name: "No Contact", email: "nocontact@example.com", signed_up_at: "2026-06-13T10:01:00.000Z", checked_in_at: "2026-06-20T17:10:00.000Z", emergency_contact_present: 0, attendance_count: 3 }
+            { user_id: "usr_maya", signup_id: "sgn_maya", event_instance_id: "inst_hack_hours_20260620", name: "Maya R.", email: "maya@example.com", signed_up_at: "2026-06-13T10:00:00.000Z", checked_in_at: null, emergency_contact_present: 1, attendance_count: 1, prior_attendance_count: 1 },
+            { user_id: "usr_no_contact", signup_id: "sgn_no_contact", event_instance_id: "inst_hack_hours_20260620", name: "No Contact", email: "nocontact@example.com", signed_up_at: "2026-06-13T10:01:00.000Z", checked_in_at: "2026-06-20T17:10:00.000Z", emergency_contact_present: 0, attendance_count: 3, prior_attendance_count: 2 },
+            { user_id: "usr_new", signup_id: "sgn_new", event_instance_id: "inst_hack_hours_20260620", name: "New Builder", email: "new@example.com", signed_up_at: "2026-06-13T10:02:00.000Z", checked_in_at: null, emergency_contact_present: 1, attendance_count: 0, prior_attendance_count: 0 }
           ] };
           if (/FROM event_photos/.test(sql)) return { results: [{ id: "pho_1", kind: "photo", storage_key: "event-photos/inst_hack_hours_20260620/pho_1-photo.jpg", created_at: "2026-06-20T18:00:00.000Z" }] };
           return { results: [] };
@@ -1050,15 +1051,17 @@ test("cockpit helper returns summary, roster, emergency state, progression label
     }
   };
   const cockpit = await getEventCockpit(db, "hack-hours", "inst_hack_hours_20260620");
-  assert.equal(cockpit.summary.signed_up_count, 2);
+  assert.equal(cockpit.summary.signed_up_count, 3);
   assert.equal(cockpit.summary.checked_in_count, 1);
   assert.equal(cockpit.summary.missing_emergency_contact_count, 1);
   assert.equal(cockpit.summary.event_photo_count, 9);
   assert.equal(cockpit.photos.count, 9);
   assert.equal(cockpit.photos.recent.length, 1);
-  assert.equal(cockpit.summary.repeat_attendee_count, 1);
-  assert.deepEqual(cockpit.roster[0].progression_labels, ["first-time"]);
+  assert.equal(cockpit.summary.repeat_attendee_count, 2);
+  assert.equal(cockpit.roster[0].prior_attendance_count, 1);
+  assert.deepEqual(cockpit.roster[0].progression_labels, ["repeat"]);
   assert.deepEqual(cockpit.roster[1].progression_labels, ["repeat", "3x attendee"]);
+  assert.deepEqual(cockpit.roster[2].progression_labels, ["first-time"]);
   assert.equal(Object.hasOwn(cockpit.roster[0], "school"), false);
   assert.equal(Object.hasOwn(cockpit.roster[0], "notes"), false);
 });

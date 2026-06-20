@@ -1636,11 +1636,16 @@ export async function getEmergencyContactStatus(db, eventInstanceId, userId) {
   return { present, contact: contact || null };
 }
 
-function progressionLabels(attendanceCount) {
+function progressionLabels(attendanceCount, priorAttendanceCount = 0) {
   const count = Number(attendanceCount || 0);
+  const priorCount = Number(priorAttendanceCount || 0);
   if (count >= 3) return ["repeat", "3x attendee"];
-  if (count >= 2) return ["repeat"];
+  if (count >= 2 || priorCount >= 1) return ["repeat"];
   return ["first-time"];
+}
+
+function isRepeatAttendee(row) {
+  return (row.progression_labels || []).includes("repeat");
 }
 
 export async function listEventPhotos(db, eventSlug, eventInstanceId, { limit = 20 } = {}) {
@@ -1735,7 +1740,15 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
         SELECT COUNT(DISTINCT epe.event_instance_id)
         FROM event_participant_events epe
         WHERE epe.user_id = u.id AND epe.event_type = 'checked_in'
-      ) AS attendance_count
+      ) AS attendance_count,
+      (
+        SELECT COUNT(DISTINCT epe.event_instance_id)
+        FROM event_participant_events epe
+        WHERE epe.user_id = u.id
+          AND epe.event_type = 'checked_in'
+          AND epe.event_instance_id IS NOT NULL
+          AND epe.event_instance_id <> s.event_instance_id
+      ) AS prior_attendance_count
     FROM signups s
     JOIN users u ON u.id = s.user_id
     LEFT JOIN event_participant_current_state pcs
@@ -1747,6 +1760,7 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
   `).bind(eventSlug, eventInstanceId).all();
   const roster = (rosterResult.results || []).map((row) => {
     const attendanceCount = Number(row.attendance_count || 0);
+    const priorAttendanceCount = Number(row.prior_attendance_count || 0);
     return {
       user_id: row.user_id,
       signup_id: row.signup_id,
@@ -1758,7 +1772,8 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
       checked_in_at: row.checked_in_at,
       emergency_contact_present: Boolean(row.emergency_contact_present),
       attendance_count: attendanceCount,
-      progression_labels: progressionLabels(attendanceCount)
+      prior_attendance_count: priorAttendanceCount,
+      progression_labels: progressionLabels(attendanceCount, priorAttendanceCount)
     };
   });
   const summary = {
@@ -1766,7 +1781,7 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
     checked_in_count: roster.filter((row) => row.checked_in_at).length,
     missing_emergency_contact_count: roster.filter((row) => !row.emergency_contact_present).length,
     event_photo_count: eventPhotoCount,
-    repeat_attendee_count: roster.filter((row) => row.attendance_count >= 2).length
+    repeat_attendee_count: roster.filter(isRepeatAttendee).length
   };
   return {
     event: { slug: event.slug, title: event.title },
@@ -1788,8 +1803,8 @@ export async function getEventFollowupPacket(db, eventSlug, eventInstanceId) {
   const cockpit = await getEventCockpit(db, eventSlug, eventInstanceId);
   const attended = cockpit.roster.filter((row) => row.checked_in_at);
   const noShow = cockpit.roster.filter((row) => !row.checked_in_at);
-  const firstTime = attended.filter((row) => Number(row.attendance_count || 0) <= 1);
-  const repeat = attended.filter((row) => Number(row.attendance_count || 0) >= 2);
+  const firstTime = attended.filter((row) => !isRepeatAttendee(row));
+  const repeat = attended.filter(isRepeatAttendee);
   const toSegmentRows = (rows, segment) => rows.map((row) => ({
     email: row.email,
     name: row.name,

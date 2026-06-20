@@ -1402,7 +1402,7 @@ test("worker routes cockpit API and requires admin", async () => {
   assert.equal(body.instance.id, "inst_123");
 });
 
-test("check-in blocks missing emergency contact and exposes idempotent already checked-in state", async () => {
+test("check-in allows existing users without emergency contact and keeps manual walk-up contact gate", async () => {
   const sqls = [];
   const db = {
     prepare(sql) {
@@ -1419,11 +1419,20 @@ test("check-in blocks missing emergency contact and exposes idempotent already c
       };
     }
   };
-  await assert.rejects(
-    () => checkInAttendee(db, { slug: "hack-hours", title: "Hack Hours" }, { user_id: "usr_maya" }, { eventInstance: { id: "inst_hack_hours_20260620", event_slug: "hack-hours" } }),
-    (error) => error.status === 409 && error.code === "missing_emergency_contact"
+
+  const result = await checkInAttendee(
+    db,
+    { slug: "hack-hours", title: "Hack Hours" },
+    { user_id: "usr_maya" },
+    { eventInstance: { id: "inst_hack_hours_20260620", event_slug: "hack-hours" } }
   );
-  assert.match(sqls.join("\n"), /FROM emergency_contacts/);
+  assert.equal(result.signup.user_id, "usr_maya");
+  assert.doesNotMatch(sqls.join("\n"), /FROM emergency_contacts/);
+
+  await assert.rejects(
+    () => checkInAttendee(db, { slug: "hack-hours", title: "Hack Hours" }, { name: "New Person", email: "new@example.com" }, { eventInstance: { id: "inst_hack_hours_20260620", event_slug: "hack-hours" } }),
+    (error) => error.status === 400 && /emergency contact/.test(error.message)
+  );
 });
 
 test("event photo helpers validate instance scope and write metadata with event-only linkage", async () => {

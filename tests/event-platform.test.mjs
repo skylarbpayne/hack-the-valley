@@ -325,16 +325,20 @@ test("admin role helpers require session roles and keep token bootstrap opt-in o
   assert.equal(bootstrap.bootstrap, true);
 });
 
-test("admin page can list users and per-event signups without school/org or notes clutter", () => {
+test("admin page can list users and active-instance signups without school/org or notes clutter", () => {
   const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
   assert.match(html, /id="users-admin"/);
   assert.match(html, /id="users-list"/);
   assert.match(html, /function loadUsers/);
   assert.match(html, /\/api\/users/);
   assert.match(html, /id="event-signups"/);
-  assert.match(html, /function loadEventSignups/);
-  assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(slug\)\}\/signups/);
+  assert.match(html, /function loadEventSignups\(slug, title = slug, instanceId = null/);
+  assert.match(html, /params\.set\("instance_id", instanceId\)/);
+  assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(slug\)\}\/signups\$\{query\}/);
   assert.match(html, /data-signups=/);
+  assert.match(html, /View active signups/);
+  assert.match(html, /Export active CSV/);
+  assert.match(html, /event\?\.active_instance_id/);
   assert.doesNotMatch(html, /<th[^>]*>School<\/th>/);
   assert.doesNotMatch(html, /<th[^>]*>Notes<\/th>/);
   assert.doesNotMatch(html, /user\.school/);
@@ -425,6 +429,13 @@ test("manual attendee check-in can create/signup/check in and stores a checked_i
   assert.match(source, /event_instance_id/);
 });
 
+test("admin check-in can reuse existing users without emergency contact", () => {
+  const source = readFileSync(new URL("../functions/_lib/event-platform.js", import.meta.url), "utf8");
+  assert.match(source, /normalizeSignupInput\(input, eventSlug, \{ requireEmergencyContact = true \} = \{\}\)/);
+  assert.match(source, /requireEmergencyContact: !input\.user_id/);
+  assert.match(source, /if \(!input\.user_id\) \{/);
+});
+
 test("admin portal exposes event check-in search and manual walk-up form", () => {
   const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
   assert.match(html, /id="event-checkin"/);
@@ -439,6 +450,12 @@ test("admin portal exposes event check-in search and manual walk-up form", () =>
   assert.match(html, /loadCheckinCandidates\(\)\.catch/);
   assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(currentCheckinEvent\.slug\)\}\/checkins/);
   assert.match(html, /data-checkin-user=/);
+  assert.match(html, /Not signed up for this instance yet/);
+  assert.match(html, /function setCheckinError/);
+  assert.doesNotMatch(html, /data-walkup-user=/);
+  assert.doesNotMatch(html, /Use walk-up form/);
+  assert.doesNotMatch(html, /function prefillManualCheckin/);
+  assert.doesNotMatch(html, /checkInUser\(\{ user_id: button\.dataset\.checkinUser \}\)\.catch\(\(\) => \{\}\)/);
 });
 
 test("admin event form supports image uploads, auto-populates slug, and avoids async currentTarget reset bug", () => {

@@ -47,8 +47,13 @@
           <label class="block"><span class="text-xs font-bold text-slate-300">Last name</span><input name="last_name" autocomplete="family-name" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white"></label>
           <label class="block"><span class="text-xs font-bold text-slate-300">Phone <span class="text-slate-500">optional</span></span><input name="phone" autocomplete="tel" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white"></label>
           <label class="block"><span class="text-xs font-bold text-slate-300">School / organization <span class="text-slate-500">optional</span></span><input name="school" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white"></label>
+          <fieldset class="space-y-3 rounded-2xl border border-cyan-400/30 bg-cyan-400/5 p-4">
+            <legend class="px-1 text-sm font-black text-cyan-200">Emergency contact</legend>
+            <p class="text-xs text-slate-300">Private event-safety details. Only you and authorized organizers/admins can view these fields.</p>
+            <div id="emergency-contact-fields" class="space-y-4"></div>
+          </fieldset>
           <button class="w-full bg-bc-cyan text-bc-dark px-4 py-2 rounded-lg font-black hover:bg-cyan-400">Save profile</button>
-          <p id="profile-edit-status" role="status" aria-live="polite" class="text-xs text-slate-400">Changes update your participant profile only.</p>
+          <p id="profile-edit-status" role="status" aria-live="polite" class="text-xs text-slate-400">Changes update your participant profile and private event safety contact records.</p>
         </form>
       </article>
 
@@ -119,6 +124,30 @@
       form.elements.school.value = user.school || "";
     }
 
+    function emergencyContactLabel(contact = {}) {
+      const eventName = contact.event_title || eventLabel(contact.event_slug);
+      const instance = contact.instance_title || contact.instance_key || (contact.instance_starts_at ? prettyDate(contact.instance_starts_at) : "");
+      return [eventName, instance].filter(Boolean).join(" · ");
+    }
+
+    function renderEmergencyContacts(contacts = []) {
+      const host = $("emergency-contact-fields");
+      host.innerHTML = contacts.length ? contacts.map((contact, index) => `
+        <section class="rounded-xl border border-slate-700 bg-slate-950/70 p-3" data-emergency-contact data-event-instance-id="${escapeHtml(contact.event_instance_id || "")}">
+          <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-sm font-black text-white">${escapeHtml(emergencyContactLabel(contact) || `Event signup ${index + 1}`)}</h3>
+            <span class="rounded-full ${contact.present ? "bg-green-400/10 text-green-300" : "bg-amber-400/10 text-amber-200"} px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em]">${contact.present ? "Saved" : "Needs update"}</span>
+          </div>
+          <input type="hidden" name="emergency_event_instance_id" value="${escapeHtml(contact.event_instance_id || "")}">
+          <div class="grid sm:grid-cols-2 gap-3">
+            <label class="block"><span class="text-xs font-bold text-slate-300">Contact name</span><input name="emergency_name" required value="${escapeHtml(contact.name || "")}" autocomplete="off" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white"></label>
+            <label class="block"><span class="text-xs font-bold text-slate-300">Relationship <span class="text-slate-500">optional</span></span><input name="emergency_relationship" value="${escapeHtml(contact.relationship || "")}" autocomplete="off" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white"></label>
+            <label class="block sm:col-span-2"><span class="text-xs font-bold text-slate-300">Phone</span><input name="emergency_phone" required value="${escapeHtml(contact.phone || "")}" autocomplete="tel" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white"></label>
+          </div>
+        </section>
+      `).join("") : `<p class="rounded-xl border border-dashed border-slate-600 bg-slate-950/50 p-3 text-sm text-slate-400">Emergency contacts appear here after you sign up for an event.</p>`;
+    }
+
     function renderProfile(user) {
       $("profile-card").innerHTML = `
         <p class="text-xs uppercase tracking-[0.16em] text-bc-cyan font-black">Signed in</p>
@@ -179,6 +208,7 @@
     function renderState(data) {
       currentState = data;
       renderProfile(data.user || {});
+      renderEmergencyContacts(data.emergency_contacts || []);
       renderAttendance(data.attendance || []);
       renderProjects(data.projects || []);
       renderBadges(data.badges || []);
@@ -209,7 +239,13 @@
         first_name: form.elements.first_name.value.trim(),
         last_name: form.elements.last_name.value.trim(),
         phone: form.elements.phone.value.trim(),
-        school: form.elements.school.value.trim()
+        school: form.elements.school.value.trim(),
+        emergency_contacts: [...form.querySelectorAll("[data-emergency-contact]")].map((row) => ({
+          event_instance_id: row.dataset.eventInstanceId,
+          name: row.querySelector('[name="emergency_name"]').value.trim(),
+          relationship: row.querySelector('[name="emergency_relationship"]').value.trim(),
+          phone: row.querySelector('[name="emergency_phone"]').value.trim()
+        }))
       };
       try {
         status.className = "text-xs text-slate-400";

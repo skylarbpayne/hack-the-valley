@@ -180,6 +180,8 @@ export function normalizeEmergencyContactInput(input = {}) {
   const errors = [];
   if (!contact.name) errors.push("emergency contact name is required");
   if (!contact.phone) errors.push("emergency contact phone is required");
+  const phoneDigits = String(contact.phone || "").replace(/\D/g, "");
+  if (contact.phone && phoneDigits.length < 7) errors.push("emergency contact phone must include at least 7 digits");
   return { contact, errors };
 }
 
@@ -926,7 +928,7 @@ export async function awardBadge(db, { userId, badgeSlug, badge = null, eventIns
 export async function getUserCommunityState(db, userId) {
   const user = await getUserById(db, userId);
   if (!user) throw Object.assign(new Error("User not found"), { status: 404 });
-  const [roles, attendance, badges, projects, projectAwards] = await Promise.all([
+  const [roles, attendance, badges, projects, projectAwards, emergencyContacts] = await Promise.all([
     db.prepare(`
       SELECT role, scope_type, scope_id, created_at, revoked_at
       FROM roles
@@ -965,7 +967,31 @@ export async function getUserCommunityState(db, userId) {
       WHERE epa.event_slug = 'hack-the-valley-2026'
         AND (pm.user_id = ? OR lower(pm.email) = lower(?))
       ORDER BY CASE WHEN epa.award_slug = 'overall' THEN 0 ELSE 1 END, epa.award_rank ASC, epa.award_title ASC
-    `).bind(userId, user.email || "").all()
+    `).bind(userId, user.email || "").all(),
+    db.prepare(`
+      SELECT
+        s.event_slug,
+        s.event_instance_id,
+        s.id AS signup_id,
+        e.title AS event_title,
+        ei.instance_key,
+        ei.title AS instance_title,
+        ei.starts_at AS instance_starts_at,
+        ec.id,
+        ec.name,
+        ec.relationship,
+        ec.phone,
+        ec.source,
+        ec.updated_at,
+        CASE WHEN ec.id IS NOT NULL AND length(trim(COALESCE(ec.name, ''))) > 0 AND length(trim(COALESCE(ec.phone, ''))) > 0 THEN 1 ELSE 0 END AS present
+      FROM signups s
+      JOIN events e ON e.slug = s.event_slug
+      LEFT JOIN event_instances ei ON ei.id = s.event_instance_id
+      LEFT JOIN emergency_contacts ec
+        ON ec.event_instance_id = s.event_instance_id AND ec.user_id = s.user_id
+      WHERE s.user_id = ?
+      ORDER BY COALESCE(ei.starts_at, s.created_at) DESC, s.created_at DESC
+    `).bind(userId).all()
   ]);
   const attendanceRows = attendance.results || [];
   const projectRows = (projects.results || []).map(sanitizeProjectRow);
@@ -975,6 +1001,21 @@ export async function getUserCommunityState(db, userId) {
     user,
     roles: roles.results || [],
     attendance: attendanceRows,
+    emergency_contacts: (emergencyContacts.results || []).map((row) => ({
+      event_slug: row.event_slug,
+      event_title: row.event_title,
+      event_instance_id: row.event_instance_id,
+      signup_id: row.signup_id,
+      instance_key: row.instance_key,
+      instance_title: row.instance_title,
+      instance_starts_at: row.instance_starts_at,
+      name: row.name || "",
+      relationship: row.relationship || "",
+      phone: row.phone || "",
+      source: row.source || null,
+      updated_at: row.updated_at || null,
+      present: Boolean(row.present)
+    })),
     badges: dedupeBadges([...storedBadges, ...derivedBadges]),
     projects: projectRows
   };
@@ -1416,12 +1457,20 @@ export async function listSignups(db, eventSlug, { eventInstanceId = null } = {}
       pcs.signed_up_at,
       pcs.checked_in_at,
       pcs.checked_out_at,
-      pcs.cancelled_at
+      pcs.cancelled_at,
+      ec.name AS emergency_contact_name,
+      ec.relationship AS emergency_contact_relationship,
+      ec.phone AS emergency_contact_phone,
+      ec.source AS emergency_contact_source,
+      ec.updated_at AS emergency_contact_updated_at,
+      CASE WHEN ec.id IS NOT NULL AND length(trim(COALESCE(ec.name, ''))) > 0 AND length(trim(COALESCE(ec.phone, ''))) > 0 THEN 1 ELSE 0 END AS emergency_contact_present
     FROM signups s
     JOIN users u ON u.id = s.user_id
     LEFT JOIN event_instances ei ON ei.id = s.event_instance_id
     LEFT JOIN event_participant_current_state pcs
       ON pcs.event_instance_id = s.event_instance_id AND pcs.user_id = s.user_id
+    LEFT JOIN emergency_contacts ec
+      ON ec.event_instance_id = s.event_instance_id AND ec.user_id = s.user_id
     WHERE ${where}
     ORDER BY COALESCE(ei.starts_at, s.created_at) ASC, s.created_at ASC
   `);
@@ -1497,7 +1546,42 @@ export async function updateUserProfile(db, userId, input = {}) {
     WHERE id = ?
   `).bind(name, firstName, lastName, phone, school, metadata, now, userId).run();
 
+  if (Array.isArray(input.emergency_contacts)) {
+    await updateUserProfileEmergencyContacts(db, userId, input.emergency_contacts);
+  }
+
   return await getUserById(db, userId);
+}
+
+async function updateUserProfileEmergencyContacts(db, userId, contacts = []) {
+  const signupRows = await db.prepare(`
+    SELECT id, event_instance_id
+    FROM signups
+    WHERE user_id = ? AND event_instance_id IS NOT NULL
+  `).bind(userId).all();
+  const signupsByInstance = new Map((signupRows.results || []).map((row) => [row.event_instance_id, row]));
+  const seen = new Set();
+
+  for (const rawContact of contacts) {
+    const eventInstanceId = trimOrNull(rawContact?.event_instance_id ?? rawContact?.eventInstanceId);
+    if (!eventInstanceId || seen.has(eventInstanceId)) continue;
+    seen.add(eventInstanceId);
+    const signup = signupsByInstance.get(eventInstanceId);
+    if (!signup) {
+      throw Object.assign(new Error("Emergency contact can only be updated for your own event signups."), { status: 403 });
+    }
+    await upsertEmergencyContact(db, {
+      eventInstanceId,
+      userId,
+      signupId: signup.id,
+      contact: {
+        name: rawContact.name ?? rawContact.emergency_contact_name,
+        relationship: rawContact.relationship ?? rawContact.emergency_contact_relationship,
+        phone: rawContact.phone ?? rawContact.emergency_contact_phone
+      },
+      source: "profile"
+    });
+  }
 }
 
 export async function upsertSignup(db, eventSlug, input, mailingListResult, eventInstance = null, { requireEmergencyContact = true, source = "signup-api" } = {}) {
@@ -1735,6 +1819,10 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
       1 AS is_signed_up,
       COALESCE(pcs.signed_up_at, s.created_at) AS signed_up_at,
       pcs.checked_in_at,
+      ec.name AS emergency_contact_name,
+      ec.relationship AS emergency_contact_relationship,
+      ec.phone AS emergency_contact_phone,
+      ec.updated_at AS emergency_contact_updated_at,
       CASE WHEN ec.id IS NOT NULL AND length(trim(COALESCE(ec.name, ''))) > 0 AND length(trim(COALESCE(ec.phone, ''))) > 0 THEN 1 ELSE 0 END AS emergency_contact_present,
       (
         SELECT COUNT(DISTINCT epe.event_instance_id)
@@ -1770,6 +1858,12 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
       is_signed_up: Boolean(row.is_signed_up),
       signed_up_at: row.signed_up_at,
       checked_in_at: row.checked_in_at,
+      emergency_contact: row.emergency_contact_present ? {
+        name: row.emergency_contact_name,
+        relationship: row.emergency_contact_relationship || null,
+        phone: row.emergency_contact_phone,
+        updated_at: row.emergency_contact_updated_at || null
+      } : null,
       emergency_contact_present: Boolean(row.emergency_contact_present),
       attendance_count: attendanceCount,
       prior_attendance_count: priorAttendanceCount,
@@ -2117,7 +2211,9 @@ export function csvEscape(value) {
 export function signupsToCsv(signups) {
   const columns = [
     "created_at", "updated_at", "event_slug", "event_instance_id", "instance_key", "user_id", "name", "email", "phone", "school", "year",
-    "experience", "notes", "email_list_opt_in", "signed_up_at", "checked_in_at", "checked_out_at", "cancelled_at", "metadata_json", "mailing_list_status", "mailing_list_detail"
+    "experience", "notes", "email_list_opt_in", "signed_up_at", "checked_in_at", "checked_out_at", "cancelled_at",
+    "emergency_contact_present", "emergency_contact_name", "emergency_contact_relationship", "emergency_contact_phone", "emergency_contact_source", "emergency_contact_updated_at",
+    "metadata_json", "mailing_list_status", "mailing_list_detail"
   ];
   return [
     columns.join(","),

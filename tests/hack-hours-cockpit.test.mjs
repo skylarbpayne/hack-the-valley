@@ -17,6 +17,7 @@ import {
   getUserCommunityState,
   getPublicProjectHeroMedia,
   linkProjectSubmission,
+  listSignups,
   listEventPhotos,
   listEventProjectSubmissions,
   listPublicProjects,
@@ -105,6 +106,11 @@ test("participant profile shows editable profile info, badges, and project summa
   assert.match(html, /\/me\/projects\//);
   assert.match(html, /\/login\//);
   assert.match(html, /Manage your project workspace/);
+  assert.match(html, /Emergency contact/);
+  assert.match(html, /Private event-safety details/);
+  assert.match(html, /id="emergency-contact-fields"/);
+  assert.match(html, /data-emergency-contact/);
+  assert.match(html, /emergency_contacts/);
   assert.match(html, /Badges/);
   assert.match(html, /badge\.icon_url/);
   assert.match(html, /\/images\/badges\//);
@@ -309,6 +315,125 @@ test("/api/me lets the signed-in user update basic profile info", async () => {
   assert.equal(body.user.first_name, "Maya");
   assert.equal(body.user.school, "CSUB");
   assert.match(statements.map((s) => s.sql).join("\n"), /UPDATE users/);
+});
+
+test("/api/me lets the signed-in user update private emergency contact info for their event signups", async () => {
+  const statements = [];
+  const fakeDb = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya Rivera", first_name: "Maya", last_name: "Rivera", phone: "661-555-0100", school: "CSUB" };
+          if (/FROM emergency_contacts/.test(sql)) return { id: "emc_maya", event_instance_id: "inst_hack_hours_20260620", user_id: "usr_maya", signup_id: "sgn_maya", name: "Aunt Elena", relationship: "Aunt", phone: "661-555-0199", source: "profile" };
+          return null;
+        },
+        async all() {
+          if (/FROM signups\s+WHERE user_id/.test(sql)) return { results: [{ id: "sgn_maya", event_instance_id: "inst_hack_hours_20260620" }] };
+          if (/FROM signups s\s+JOIN events e/.test(sql)) return { results: [{ event_slug: "hack-hours", event_title: "Hack Hours", event_instance_id: "inst_hack_hours_20260620", signup_id: "sgn_maya", instance_key: "2026-06-20", name: "Aunt Elena", relationship: "Aunt", phone: "661-555-0199", source: "profile", present: 1 }] };
+          return { results: [] };
+        }
+      };
+      return statement;
+    }
+  };
+
+  const response = await worker.fetch(new Request("https://hackthevalley.org/api/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Cookie: "htv_session=test-session-token" },
+    body: JSON.stringify({
+      first_name: "Maya",
+      last_name: "Rivera",
+      emergency_contacts: [{
+        event_instance_id: "inst_hack_hours_20260620",
+        name: "Aunt Elena",
+        relationship: "Aunt",
+        phone: "661-555-0199"
+      }]
+    })
+  }), { HTV_DB: fakeDb }, {});
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.emergency_contacts[0].name, "Aunt Elena");
+  assert.equal(body.emergency_contacts[0].present, true);
+  const sql = statements.map((s) => s.sql).join("\n");
+  assert.match(sql, /SELECT id, event_instance_id\s+FROM signups/);
+  assert.match(sql, /INSERT INTO emergency_contacts/);
+  const contactWrite = statements.find((s) => /INSERT INTO emergency_contacts/.test(s.sql));
+  assert.ok(contactWrite.args.includes("inst_hack_hours_20260620"));
+  assert.ok(contactWrite.args.includes("usr_maya"));
+  assert.ok(contactWrite.args.includes("profile"));
+});
+
+test("/api/me rejects emergency contact updates for event instances the participant does not own", async () => {
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya" };
+          return null;
+        },
+        async all() {
+          if (/FROM signups\s+WHERE user_id/.test(sql)) return { results: [{ id: "sgn_maya", event_instance_id: "inst_owned" }] };
+          return { results: [] };
+        }
+      };
+    }
+  };
+  const response = await worker.fetch(new Request("https://hackthevalley.org/api/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Cookie: "htv_session=test-session-token" },
+    body: JSON.stringify({ emergency_contacts: [{ event_instance_id: "inst_someone_else", name: "Nope", phone: "661-555-0199" }] })
+  }), { HTV_DB: fakeDb }, {});
+  assert.equal(response.status, 403);
+  assert.match(await response.text(), /own event signups/);
+});
+
+test("authorized event signup exports include the latest emergency contact details", async () => {
+  const db = {
+    prepare(sql) {
+      assert.match(sql, /LEFT JOIN emergency_contacts ec/);
+      assert.match(sql, /emergency_contact_name/);
+      return {
+        bind(...args) { this.args = args; return this; },
+        async all() {
+          assert.deepEqual(this.args, ["hack-hours", "inst_hack_hours_20260620"]);
+          return { results: [{
+            id: "sgn_maya",
+            event_slug: "hack-hours",
+            event_instance_id: "inst_hack_hours_20260620",
+            user_id: "usr_maya",
+            email: "maya@example.com",
+            name: "Maya Rivera",
+            emergency_contact_present: 1,
+            emergency_contact_name: "Aunt Elena",
+            emergency_contact_relationship: "Aunt",
+            emergency_contact_phone: "661-555-0199",
+            emergency_contact_source: "profile"
+          }] };
+        }
+      };
+    }
+  };
+  const signups = await listSignups(db, "hack-hours", { eventInstanceId: "inst_hack_hours_20260620" });
+  assert.equal(signups[0].emergency_contact_name, "Aunt Elena");
+  assert.equal(signups[0].emergency_contact_source, "profile");
+});
+
+test("public project and leaderboard surfaces still omit emergency contact details", () => {
+  const projectsSource = read("functions/api/projects.js");
+  const leaderboardSource = read("functions/api/leaderboard.js");
+  const platformSource = read("functions/_lib/event-platform.js");
+  assert.doesNotMatch(projectsSource, /emergency_contacts|emergency_contact_name|emergency_contact_phone/);
+  assert.match(platformSource, /function sanitizePublicProjectRow/);
+  assert.match(leaderboardSource, /privacy: "Public leaderboard fields intentionally omit email, phone, emergency contact/);
 });
 
 test("/api/me/projects can create a project and associate it with an event context", async () => {

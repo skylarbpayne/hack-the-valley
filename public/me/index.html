@@ -13,15 +13,21 @@
   </script>
 </head>
 <body class="min-h-screen bg-bc-dark text-slate-100 font-sans">
-  <main id="participant-profile" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-    <nav class="flex items-center justify-between gap-4">
-      <a href="/" class="font-black text-white">Hack the Valley</a>
-      <div class="flex items-center gap-4 text-sm">
-        <a href="/events" class="text-slate-300 hover:text-bc-cyan">Events</a>
-        <a href="/projects/" class="text-slate-300 hover:text-bc-cyan">Public projects</a>
-        <a href="/login/" class="text-bc-cyan hover:text-cyan-300">Login</a>
+  <header class="sticky top-0 z-50 border-b border-slate-800 bg-bc-dark/90 backdrop-blur-md">
+    <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3" aria-label="Participant">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <a href="/" class="font-black text-xl text-white">Hack the Valley</a>
+        <div data-participant-nav class="flex flex-wrap items-center gap-2 text-sm font-bold">
+          <a data-nav-link="events" href="/events" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Events</a>
+          <a data-nav-link="projects" href="/projects/" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Projects</a>
+          <a data-nav-link="profile" href="/me/" aria-current="page" class="rounded-full bg-bc-cyan/15 px-3 py-2 text-bc-cyan ring-1 ring-bc-cyan/40">Profile</a>
+          <a data-nav-link="leaderboard" href="/leaderboard/" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Leaderboard</a>
+        </div>
       </div>
     </nav>
+  </header>
+
+  <main id="participant-profile" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
 
     <header class="mt-10 grid lg:grid-cols-[1.1fr_0.9fr] gap-6 items-stretch">
       <section class="rounded-3xl border border-slate-700 bg-bc-navy p-6 sm:p-8">

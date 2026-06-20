@@ -182,21 +182,25 @@ test('homepage exposes real mailing-list form instead of temporary mailto CTA', 
   assert.doesNotMatch(eventsHtml, /Temporary update CTA/);
 });
 
-test('top navigation stays simple and keeps the survey off the homepage', () => {
+test('top navigation stays participant-focused and keeps the survey off the homepage', () => {
   const indexHtml = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const eventHtml = readFileSync(new URL('../public/events/hack-the-valley-2026/index.html', import.meta.url), 'utf8');
 
   assert.doesNotMatch(indexHtml, /Take the survey/);
   assert.doesNotMatch(indexHtml, /forms\.gle\/CpechvKU24cPVAj38/);
   assert.doesNotMatch(indexHtml, />2026 Recap</);
-  assert.match(indexHtml, />Home<\/a>/);
+  assert.match(indexHtml, /data-participant-nav/);
   assert.match(indexHtml, />Events<\/a>/);
+  assert.match(indexHtml, />Projects<\/a>/);
+  assert.match(indexHtml, />Profile<\/a>/);
+  assert.match(indexHtml, />Leaderboard<\/a>/);
 
   assert.doesNotMatch(eventHtml, /Help Build/);
   assert.doesNotMatch(eventHtml, /Help build the next one/);
-  assert.match(eventHtml, /href="#projects"[^>]*>Projects<\/a>/);
-  assert.match(eventHtml, /href="#photos"[^>]*>Photos<\/a>/);
-  assert.match(eventHtml, /href="#survey"[^>]*>Survey<\/a>/);
+  assert.match(eventHtml, /data-nav-link="events" href="\/events"[^>]*aria-current="page"[^>]*>Events<\/a>/);
+  assert.match(eventHtml, /data-nav-link="projects" href="\/projects\/"[^>]*>Projects<\/a>/);
+  assert.match(eventHtml, /data-nav-link="profile" href="\/login\/\?next=\/me\/"[^>]*>Profile<\/a>/);
+  assert.match(eventHtml, /data-nav-link="leaderboard" href="\/leaderboard\/"[^>]*>Leaderboard<\/a>/);
 });
 
 test('event page relies on the embedded flyer instead of extra numbered stat cards', () => {

@@ -141,6 +141,22 @@
         </a>
       </section>
 
+      <section id="workflow-command-surface" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mb-8">
+        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-5">
+          <div>
+            <p class="text-bc-cyan uppercase tracking-[0.22em] text-xs font-black">Workflow map</p>
+            <h2 class="text-2xl font-black mt-1">What admins can do here</h2>
+            <p id="workflow-command-status" class="text-sm text-slate-400 mt-2 max-w-3xl">Live operator areas first; command contracts only where they help reviewers see boundaries. Editorial and outbound messaging work stays out of this surface.</p>
+          </div>
+          <button id="load-workflows" class="border border-slate-600 px-4 py-2 rounded-lg text-sm hover:border-bc-cyan">Refresh map</button>
+        </div>
+        <div id="workflow-command-summary" class="grid sm:grid-cols-3 gap-3 mb-4 text-sm"></div>
+        <div id="workflow-command-list" class="grid lg:grid-cols-[260px_1fr] gap-4 text-sm text-slate-300">
+          <div id="workflow-command-nav" class="space-y-2"></div>
+          <div id="workflow-command-detail" class="rounded-2xl border border-slate-700 bg-bc-dark p-4 min-h-64"></div>
+        </div>
+      </section>
+
       <section id="events-admin" class="bg-bc-navy border border-slate-700 rounded-2xl p-5 mb-8">
         <div class="flex flex-wrap gap-3 items-center">
           <button id="load-events" class="bg-bc-cyan text-bc-dark px-5 py-2.5 rounded-lg font-bold hover:bg-cyan-400">Load events</button>
@@ -275,6 +291,8 @@
     let currentCockpitInstanceId = null;
     let currentCockpitRoster = [];
     let currentAdminUser = null;
+    let workflowSections = [];
+    let selectedWorkflowId = null;
     let checkinSearchTimer = null;
     $("login-link").href = `/login/?next=${encodeURIComponent("/admin")}`;
 
@@ -332,6 +350,7 @@
       }
       showApp(me);
       if (loadData) {
+        await loadWorkflows();
         await loadEvents();
         await loadUsers();
         await loadHelperInterests();
@@ -434,6 +453,133 @@
       const data = contentType.includes("application/json") ? await response.json() : await response.text();
       if (!response.ok) throw new Error(typeof data === "string" ? data : data.error || "Request failed");
       return data;
+    }
+
+    async function loadWorkflows() {
+      const status = $("workflow-command-status");
+      try {
+        status.className = "text-sm text-slate-400 mt-2 max-w-3xl";
+        status.textContent = "Loading workflow command surface…";
+        const data = await api("/api/admin/workflows");
+        renderWorkflows(data.sections || []);
+        status.textContent = data.note || "Workflow command surface loaded.";
+        return data;
+      } catch (error) {
+        status.textContent = error.message;
+        status.className = "text-sm text-red-300 mt-2 max-w-3xl";
+        return null;
+      }
+    }
+
+    function commandFlagChips(command) {
+      const chips = [];
+      chips.push(command.readOnly ? "read-only" : "command");
+      if (command.approvalRequired) chips.push("approval");
+      if (command.danger) chips.push("gated");
+      return chips.map((chip) => `<span class="rounded-full ${chip === "gated" ? "bg-amber-500/15 text-amber-200 border border-amber-500/40" : "bg-slate-800 text-slate-300 border border-slate-700"} px-2 py-0.5 text-[0.68rem] uppercase tracking-[0.12em]">${escapeHtml(chip)}</span>`).join("");
+    }
+
+    function workflowStats(sections) {
+      const commands = sections.flatMap((section) => section.commands || []);
+      return {
+        domains: sections.length,
+        commands: commands.length,
+        gated: commands.filter((command) => command.danger || command.method === "GATED").length
+      };
+    }
+
+    function renderWorkflowSummary(sections) {
+      const stats = workflowStats(sections);
+      $("workflow-command-summary").innerHTML = [
+        [stats.domains, "operator domains", "Events, participation, projects, badges, audit"],
+        [stats.commands, "mapped actions", "Read paths plus approval-gated commands"],
+        [stats.gated, "danger-gated", "Shown as contracts, not one-click actions"]
+      ].map(([value, label, help]) => `
+        <div class="rounded-2xl border border-slate-700 bg-bc-dark p-4">
+          <div class="text-2xl font-black text-white">${escapeHtml(value)}</div>
+          <div class="text-xs uppercase tracking-[0.16em] text-bc-cyan font-black mt-1">${escapeHtml(label)}</div>
+          <div class="text-slate-500 mt-1">${escapeHtml(help)}</div>
+        </div>
+      `).join("");
+    }
+
+    function renderWorkflowNav(sections) {
+      $("workflow-command-nav").innerHTML = sections.map((section) => {
+        const commands = section.commands || [];
+        const selected = section.id === selectedWorkflowId;
+        return `
+          <button type="button" data-workflow-section="${escapeHtml(section.id)}" class="w-full rounded-2xl border ${selected ? "border-bc-cyan bg-cyan-400/10" : "border-slate-700 bg-bc-dark hover:border-slate-500"} p-4 text-left transition">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <div class="font-black text-white">${escapeHtml(section.label || section.id)}</div>
+                <div class="text-xs text-slate-500 mt-1">${commands.length} actions</div>
+              </div>
+              <div class="h-2.5 w-2.5 rounded-full ${selected ? "bg-bc-cyan" : "bg-slate-600"}"></div>
+            </div>
+            <div class="text-xs text-slate-400 mt-2 line-clamp-2">${escapeHtml(section.description || "")}</div>
+          </button>
+        `;
+      }).join("");
+
+      document.querySelectorAll("[data-workflow-section]").forEach((button) => {
+        button.addEventListener("click", () => {
+          selectedWorkflowId = button.getAttribute("data-workflow-section");
+          renderWorkflows(workflowSections);
+        });
+      });
+    }
+
+    function commandStateLabel(command) {
+      if (command.danger || command.method === "GATED") return "Needs explicit approval flow";
+      if (command.readOnly) return "Safe to inspect";
+      return "Review before save";
+    }
+
+    function renderWorkflowDetail(section) {
+      const commands = section?.commands || [];
+      $("workflow-command-detail").innerHTML = `
+        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3 border-b border-slate-700 pb-4 mb-4">
+          <div>
+            <div class="text-xs uppercase tracking-[0.18em] text-bc-cyan font-black">${escapeHtml(section?.id || "workflow")}</div>
+            <h3 class="text-xl font-black text-white mt-1">${escapeHtml(section?.label || "Workflow")}</h3>
+            <p class="text-slate-400 mt-1 max-w-2xl">${escapeHtml(section?.description || "")}</p>
+          </div>
+          <a href="${section?.id === "events" ? "#events-admin" : section?.id === "participation" ? "#event-cockpit" : section?.id === "projects" ? "/admin-submissions" : section?.id === "badges" ? "#users-admin" : "#workflow-command-surface"}" class="shrink-0 rounded-lg border border-slate-600 px-3 py-2 text-sm font-bold hover:border-bc-cyan">Go to live tool</a>
+        </div>
+        <div class="space-y-2">
+          ${commands.map((command) => `
+            <div class="rounded-xl border ${command.danger ? "border-amber-500/60 bg-amber-500/5" : "border-slate-700 bg-slate-950/40"} p-3">
+              <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-2">
+                <div>
+                  <div class="font-black text-white">${escapeHtml(command.label)}</div>
+                  <div class="text-slate-400 mt-1">${escapeHtml(command.description || "")}</div>
+                </div>
+                <div class="flex flex-wrap gap-1 lg:justify-end">${commandFlagChips(command)}</div>
+              </div>
+              <div class="mt-2 flex flex-col sm:flex-row sm:items-center gap-2 text-xs text-slate-500">
+                <code class="rounded bg-slate-900 px-2 py-1 text-slate-300 break-all">${escapeHtml(command.method)} ${escapeHtml(command.pathTemplate)}</code>
+                <span>${escapeHtml(commandStateLabel(command))}</span>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderWorkflows(sections) {
+      workflowSections = sections;
+      if (!selectedWorkflowId || !sections.some((section) => section.id === selectedWorkflowId)) {
+        selectedWorkflowId = sections[0]?.id || null;
+      }
+      if (!sections.length) {
+        $("workflow-command-summary").innerHTML = "";
+        $("workflow-command-nav").innerHTML = "";
+        $("workflow-command-detail").innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">No workflow commands are available for this admin role.</div>`;
+        return;
+      }
+      renderWorkflowSummary(sections);
+      renderWorkflowNav(sections);
+      renderWorkflowDetail(sections.find((section) => section.id === selectedWorkflowId) || sections[0]);
     }
 
     function cockpitSummaryCard(label, value, tone = "text-white") {
@@ -1178,6 +1324,7 @@
       }
     });
     $("load-users").addEventListener("click", () => loadUsers().catch(() => {}));
+    $("load-workflows").addEventListener("click", () => loadWorkflows().catch(() => {}));
     $("load-helper-interests").addEventListener("click", () => loadHelperInterests().catch(() => {}));
     $("load-admin-roles").addEventListener("click", () => loadAdminRoles().catch(() => {}));
     $("admin-role-form").addEventListener("submit", applyAdminRoleChange);

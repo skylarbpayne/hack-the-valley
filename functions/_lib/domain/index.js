@@ -3,3 +3,4 @@ export * from "./audit.js";
 export * from "./events.js";
 export * from "./people.js";
 export * from "./participation.js";
+export * from "./badges.js";

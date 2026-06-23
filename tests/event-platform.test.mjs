@@ -912,6 +912,7 @@ test("renderEventPageHtml returns a real event-specific page, not the events lis
 test("public events page uses clickable cards, signup CTAs, and a true event-detail mode", () => {
   const html = readFileSync(new URL("../public/events/index.html", import.meta.url), "utf8");
   assert.match(html, /event\.image_url/);
+  assert.match(html, /object-contain/);
   assert.match(html, /id="events-hero"/);
   assert.match(html, /id="events-overview-grid"/);
   assert.match(html, /isEventDetailPath/);
@@ -928,6 +929,14 @@ test("public events page uses clickable cards, signup CTAs, and a true event-det
   assert.match(html, /pathEventMatch/);
   assert.doesNotMatch(html, /event-content-before/);
   assert.doesNotMatch(html, /event-content-after/);
+});
+
+test("Demo Hours launch packet and migration point at the static poster asset", () => {
+  const launchPacket = readFileSync(new URL("../references/htv-july22-launch-packet.md", import.meta.url), "utf8");
+  const migration = readFileSync(new URL("../migrations/0017_set_demo_hours_header_image.sql", import.meta.url), "utf8");
+  assert.match(launchPacket, /'\/assets\/events\/demo-hours\.png'/);
+  assert.match(migration, /WHERE slug = 'demo-hours'/);
+  assert.match(migration, /image_url = '\/assets\/events\/demo-hours\.png'/);
 });
 
 test("worker routes dynamic event APIs on the deployed Worker surface", async () => {

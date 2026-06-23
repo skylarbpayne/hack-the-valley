@@ -76,7 +76,7 @@ INSERT INTO events (
   '2005 Eye Street Ste 8, Bakersfield, CA 93301',
   NULL,
   'open',
-  NULL,
+  '/assets/events/demo-hours.png',
   'Bring a project, prototype, workflow, AI experiment, app, site, robot, research thread, or half-working thing. The bar is not polish — it is showing other builders what you are trying and what you learned.\n\nYou can sign up just to attend, or sign up to demo something. We will announce recipients of the Hack Hours + Demo Hours free subscription / AI credits at this event.',
   '{"role_label":"I want to","default_role":"attend","roles":[{"value":"attend","label":"Attend","description":"Come watch demos, meet other builders, and hang out."},{"value":"demo","label":"Demo something","description":"Share a project, prototype, workflow, or weird experiment for a few minutes."}]}',
   NULL,

@@ -12,7 +12,7 @@ import {
 import {
   cancelParticipation,
   checkInParticipant,
-  listParticipationRoster as domainListParticipationRoster,
+  getParticipationCockpitReadModel,
   normalizeParticipationInput,
   registerParticipation,
   resolveParticipationReadiness
@@ -66,6 +66,7 @@ export {
 export {
   cancelParticipation,
   checkInParticipant,
+  getParticipationCockpitReadModel,
   listParticipationRoster,
   normalizeParticipationInput,
   registerParticipation,
@@ -1600,16 +1601,16 @@ export async function getEmergencyContactStatus(db, eventInstanceId, userId) {
   return { present, contact: contact || null };
 }
 
-function progressionLabels(attendanceCount, priorAttendanceCount = 0) {
+function isRepeatAttendee(row) {
+  return (row.progression_labels || []).includes("repeat");
+}
+
+function legacyProgressionLabels(attendanceCount, priorAttendanceCount = 0) {
   const count = Number(attendanceCount || 0);
   const priorCount = Number(priorAttendanceCount || 0);
   if (count >= 3) return ["repeat", "3x attendee"];
   if (count >= 2 || priorCount >= 1) return ["repeat"];
   return ["first-time"];
-}
-
-function isRepeatAttendee(row) {
-  return (row.progression_labels || []).includes("repeat");
 }
 
 export async function listEventPhotos(db, eventSlug, eventInstanceId, { limit = 20 } = {}) {
@@ -1676,7 +1677,8 @@ export async function createEventPhotoRecord(db, input) {
   };
 }
 
-export async function getEventCockpit(db, eventSlug, eventInstanceId) {
+
+async function getLegacyEventCockpitForFollowup(db, eventSlug, eventInstanceId) {
   const instance = await getEventInstance(db, eventSlug, eventInstanceId);
   if (!instance) {
     throw Object.assign(new Error("Event instance not found"), { status: 404 });
@@ -1749,7 +1751,7 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
       emergency_contact_present: Boolean(row.emergency_contact_present),
       attendance_count: attendanceCount,
       prior_attendance_count: priorAttendanceCount,
-      progression_labels: progressionLabels(attendanceCount, priorAttendanceCount)
+      progression_labels: legacyProgressionLabels(attendanceCount, priorAttendanceCount)
     };
   });
   const summary = {
@@ -1775,8 +1777,43 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
   };
 }
 
+export async function getEventCockpit(db, eventSlug, eventInstanceId) {
+  const instance = await getEventInstance(db, eventSlug, eventInstanceId);
+  if (!instance) {
+    throw Object.assign(new Error("Event instance not found"), { status: 404 });
+  }
+  const event = await getEvent(db, eventSlug);
+  if (!event) {
+    throw Object.assign(new Error("Event not found"), { status: 404 });
+  }
+  const [photoRows, eventPhotoCount, participationCockpit] = await Promise.all([
+    listEventPhotos(db, eventSlug, eventInstanceId, { limit: 8 }),
+    countEventPhotos(db, eventSlug, eventInstanceId),
+    getParticipationCockpitReadModel(db, { eventSlug, eventInstanceId })
+  ]);
+  const roster = participationCockpit.roster;
+  const summary = {
+    ...participationCockpit.summary,
+    event_photo_count: eventPhotoCount
+  };
+  return {
+    event: { slug: event.slug, title: event.title },
+    instance: {
+      id: instance.id,
+      instance_key: instance.instance_key,
+      starts_at: instance.starts_at,
+      ends_at: instance.ends_at,
+      status: instance.status,
+      title: instance.title
+    },
+    summary,
+    roster,
+    photos: { count: eventPhotoCount, recent: photoRows }
+  };
+}
+
 export async function getEventFollowupPacket(db, eventSlug, eventInstanceId) {
-  const cockpit = await getEventCockpit(db, eventSlug, eventInstanceId);
+  const cockpit = await getLegacyEventCockpitForFollowup(db, eventSlug, eventInstanceId);
   const attended = cockpit.roster.filter((row) => row.checked_in_at);
   const noShow = cockpit.roster.filter((row) => !row.checked_in_at);
   const firstTime = attended.filter((row) => !isRepeatAttendee(row));

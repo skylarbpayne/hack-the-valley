@@ -4,10 +4,12 @@ import assert from "node:assert/strict";
 import {
   cancelParticipation,
   checkInParticipant,
+  getParticipationCockpitReadModel,
   listParticipationRoster,
   normalizeParticipationInput,
   registerParticipation,
-  resolveParticipationReadiness
+  resolveParticipationReadiness,
+  summarizeParticipationCockpitRoster
 } from "../functions/_lib/domain/participation.js";
 
 const demoEvent = {
@@ -319,4 +321,57 @@ test("listParticipationRoster returns roster rows with safety and progression fa
   assert.equal(roster[0].signup_role, "demo");
   assert.equal(roster[0].emergency_contact_present, true);
   assert.deepEqual(roster[0].progression_labels, ["first-time"]);
+});
+
+test("getParticipationCockpitReadModel exposes the admin cockpit roster/readiness contract", async () => {
+  const db = createParticipationDb();
+  const ready = await registerParticipation(db, {
+    person: { name: "Ada Lovelace", email: "ada@example.com" },
+    eventSeries: demoEvent,
+    eventInstance: { id: "inst_demo_hours_20260722", event_slug: "demo-hours" },
+    eventRole: "demo",
+    safetyInput: { name: "Charles Babbage", phone: "661-555-0100", relationship: "Friend" },
+    source: "domain-test"
+  });
+  const missing = await registerParticipation(db, {
+    person: { name: "Grace Hopper", email: "grace@example.com" },
+    eventSeries: demoEvent,
+    eventInstance: { id: "inst_demo_hours_20260722", event_slug: "demo-hours" },
+    eventRole: "attend",
+    source: "domain-test"
+  });
+  await checkInParticipant(db, { personId: ready.signup.user_id, eventInstanceId: "inst_demo_hours_20260722", actor: "admin" });
+  db.participantEvents.push({
+    id: "evt_prior_attendance",
+    event_slug: "demo-hours",
+    event_instance_id: "inst_demo_hours_20260715",
+    user_id: ready.signup.user_id,
+    signup_id: ready.signup.id,
+    event_type: "checked_in",
+    occurred_at: "2026-07-15T01:00:00.000Z"
+  });
+
+  const cockpit = await getParticipationCockpitReadModel(db, { eventSlug: "demo-hours", eventInstanceId: "inst_demo_hours_20260722" });
+
+  assert.equal(cockpit.summary.signed_up_count, 2);
+  assert.equal(cockpit.summary.checked_in_count, 1);
+  assert.equal(cockpit.summary.missing_emergency_contact_count, 1);
+  assert.equal(cockpit.summary.repeat_attendee_count, 1);
+  assert.equal(cockpit.roster.find((row) => row.user_id === ready.signup.user_id).emergency_contact.phone, "661-555-0100");
+  assert.equal(cockpit.roster.find((row) => row.user_id === missing.signup.user_id).emergency_contact, null);
+  assert.equal(Object.hasOwn(cockpit.roster[0], "school"), false);
+  assert.equal(Object.hasOwn(cockpit.roster[0], "notes"), false);
+  assert.equal(Object.hasOwn(cockpit.roster[0], "event_slug"), false);
+});
+
+test("summarizeParticipationCockpitRoster keeps readiness counts in Participation", () => {
+  assert.deepEqual(summarizeParticipationCockpitRoster([
+    { checked_in_at: "2026-07-22T01:00:00.000Z", emergency_contact_present: true, progression_labels: ["repeat"] },
+    { checked_in_at: null, emergency_contact_present: false, progression_labels: ["first-time"] }
+  ]), {
+    signed_up_count: 2,
+    checked_in_count: 1,
+    missing_emergency_contact_count: 1,
+    repeat_attendee_count: 1
+  });
 });

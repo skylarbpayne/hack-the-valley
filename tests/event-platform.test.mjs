@@ -9,6 +9,7 @@ import {
   createHelperInterest,
   csvEscape,
   getEventSeries,
+  getParticipationCockpitReadModel,
   listEvents,
   listEventSeries,
   listHelperInterests,
@@ -1135,6 +1136,7 @@ test("event-platform keeps legacy event imports while exposing domain event help
   assert.equal(typeof listEventSeries, "function");
   assert.equal(typeof normalizeParticipationInput, "function");
   assert.equal(typeof registerParticipation, "function");
+  assert.equal(typeof getParticipationCockpitReadModel, "function");
 
   const db = {
     prepare(sql) {
@@ -1190,6 +1192,27 @@ test("event signup writes signups and participant events against a concrete inst
   assert.match(participationSource, /INSERT INTO signups/);
   assert.match(participationSource, /INSERT OR IGNORE INTO event_participant_events/);
   assert.match(participationSource, /eventInstance\.id/);
+});
+
+test("cockpit read construction delegates roster/readiness to Participation read model", () => {
+  const platformSource = readFileSync(new URL("../functions/_lib/event-platform.js", import.meta.url), "utf8");
+  const participationSource = readFileSync(new URL("../functions/_lib/domain/participation.js", import.meta.url), "utf8");
+  const cockpitFunction = platformSource.slice(
+    platformSource.indexOf("export async function getEventCockpit"),
+    platformSource.indexOf("export async function getEventFollowupPacket")
+  );
+  const followupFunction = platformSource.slice(
+    platformSource.indexOf("export async function getEventFollowupPacket"),
+    platformSource.indexOf("export async function getUserById")
+  );
+
+  assert.match(platformSource, /getParticipationCockpitReadModel/);
+  assert.match(cockpitFunction, /getParticipationCockpitReadModel\(db, \{ eventSlug, eventInstanceId \}\)/);
+  assert.doesNotMatch(cockpitFunction, /FROM signups s/);
+  assert.match(followupFunction, /getLegacyEventCockpitForFollowup\(db, eventSlug, eventInstanceId\)/);
+  assert.doesNotMatch(followupFunction, /getEventCockpit\(db, eventSlug, eventInstanceId\)/);
+  assert.match(participationSource, /export async function getParticipationCockpitReadModel/);
+  assert.match(participationSource, /summarizeParticipationCockpitRoster/);
 });
 
 test("event schema has editable page content and a forward cleanup migration", () => {

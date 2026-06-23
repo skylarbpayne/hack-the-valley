@@ -17,6 +17,15 @@ import {
   registerParticipation,
   resolveParticipationReadiness
 } from "./domain/participation.js";
+import {
+  applySafetyProfileToMetadata,
+  normalizePersonSafetyProfile,
+  personSafetyReadiness,
+  safetyProfileFromPerson,
+  safetyProfileInputFromPatch,
+  snapshotPersonSafetyForEvent,
+  updatePersonSafetyProfile
+} from "./domain/people.js";
 
 export {
   EventInstanceSchema,
@@ -42,6 +51,14 @@ export {
   registerParticipation,
   resolveParticipationReadiness
 } from "./domain/participation.js";
+
+export {
+  normalizePersonSafetyProfile,
+  personSafetyReadiness,
+  safetyProfileFromPerson,
+  snapshotPersonSafetyForEvent,
+  updatePersonSafetyProfile
+} from "./domain/people.js";
 
 const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -1137,8 +1154,15 @@ export async function getUserCommunityState(db, userId) {
   const projectRows = (projects.results || []).map(sanitizeProjectRow);
   const storedBadges = badges.results || [];
   const derivedBadges = derivedBadgesForState({ attendance: attendanceRows, projects: projectRows, projectAwards: projectAwards.results || [] });
+  const safetyProfile = safetyProfileFromPerson(user);
   return {
-    user,
+    user: {
+      ...user,
+      safety_profile: safetyProfile.profile,
+      safety_readiness: safetyProfile.readiness
+    },
+    person_safety_profile: safetyProfile.profile,
+    person_safety_readiness: safetyProfile.readiness,
     roles: roles.results || [],
     attendance: attendanceRows,
     emergency_contacts: (emergencyContacts.results || []).map((row) => ({
@@ -1701,8 +1725,19 @@ export async function updateUserProfile(db, userId, input = {}) {
   const name = suppliedName || composedName || trimOrNull(existing.name) || existing.email;
   const phone = trimOrNull(input.phone ?? existing.phone);
   const school = trimOrNull(input.school ?? input.university ?? existing.school);
-  const metadata = stringifyJson(input.metadata ?? input.metadata_json ?? existing.metadata_json);
   const now = new Date().toISOString();
+  const suppliedMetadata = input.metadata ?? input.metadata_json ?? existing.metadata_json;
+  const safetyInput = safetyProfileInputFromPatch(input);
+  const safetyUpdate = safetyInput
+    ? applySafetyProfileToMetadata(suppliedMetadata, safetyInput, { now })
+    : { metadata: parseJsonObject(suppliedMetadata, {}), safety: null, changed: false };
+  if (safetyUpdate.safety?.hasAny && !safetyUpdate.safety.complete) {
+    throw Object.assign(new Error(safetyUpdate.safety.errors.join("; ")), { status: 400, errors: safetyUpdate.safety.errors });
+  }
+  const metadata = stringifyJson(safetyUpdate.metadata);
+  const emergencyContactUpdates = Array.isArray(input.emergency_contacts)
+    ? await validateUserProfileEmergencyContacts(db, userId, input.emergency_contacts)
+    : [];
 
   await db.prepare(`
     UPDATE users
@@ -1716,14 +1751,14 @@ export async function updateUserProfile(db, userId, input = {}) {
     WHERE id = ?
   `).bind(name, firstName, lastName, phone, school, metadata, now, userId).run();
 
-  if (Array.isArray(input.emergency_contacts)) {
-    await updateUserProfileEmergencyContacts(db, userId, input.emergency_contacts);
+  for (const contactUpdate of emergencyContactUpdates) {
+    await upsertEmergencyContact(db, contactUpdate);
   }
 
   return await getUserById(db, userId);
 }
 
-async function updateUserProfileEmergencyContacts(db, userId, contacts = []) {
+async function validateUserProfileEmergencyContacts(db, userId, contacts = []) {
   const signupRows = await db.prepare(`
     SELECT id, event_instance_id
     FROM signups
@@ -1731,6 +1766,7 @@ async function updateUserProfileEmergencyContacts(db, userId, contacts = []) {
   `).bind(userId).all();
   const signupsByInstance = new Map((signupRows.results || []).map((row) => [row.event_instance_id, row]));
   const seen = new Set();
+  const updates = [];
 
   for (const rawContact of contacts) {
     const eventInstanceId = trimOrNull(rawContact?.event_instance_id ?? rawContact?.eventInstanceId);
@@ -1740,18 +1776,24 @@ async function updateUserProfileEmergencyContacts(db, userId, contacts = []) {
     if (!signup) {
       throw Object.assign(new Error("Emergency contact can only be updated for your own event signups."), { status: 403 });
     }
-    await upsertEmergencyContact(db, {
+    const contact = {
+      name: rawContact.name ?? rawContact.emergency_contact_name,
+      relationship: rawContact.relationship ?? rawContact.emergency_contact_relationship,
+      phone: rawContact.phone ?? rawContact.emergency_contact_phone
+    };
+    const normalized = normalizeEmergencyContactInput({ emergency_contact: contact });
+    if (normalized.errors.length) {
+      throw Object.assign(new Error(normalized.errors.join("; ")), { status: 400, errors: normalized.errors });
+    }
+    updates.push({
       eventInstanceId,
       userId,
       signupId: signup.id,
-      contact: {
-        name: rawContact.name ?? rawContact.emergency_contact_name,
-        relationship: rawContact.relationship ?? rawContact.emergency_contact_relationship,
-        phone: rawContact.phone ?? rawContact.emergency_contact_phone
-      },
+      contact: normalized.contact,
       source: "profile"
     });
   }
+  return updates;
 }
 
 export async function upsertSignup(db, eventSlug, input, mailingListResult, eventInstance = null, { requireEmergencyContact = true, source = "signup-api", currentUser = null } = {}) {

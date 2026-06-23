@@ -4,3 +4,5 @@ export * from "./events.js";
 export * from "./people.js";
 export * from "./participation.js";
 export * from "./badges.js";
+export * from "./projects.js";
+export * from "./submissions.js";

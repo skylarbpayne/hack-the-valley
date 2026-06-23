@@ -1,9 +1,9 @@
 import {
   getDb,
   handleErrors,
-  listPublicProjects,
   methodNotAllowed
 } from "../_lib/event-platform.js";
+import { listPublicProjects } from "../_lib/domain/submissions.js";
 import { jsonResponse, optionsResponse } from "../_shared/submissions.js";
 
 export function onRequestOptions() {

@@ -1,15 +1,17 @@
 import {
-  claimProjectForUser,
   getCurrentUserFromSession,
   getDb,
   getUserCommunityState,
   handleErrors,
   jsonResponse,
   methodNotAllowed,
-  readJson,
-  submitOwnedProjectToEvent,
-  updateOwnedProjectForUser
+  readJson
 } from "../../_lib/event-platform.js";
+import {
+  claimProjectForUser,
+  updateOwnedProjectForUser
+} from "../../_lib/domain/projects.js";
+import { submitOwnedProjectToEvent } from "../../_lib/domain/submissions.js";
 import {
   insertSubmission,
   normalizeSubmissionTracks,

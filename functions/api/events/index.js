@@ -2,7 +2,7 @@ import {
   getDb,
   handleErrors,
   jsonResponse,
-  listEvents,
+  listEventSeries,
   methodNotAllowed,
   readJson,
   requireAdmin,
@@ -14,7 +14,7 @@ export async function onRequestGet(context) {
     const url = new URL(context.request.url);
     const includeArchived = url.searchParams.get("include_archived") === "1";
     const db = getDb(context.env);
-    const events = await listEvents(db, { includeArchived });
+    const events = await listEventSeries(db, { includeArchived });
     return jsonResponse({ events });
   });
 }

@@ -342,6 +342,43 @@ export async function listParticipationRoster(db, { eventSlug, eventInstanceId =
   return (result.results || []).map(toParticipationRosterRow);
 }
 
+export async function getParticipationCockpitReadModel(db, { eventSlug, eventInstanceId } = {}) {
+  const roster = (await listParticipationRoster(db, { eventSlug, eventInstanceId }))
+    .map(toParticipationCockpitRosterRow);
+  return {
+    summary: summarizeParticipationCockpitRoster(roster),
+    roster
+  };
+}
+
+export function summarizeParticipationCockpitRoster(roster = []) {
+  return {
+    signed_up_count: roster.length,
+    checked_in_count: roster.filter((row) => row.checked_in_at).length,
+    missing_emergency_contact_count: roster.filter((row) => !row.emergency_contact_present).length,
+    repeat_attendee_count: roster.filter(isRepeatAttendee).length
+  };
+}
+
+function toParticipationCockpitRosterRow(row = {}) {
+  return {
+    user_id: row.user_id,
+    signup_id: row.signup_id,
+    event_instance_id: row.event_instance_id,
+    signup_role: row.signup_role || null,
+    name: row.name,
+    email: row.email,
+    is_signed_up: Boolean(row.is_signed_up),
+    signed_up_at: row.signed_up_at,
+    checked_in_at: row.checked_in_at,
+    emergency_contact: row.emergency_contact || null,
+    emergency_contact_present: Boolean(row.emergency_contact_present),
+    attendance_count: Number(row.attendance_count || 0),
+    prior_attendance_count: Number(row.prior_attendance_count || 0),
+    progression_labels: Array.isArray(row.progression_labels) ? row.progression_labels : progressionLabels(row.attendance_count, row.prior_attendance_count)
+  };
+}
+
 function toParticipationRosterRow(row = {}) {
   const attendanceCount = Number(row.attendance_count || 0);
   const priorAttendanceCount = Number(row.prior_attendance_count || 0);
@@ -608,6 +645,10 @@ function progressionLabels(attendanceCount, priorAttendanceCount = 0) {
   if (count >= 3) return ["repeat", "3x attendee"];
   if (count >= 2 || priorCount >= 1) return ["repeat"];
   return ["first-time"];
+}
+
+function isRepeatAttendee(row = {}) {
+  return (row.progression_labels || []).includes("repeat");
 }
 
 function splitName(name) {

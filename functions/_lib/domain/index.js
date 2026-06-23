@@ -6,3 +6,4 @@ export * from "./participation.js";
 export * from "./badges.js";
 export * from "./projects.js";
 export * from "./submissions.js";
+export * from "./content.js";

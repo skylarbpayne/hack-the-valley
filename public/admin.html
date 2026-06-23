@@ -97,8 +97,8 @@
             <section id="followup-packet" class="bg-bc-dark border border-slate-700 rounded-2xl p-4 space-y-3">
               <div class="flex items-start justify-between gap-3">
                 <div>
-                  <h3 class="font-black text-lg">Follow-up packet</h3>
-                  <p class="text-sm text-slate-400">Builds attended/no-show/repeat segments and a draft. Nothing sends from here.</p>
+                  <h3 class="font-black text-lg">Follow-up ContentItem preview</h3>
+                  <p class="text-sm text-slate-400">Builds attended/no-show/repeat segments and a ContentItem draft preview. Nothing publishes or sends from here.</p>
                 </div>
                 <button id="load-followup-packet" type="button" class="border border-bc-cyan text-bc-cyan px-3 py-2 rounded-lg text-sm font-black hover:bg-bc-cyan hover:text-bc-dark">Build</button>
               </div>
@@ -643,6 +643,8 @@
       const summary = data.summary || {};
       const segments = data.segments || {};
       const draft = data.followup_draft || {};
+      const contentItem = draft.content_item || {};
+      const contentPreview = draft.content_preview || {};
       const segmentLine = [
         `attended ${segments.attended?.length || 0}`,
         `no-show ${segments.no_show?.length || 0}`,
@@ -659,9 +661,10 @@
           <div class="mt-1 text-white font-semibold">${escapeHtml(segmentLine)}</div>
         </div>
         <div class="rounded-xl border border-slate-700 p-3">
-          <div class="text-xs uppercase tracking-[0.16em] text-slate-500">Draft status</div>
-          <div class="mt-1 text-white font-semibold">${escapeHtml(draft.status || "needs_review")} ${draft.requires_approval ? "• approval required" : ""}</div>
-          <div class="mt-1 text-slate-400">${escapeHtml(draft.subject || "")}</div>
+          <div class="text-xs uppercase tracking-[0.16em] text-slate-500">ContentItem draft preview</div>
+          <div class="mt-1 text-white font-semibold">${escapeHtml(contentItem.title || draft.subject || "")} ${draft.requires_approval ? "• approval required" : ""}</div>
+          <div class="mt-1 text-slate-400">${escapeHtml(contentPreview.text_preview || draft.preview_text || "")}</div>
+          <div class="mt-2 font-mono text-xs text-slate-500">${escapeHtml(contentItem.content_kind || "event_followup")} ${contentItem.id ? "• " + escapeHtml(contentItem.id) : ""}</div>
         </div>
         <label class="block"><span class="text-xs uppercase tracking-[0.16em] text-slate-500">Attended CSV</span><textarea readonly rows="4" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-700 p-3 text-xs text-slate-200">${escapeHtml(data.segment_csv?.attended || "")}</textarea></label>
         <label class="block"><span class="text-xs uppercase tracking-[0.16em] text-slate-500">No-show CSV</span><textarea readonly rows="4" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-700 p-3 text-xs text-slate-200">${escapeHtml(data.segment_csv?.no_show || "")}</textarea></label>

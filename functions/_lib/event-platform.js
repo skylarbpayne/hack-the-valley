@@ -46,6 +46,10 @@ import {
   updateEventProjectSubmissionStatus as domainUpdateEventProjectSubmissionStatus,
   upsertProjectFromSubmission as domainUpsertProjectFromSubmission
 } from "./domain/submissions.js";
+import {
+  createContentDraft,
+  previewContentItem
+} from "./domain/content.js";
 
 export {
   EventInstanceSchema,
@@ -104,6 +108,16 @@ export {
   setEventProjectSubmissionStatus,
   submitProjectToEvent
 } from "./domain/submissions.js";
+
+export {
+  ContentItemSchema,
+  ContentPreviewSchema,
+  assertPublishApproval,
+  createContentDraft,
+  previewContentItem,
+  publishContentItem,
+  toContentItem
+} from "./domain/content.js";
 
 const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -1753,6 +1767,25 @@ export async function getEventFollowupPacket(db, eventSlug, eventInstanceId) {
     repeat_attendee_count: repeat.length
   };
   const title = cockpit.event.title || "Hack Hours";
+  const followupTitle = `Thanks for coming to ${title}`;
+  const followupPreviewText = "Draft only: thank attendees, share next Hack Hours, and invite no-shows to the next session. No send occurs from this endpoint.";
+  const followupContentItem = createContentDraft({
+    kind: "event_followup",
+    title: followupTitle,
+    bodyHtml: `<p>${escapeHtml(followupPreviewText)}</p>`,
+    related: {
+      event_slug: cockpit.event.slug,
+      event_instance_id: cockpit.instance.id,
+      audience_segments: ["attended", "no_show", "first_time", "repeat"],
+      counts: {
+        attended: attended.length,
+        no_show: noShow.length,
+        first_time: firstTime.length,
+        repeat: repeat.length
+      }
+    }
+  });
+  const followupContentPreview = previewContentItem(followupContentItem);
   return {
     event: cockpit.event,
     instance: cockpit.instance,
@@ -1773,9 +1806,11 @@ export async function getEventFollowupPacket(db, eventSlug, eventInstanceId) {
       status: "needs_review",
       requires_approval: true,
       channel: "resend_or_copy",
-      subject: `Thanks for coming to ${title}`,
-      preview_text: `Draft only: thank attendees, share next Hack Hours, and invite no-shows to the next session. No send occurs from this endpoint.`,
-      audience_segments: ["attended", "no_show", "first_time", "repeat"]
+      subject: followupTitle,
+      preview_text: followupPreviewText,
+      audience_segments: ["attended", "no_show", "first_time", "repeat"],
+      content_item: followupContentItem,
+      content_preview: followupContentPreview
     }
   };
 }

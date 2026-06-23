@@ -1236,6 +1236,13 @@ test("follow-up packet builds approval-gated draft and safe segments without eme
   assert.deepEqual(packet.segments.no_show.map((row) => row.email), ["noshow@example.com"]);
   assert.equal(packet.followup_draft.status, "needs_review");
   assert.equal(packet.followup_draft.requires_approval, true);
+  assert.equal(packet.followup_draft.content_item.kind, "content_item");
+  assert.equal(packet.followup_draft.content_item.content_kind, "event_followup");
+  assert.equal(packet.followup_draft.content_item.status, "draft");
+  assert.equal(packet.followup_draft.content_preview.kind, "content_preview");
+  assert.equal(packet.followup_draft.content_preview.approval_required, true);
+  assert.equal(packet.followup_draft.content_preview.publish_action, "content_item.publish");
+  assert.match(packet.followup_draft.content_preview.text_preview, /Draft only: thank attendees/);
   assert.match(packet.segment_csv.attended, /email,name,segment,checked_in_at,attendance_count/);
   assert.match(packet.segment_csv.attended, /ava@example\.com,'=Ava Attended,attended/);
   assert.doesNotMatch(packet.segment_csv.attended, /emergency|phone|contact/i);
@@ -1522,6 +1529,8 @@ test("worker routes follow-up packet API and requires admin", async () => {
   const body = await response.json();
   assert.equal(body.followup_draft.status, "needs_review");
   assert.equal(body.followup_draft.requires_approval, true);
+  assert.equal(body.followup_draft.content_item.kind, "content_item");
+  assert.equal(body.followup_draft.content_preview.publish_action, "content_item.publish");
 });
 
 test("worker routes cockpit API and requires admin", async () => {

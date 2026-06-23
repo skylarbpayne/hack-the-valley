@@ -249,7 +249,7 @@ export function normalizeSignupInput(input, eventSlug, { requireEmergencyContact
     experience: trimOrNull(input.experience),
     notes: trimOrNull(input.notes || input.message),
     email_list_opt_in: wantsEmailList ? 1 : 0,
-    metadata_json: stringifyJson(input.metadata || buildLegacyMetadata(input)),
+    metadata_json: stringifyJson(normalizeSignupMetadata(input)),
     emergency_contact: emergency.contact
   };
 
@@ -314,6 +314,70 @@ function parseJsonArray(value, fallback = []) {
   } catch {
     return fallback;
   }
+}
+
+function normalizeSignupRoleValue(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+  return normalized || null;
+}
+
+export function signupRolesForEvent(event = {}) {
+  const config = parseJsonObject(event.signup_fields_json, {});
+  const rawRoles = Array.isArray(config.roles)
+    ? config.roles
+    : Array.isArray(config.signup_roles)
+      ? config.signup_roles
+      : [];
+  return rawRoles
+    .map((role) => {
+      const source = role && typeof role === "object" ? role : { value: role, label: role };
+      const value = normalizeSignupRoleValue(source.value || source.id || source.key || source.label);
+      if (!value) return null;
+      return {
+        value,
+        label: trimOrNull(source.label) || value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()),
+        description: trimOrNull(source.description || source.help || source.hint)
+      };
+    })
+    .filter(Boolean);
+}
+
+function signupRoleConfigForEvent(event = {}) {
+  const config = parseJsonObject(event.signup_fields_json, {});
+  const roles = signupRolesForEvent(event);
+  const requestedDefault = normalizeSignupRoleValue(config.default_role || config.defaultRole);
+  const defaultRole = roles.find((role) => role.value === requestedDefault)?.value || roles[0]?.value || null;
+  return {
+    roles,
+    default_role: defaultRole,
+    label: trimOrNull(config.role_label || config.signup_role_label) || "How do you want to participate?"
+  };
+}
+
+export function applySignupRole(input = {}, event = {}) {
+  const config = signupRoleConfigForEvent(event);
+  const supplied = normalizeSignupRoleValue(input.signup_role ?? input.role ?? input.signupRole);
+  const role = supplied || config.default_role;
+  const errors = [];
+  if (config.roles.length && (!role || !config.roles.some((candidate) => candidate.value === role))) {
+    errors.push(`signup role must be one of: ${config.roles.map((candidate) => candidate.value).join(", ")}`);
+  }
+  return { input: role ? { ...input, signup_role: role } : input, signup_role: role || null, roles: config.roles, errors };
+}
+
+function normalizeSignupMetadata(input = {}) {
+  const metadata = { ...parseJsonObject(input.metadata, {}) };
+  const legacy = buildLegacyMetadata(input);
+  for (const [key, value] of Object.entries(legacy)) {
+    if (metadata[key] === undefined) metadata[key] = value;
+  }
+  const signupRole = normalizeSignupRoleValue(input.signup_role ?? input.role ?? input.signupRole ?? metadata.signup_role ?? metadata.role);
+  if (signupRole) metadata.signup_role = signupRole;
+  return metadata;
 }
 
 function normalizeTracks(value) {
@@ -1488,6 +1552,7 @@ export async function listSignups(db, eventSlug, { eventInstanceId = null } = {}
   const statement = db.prepare(`
     SELECT
       s.*,
+      json_extract(s.metadata_json, '$.signup_role') AS signup_role,
       ei.instance_key,
       ei.starts_at AS instance_starts_at,
       ei.status AS instance_status,
@@ -1914,6 +1979,7 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
       u.id AS user_id,
       s.id AS signup_id,
       s.event_instance_id,
+      json_extract(s.metadata_json, '$.signup_role') AS signup_role,
       COALESCE(s.name, u.name) AS name,
       u.email,
       1 AS is_signed_up,
@@ -1953,6 +2019,7 @@ export async function getEventCockpit(db, eventSlug, eventInstanceId) {
       user_id: row.user_id,
       signup_id: row.signup_id,
       event_instance_id: row.event_instance_id,
+      signup_role: row.signup_role || null,
       name: row.name,
       email: row.email,
       is_signed_up: Boolean(row.is_signed_up),
@@ -2062,6 +2129,7 @@ async function getSignupByInstanceAndUser(db, eventSlug, eventInstanceId, userId
   return await db.prepare(`
     SELECT
       s.*,
+      json_extract(s.metadata_json, '$.signup_role') AS signup_role,
       ei.instance_key,
       ei.starts_at AS instance_starts_at,
       ei.status AS instance_status,
@@ -2310,7 +2378,7 @@ export function csvEscape(value) {
 
 export function signupsToCsv(signups) {
   const columns = [
-    "created_at", "updated_at", "event_slug", "event_instance_id", "instance_key", "user_id", "name", "email", "phone", "school", "year",
+    "created_at", "updated_at", "event_slug", "event_instance_id", "instance_key", "signup_role", "user_id", "name", "email", "phone", "school", "year",
     "experience", "notes", "email_list_opt_in", "signed_up_at", "checked_in_at", "checked_out_at", "cancelled_at",
     "emergency_contact_present", "emergency_contact_name", "emergency_contact_relationship", "emergency_contact_phone", "emergency_contact_source", "emergency_contact_updated_at",
     "metadata_json", "mailing_list_status", "mailing_list_detail"
@@ -2356,10 +2424,17 @@ export function renderEventPageHtml(event) {
   const image = event.image_url ? `<img class="event-hero-image" src="${escapeHtml(event.image_url)}" alt="${title}">` : "";
   const venue = escapeHtml(event.venue_name || event.venue_address || "Location TBA");
   const when = escapeHtml(formatEventDate(event.starts_at));
+  const roleConfig = signupRoleConfigForEvent(event);
+  const roleField = roleConfig.roles.length > 1 ? `
+      <fieldset class="signup-role-field">
+        <legend>${escapeHtml(roleConfig.label)}</legend>
+        ${roleConfig.roles.map((role) => `<label class="role-option"><input name="signup_role" type="radio" value="${escapeHtml(role.value)}" ${role.value === roleConfig.default_role ? "checked" : ""}> <span><strong>${escapeHtml(role.label)}</strong>${role.description ? `<small>${escapeHtml(role.description)}</small>` : ""}</span></label>`).join("")}
+      </fieldset>` : (roleConfig.default_role ? `<input name="signup_role" type="hidden" value="${escapeHtml(roleConfig.default_role)}">` : "");
   const signupForm = signupOpen ? `
     <form id="signup-form" class="signup-card">
-      <h2>Save your Hack Hours spot</h2>
+      <h2>Save your spot</h2>
       <p class="signup-help">Emergency contact is for event safety only — not profile enrichment.</p>
+      ${roleField}
       <label>Name <input name="name" required autocomplete="name"></label>
       <label>Email <input name="email" type="email" required autocomplete="email"></label>
       <label>Emergency contact name <input name="emergency_contact_name" required autocomplete="off"></label>
@@ -2405,7 +2480,7 @@ export function renderEventPageHtml(event) {
   <title>${title} — Hack the Valley</title>
   <meta name="description" content="${description}">
   <style>
-    body{margin:0;background:#0f172a;color:#f8fafc;font-family:Inter,ui-sans-serif,system-ui,sans-serif}a{color:#67e8f9}.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 72px}.nav{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;margin-bottom:48px}.brand{font-weight:900;text-decoration:none;color:#fff}.participant-nav{display:flex;flex-wrap:wrap;gap:8px;font-size:.9rem;font-weight:800}.participant-nav a{border-radius:999px;padding:8px 12px;text-decoration:none;color:#cbd5e1}.participant-nav a:hover{background:#1e293b;color:#67e8f9}.participant-nav a[aria-current="page"]{background:rgba(103,232,249,.14);box-shadow:inset 0 0 0 1px rgba(103,232,249,.36);color:#67e8f9}.hero{display:grid;gap:28px}.kicker{text-transform:uppercase;letter-spacing:.24em;color:#67e8f9;font-weight:800;font-size:.8rem}h1{font-size:clamp(2.5rem,7vw,5.5rem);line-height:.92;margin:.25em 0}.lede{font-size:1.25rem;color:#cbd5e1;max-width:760px}.event-hero-image{width:100%;max-height:520px;object-fit:cover;border-radius:28px;border:1px solid #334155}.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:28px 0}.meta div,.content,.signup-card{background:#111827;border:1px solid #334155;border-radius:22px;padding:22px}.content{font-size:1.08rem;line-height:1.7;color:#dbeafe}.content p{margin:0 0 1em}.signup-card{margin-top:28px;max-width:680px}.signup-card label{display:block;margin:14px 0;color:#cbd5e1}.signup-card input,.signup-card textarea{box-sizing:border-box;width:100%;margin-top:6px;border-radius:12px;border:1px solid #475569;background:#020617;color:#fff;padding:12px}.signup-card .checkbox{display:flex;gap:10px;align-items:center}.signup-card .checkbox input{width:auto}.signup-card button{border:0;border-radius:14px;background:#67e8f9;color:#0f172a;font-weight:900;padding:14px 22px;cursor:pointer}.signup-card button:disabled{opacity:.7;cursor:not-allowed}
+    body{margin:0;background:#0f172a;color:#f8fafc;font-family:Inter,ui-sans-serif,system-ui,sans-serif}a{color:#67e8f9}.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 72px}.nav{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;margin-bottom:48px}.brand{font-weight:900;text-decoration:none;color:#fff}.participant-nav{display:flex;flex-wrap:wrap;gap:8px;font-size:.9rem;font-weight:800}.participant-nav a{border-radius:999px;padding:8px 12px;text-decoration:none;color:#cbd5e1}.participant-nav a:hover{background:#1e293b;color:#67e8f9}.participant-nav a[aria-current="page"]{background:rgba(103,232,249,.14);box-shadow:inset 0 0 0 1px rgba(103,232,249,.36);color:#67e8f9}.hero{display:grid;gap:28px}.kicker{text-transform:uppercase;letter-spacing:.24em;color:#67e8f9;font-weight:800;font-size:.8rem}h1{font-size:clamp(2.5rem,7vw,5.5rem);line-height:.92;margin:.25em 0}.lede{font-size:1.25rem;color:#cbd5e1;max-width:760px}.event-hero-image{width:100%;max-height:520px;object-fit:cover;border-radius:28px;border:1px solid #334155}.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:28px 0}.meta div,.content,.signup-card{background:#111827;border:1px solid #334155;border-radius:22px;padding:22px}.content{font-size:1.08rem;line-height:1.7;color:#dbeafe}.content p{margin:0 0 1em}.signup-card{margin-top:28px;max-width:680px}.signup-card label{display:block;margin:14px 0;color:#cbd5e1}.signup-card input,.signup-card textarea{box-sizing:border-box;width:100%;margin-top:6px;border-radius:12px;border:1px solid #475569;background:#020617;color:#fff;padding:12px}.signup-role-field{border:1px solid #334155;border-radius:16px;padding:14px;margin:14px 0}.signup-role-field legend{font-weight:900;color:#f8fafc}.role-option{display:flex!important;gap:10px;align-items:flex-start;border:1px solid #334155;border-radius:12px;padding:12px}.role-option input{width:auto;margin-top:3px}.role-option strong,.role-option small{display:block}.role-option small{color:#94a3b8;margin-top:2px}.signup-card .checkbox{display:flex;gap:10px;align-items:center}.signup-card .checkbox input{width:auto}.signup-card button{border:0;border-radius:14px;background:#67e8f9;color:#0f172a;font-weight:900;padding:14px 22px;cursor:pointer}.signup-card button:disabled{opacity:.7;cursor:not-allowed}
   </style>
 </head>
 <body data-event-detail-page="${slug}">

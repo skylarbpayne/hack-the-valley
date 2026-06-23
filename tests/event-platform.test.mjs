@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 import {
   addSignupToEmailList,
+  applySignupRole,
   checkInAttendee,
   createHelperInterest,
   csvEscape,
@@ -89,6 +90,7 @@ test("event input supports optional capacity, photos, editable page content, and
     capacity: "",
     image_url: "/images/events/2026/hero.jpg",
     page_content: "Agenda, parking, eligibility, and recap links live here.",
+    signup_fields: { role_label: "I want to", default_role: "attend", roles: [{ value: "attend", label: "Attend" }, { value: "demo", label: "Demo something" }] },
     recurrence_rule: { frequency: "yearly", interval: 1 }
   });
 
@@ -97,6 +99,7 @@ test("event input supports optional capacity, photos, editable page content, and
   assert.equal(event.capacity, null);
   assert.equal(event.image_url, "/images/events/2026/hero.jpg");
   assert.equal(event.page_content, "Agenda, parking, eligibility, and recap links live here.");
+  assert.match(event.signup_fields_json, /"default_role":"attend"/);
   assert.equal(event.recurrence_rule_json, JSON.stringify({ frequency: "yearly", interval: 1 }));
 });
 
@@ -288,6 +291,40 @@ test("signup input normalizes email and legacy school field", () => {
   assert.equal(signup.last_name, "Lovelace");
   assert.equal(signup.school, "CSUB");
   assert.equal(signup.email_list_opt_in, 1);
+});
+
+test("signup roles are configurable and stored in signup metadata", () => {
+  const event = {
+    slug: "demo-hours",
+    signup_fields_json: JSON.stringify({
+      role_label: "I want to",
+      default_role: "attend",
+      roles: [
+        { value: "attend", label: "Attend" },
+        { value: "demo", label: "Demo something" }
+      ]
+    })
+  };
+
+  const accepted = applySignupRole({ signup_role: "Demo" }, event);
+  assert.deepEqual(accepted.errors, []);
+  assert.equal(accepted.input.signup_role, "demo");
+
+  const defaulted = applySignupRole({}, event);
+  assert.equal(defaulted.input.signup_role, "attend");
+
+  const rejected = applySignupRole({ signup_role: "judge" }, event);
+  assert.match(rejected.errors.join(";"), /signup role must be one of/);
+
+  const { signup, errors } = normalizeSignupInput({
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    signup_role: "demo",
+    emergency_contact_name: "Charles Babbage",
+    emergency_contact_phone: "661-555-0100"
+  }, "demo-hours");
+  assert.deepEqual(errors, []);
+  assert.match(signup.metadata_json, /"signup_role":"demo"/);
 });
 
 test("signup input requires name and valid email", () => {
@@ -494,10 +531,12 @@ test("CSV export includes metadata for event-specific hackathon fields", () => {
     name: "Ada",
     email: "ada@example.com",
     notes: "line\nbreak",
+    signup_role: "demo",
     metadata_json: JSON.stringify({ major: "CS", dietary: "vegetarian", tshirt: "M", coc: true })
   }]);
   assert.match(csv, /metadata_json/);
-  assert.match(csv, /checked_in_at/);
+  assert.match(csv, /signup_role/);
+  assert.match(csv, /demo/);
   assert.match(csv, /"line\nbreak"/);
   assert.match(csv, /"{""major"":""CS"",""dietary"":""vegetarian"",""tshirt"":""M"",""coc"":true}"/);
 });
@@ -686,7 +725,7 @@ test("admin portal exposes event check-in search and manual walk-up form", () =>
   assert.doesNotMatch(html, /checkInUser\(\{ user_id: button\.dataset\.checkinUser \}\)\.catch\(\(\) => \{\}\)/);
 });
 
-test("admin event form supports image uploads, auto-populates slug, and avoids async currentTarget reset bug", () => {
+test("admin event form supports image uploads, signup role config, auto-populates slug, and avoids async currentTarget reset bug", () => {
   const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
   assert.match(html, /function slugify/);
   assert.match(html, /id="event-image-file"/);
@@ -698,6 +737,9 @@ test("admin event form supports image uploads, auto-populates slug, and avoids a
   assert.match(html, /\/api\/events\/\$\{encodeURIComponent\(slug\)\}\/image/);
   assert.match(html, /name="image_url"/);
   assert.match(html, /name="page_content"/);
+  assert.match(html, /name="signup_fields_json"/);
+  assert.match(html, /signup_fields: parseJsonOrString\(data\.signup_fields_json\)/);
+  assert.match(html, /eventForm\.signup_fields_json\.value = event\.signup_fields_json/);
   assert.doesNotMatch(html, /name="content_before"/);
   assert.doesNotMatch(html, /name="content_after"/);
   assert.match(html, /name="recurrence_rule"/);
@@ -845,6 +887,7 @@ test("renderEventPageHtml returns a real event-specific page, not the events lis
     description: "Build in Bakersfield.",
     image_url: "/api/events/hack-the-valley-2026/image?key=event-images%2Fhack-the-valley-2026%2Fhero.png",
     page_content: "Agenda, prizes, venue details, and what to bring.",
+    signup_fields_json: JSON.stringify({ role_label: "I want to", default_role: "attend", roles: [{ value: "attend", label: "Attend" }, { value: "demo", label: "Demo something" }] }),
     status: "open",
     starts_at: "2026-07-01T17:00:00.000Z",
     venue_name: "Bakersfield College"
@@ -855,6 +898,8 @@ test("renderEventPageHtml returns a real event-specific page, not the events lis
   assert.match(html, /Agenda, prizes, venue details, and what to bring/);
   assert.match(html, /<img[^>]+event-hero-image/);
   assert.match(html, /<form[^>]+id="signup-form"/);
+  assert.match(html, /name="signup_role"/);
+  assert.match(html, /Demo something/);
   assert.doesNotMatch(html, /School \/ org/i);
   assert.doesNotMatch(html, /School \/ organization/i);
   assert.doesNotMatch(html, /name="school"/);
@@ -877,6 +922,9 @@ test("public events page uses clickable cards, signup CTAs, and a true event-det
   assert.match(html, />Sign up<\/a>/);
   assert.match(html, /event-page-content/);
   assert.match(html, /selected\.page_content/);
+  assert.match(html, /id="signup-role-field"/);
+  assert.match(html, /function renderSignupRoleField/);
+  assert.match(html, /signup_fields_json/);
   assert.match(html, /pathEventMatch/);
   assert.doesNotMatch(html, /event-content-before/);
   assert.doesNotMatch(html, /event-content-after/);

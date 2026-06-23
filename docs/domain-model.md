@@ -1,8 +1,17 @@
 # Hack the Valley Domain Model
 
-Last updated: 2026-06-22
+Last updated: 2026-06-23
 
-This document is the canonical vocabulary for the Hack the Valley community platform. When product work feels messy, start here before adding another field, table, or route.
+This document is the Milestone 0 domain-vocabulary baseline for the Hack the Valley community platform. It records the current truth before refactoring so later work can improve the implementation without drifting route behavior or production data.
+
+## Baseline confirmation
+
+Before this Milestone 0 update, the worktree was confirmed to be on `palmer/domain-milestone-0` at `a689f545a214997a85186a9600de1f128d41b4ad`, matching `origin/main` / `origin/HEAD`. The recent Demo Hours changes are present in that baseline, including:
+
+- `a689f54` — Fix Demo Hours address and signed-in signup.
+- `9f7a612` — Add Demo Hours poster header image.
+
+No production data migration or route behavior change is part of this milestone.
 
 ## Product frame
 
@@ -11,209 +20,84 @@ Hack the Valley is not trying to become a generic CRM or Eventbrite clone. The c
 1. Plan a concrete community gathering.
 2. Publish the page and collect intent.
 3. Know who is coming, who showed up, what they did, and what they need next.
-4. Capture projects/demos/media/outcomes.
+4. Capture projects, demos, media, awards, and outcomes.
 5. Send the right follow-up.
 6. Use that history to make the next gathering better.
 
 Everything in the model should support that loop.
 
-## Core objects
+## Domain vocabulary
 
-### Person / User
+| Domain concept | Meaning | Owns / key rules | Current representation |
+| --- | --- | --- | --- |
+| `Person` | A real human in the Hack the Valley community. | Identity, profile, safety/contact facts, authentication/session relationships, roles, attendance history, project membership, and badge awards. Email is an attribute, not the identity. | Mostly `users`, with related `user_sessions`, `auth_login_codes`, `roles`, `signups`, `project_members`, `user_badges`, and profile/admin routes. |
+| `EventSeries` | A reusable program or public event concept such as Hack Hours, Demo Hours, or Hack the Valley 2026. | Stable slug, public URL namespace, default title/content/venue/capacity/signup configuration, recurrence metadata, and default lifecycle policy. It is not one concrete date when the program repeats. | `events`, admin event form, `/events`, `/events/:slug`, and `/api/events`. |
+| `EventInstance` | One concrete occurrence of an `EventSeries`, such as a specific Hack Hours or Demo Hours date. | Date/time/location/capacity/status for one occurrence, roster scope, check-in scope, photos/media scope, and follow-up/cockpit scope. | `event_instances`, recurrence helper code, event instance admin/cockpit/follow-up/photos/project routes. |
+| `Participation` | A `Person`'s relationship with one `EventInstance`. | Intent and state such as signed up, checked in, no-show, cancelled, waitlisted; participant role such as attendee, demo presenter, mentor, volunteer, or organizer; emergency/readiness linkage; attendance history. Signup is an input/action, not the concept. | `signups`, `event_participant_events`, `event_participant_current_state`, `emergency_contacts`, signup/check-in APIs. |
+| `Project` | A durable thing a person or team is building. | Title, description, repo/demo/media links, team/members, public showcase identity, and canonical link to older submissions when needed. It can exist outside any single event. | `projects`, `project_members`, legacy/import source `submissions`, `/api/projects`, `/api/me/projects`, `/projects`. |
+| `EventProjectSubmission` | A `Project`'s relationship with a specific event series or instance. | Submitted/demoed/showcased/hidden/winner state, judging/showcase visibility, and link back to a legacy submission when needed. This is not the project itself. | `event_project_submissions`, project review/showcase routes, event project routes. |
+| `Badge` | A durable community achievement or progression signal. | Badge catalog metadata and explicit derivation/manual-award rules. Badges encode useful community state, not decoration. | `badges`, badge catalog migrations, user badge admin/profile APIs. |
+| `BadgeAward` | The fact that a `Person` earned or was granted a `Badge`, optionally in an event/project context. | Awarded person, badge, source, awarded timestamp, optional event instance/project context, and who/what awarded it. Award facts must not be inferred from display labels alone. | `user_badges`; some award-style badge eligibility is derived from `event_project_awards`, `event_participant_events`, or `project_members`. |
+| `ContentItem` | Editorial or public presentation content such as event pages, recap pages, static pages, blog-style posts, and announcements. | Public wording, page body, media references, publish state, and safe references to events/projects/people. Content may reference facts but must not become the source of truth for attendance, submissions, or awards. | `events.page_content`, static files under `public/`, public data JSON, event/project pages. No dedicated content table yet. |
+| `Campaign` | A planned outbound communication effort, such as an event announcement, reminder, or follow-up. | Purpose, audience intent, draft/message association, approval state, and send plan. Sending remains human approval-gated. | Not first-class in D1 yet; represented by organizer workflow, Resend configuration, `/api/subscribe`, signup mailing-list sync, cockpit/follow-up helpers. |
+| `AudienceSegment` | A computable audience definition for a `Campaign`. | Segment criteria derived from people, participation, project, badge, and opt-in facts. It should not duplicate core facts. | External Resend segment IDs/config plus derived filters from `users`, `signups`, `event_participant_events`, `project_members`, and `badges`. No dedicated segment table yet. |
+| `MessageDraft` | The editable message content prepared for a `Campaign` before sending. | Subject/body/content variant, target campaign, reviewer/approval state, and safe previews. It is not a delivery log. | Follow-up/cockpit-generated copy and organizer-held drafts; no dedicated D1 table yet. |
+| `MessageDelivery` | A delivery attempt/result for a message to a person/address. | Recipient, provider response/status, timestamps, and failure detail. Delivery logs must not mutate underlying event facts. | `signups.mailing_list_status` / `mailing_list_detail`, Resend API responses, legacy MailChannels registration email path; no general delivery table yet. |
+| `AuditEvent` | A durable record that an actor changed important platform state. | Actor, action, target, scope, metadata, and timestamp. Audit records are append-only operational facts. | `admin_audit_events` for role grant/revoke today; additional audited actions are not generalized yet. |
 
-A real human in the community.
+## Storage compatibility table
 
-Current table: `users`
+This table maps the domain language above to the current tables, files, and routes. Milestone 0 freezes vocabulary only; migration status describes compatibility posture, not new implementation work.
 
-Owns:
-- identity: email, name, phone, school/profile fields
-- emergency contact details / private safety profile
-- auth/session relationship
-- global community history
-- roles/admin grants through `roles`
-- badges through `user_badges`
-- project membership through `project_members`
+| Domain concept | Current table(s) / files / routes | Migration status |
+| --- | --- | --- |
+| `Person` | `users`, `user_sessions`, `auth_login_codes`, `roles`, `helper_interests`, `project_members`, `user_badges`; `/api/me`, `/api/users`, `/api/auth/*`, `/api/admin/roles` | Represented in current schema; keep `users` storage name for now and introduce domain naming only through later helpers. |
+| `EventSeries` | `events`; `public/events/index.html`, `public/admin.html`; `functions/api/events/index.js`, `functions/api/events/[slug].js` | Current source of truth for reusable event/program metadata; no table rename in Milestone 0. |
+| `EventInstance` | `event_instances`; `functions/_lib/recurrence.js`; `functions/api/events/[slug]/instances/[instanceId]/*`; cockpit/follow-up/photos routes | Current source of truth for concrete occurrences; recurrence generation exists as guarded helper behavior, not an automatic production mutation. |
+| `Participation` | `signups`, `event_participant_events`, `event_participant_current_state`, `emergency_contacts`; `/api/events/:slug/signups`, `/api/events/:slug/checkins`, `/api/register` | Current participation facts are split between durable signup rows and append-only events; preserve compatibility and route outputs. |
+| `Project` | `projects`, `project_members`, `submissions`; `/api/projects`, `/api/me/projects`, `/projects`, `/submit` | Represented today with legacy submission bridge; keep public projections safe from private submission/contact payloads. |
+| `EventProjectSubmission` | `event_project_submissions`; `/api/events/:slug/projects`, `/api/events/:slug/instances/:instanceId/projects`, `/api/events/:slug/projects/:projectId` | Represented today as project-event relationship; status language is compatible with showcase/review flows. |
+| `Badge` | `badges`; `migrations/0015_community_badge_catalog.sql`; `/api/users/:id/badges`, profile/community state helpers | Catalog represented today; keep explicit rule metadata and avoid a generalized rules engine in Milestone 0. |
+| `BadgeAward` | `user_badges`; derived award eligibility from `event_project_awards`, `event_participant_events`, and `project_members` | Manual/derived awards are compatible; future helper can make derivation explicit without changing current tables. |
+| `ContentItem` | `events.page_content`, `public/`, `public/data/*.json`, public event/project pages | Partially represented through event/static content; no dedicated content storage in Milestone 0. |
+| `Campaign` | Resend configuration/env, `functions/_shared/mailing-list.js`, `/api/subscribe`, event follow-up/cockpit helpers | Not first-class in current storage; keep sends approval-gated and avoid adding campaign tables in Milestone 0. |
+| `AudienceSegment` | Resend segment config plus filters over `users`, `signups`, `event_participant_events`, `project_members`, `badges` | External/derived today; do not duplicate facts into new segment storage in Milestone 0. |
+| `MessageDraft` | Organizer-held drafts, generated copy from `functions/api/events/[slug]/instances/[instanceId]/followup/index.js`, and static/reference launch packets under `references/` | Not first-class in current storage; drafts remain review artifacts until later milestones. |
+| `MessageDelivery` | `signups.mailing_list_status`, `signups.mailing_list_detail`, Resend contact/segment API results, legacy MailChannels path in `/api/register` | Partially represented for list sync only; no general delivery-log migration in Milestone 0. |
+| `AuditEvent` | `admin_audit_events`; `functions/api/admin/roles.js` | Represented for admin role changes only; later work may broaden audit coverage without changing this milestone. |
 
-Rules:
-- Email is an attribute, not the primary identity.
-- Emergency contact is an attribute of the person/user; an event may require confirming or snapshotting it for operational readiness, but it is not conceptually owned by the signup.
-- A person can attend many event instances.
-- A person can belong to many projects.
-- Admin privilege is a scoped role grant, not a magic email check.
+## Approval gates and no-production-mutation rule
 
-### Event Series
-
-A reusable event concept or program: `Hack Hours`, `Demo Hours`, `Hack the Valley 2026`.
-
-Current table: `events`
-
-Owns:
-- stable slug and public URL namespace
-- default title/description/page content
-- default venue/capacity/signup configuration
-- optional recurrence rule
-- default lifecycle policy for instances
-
-Rules:
-- `events` should not be treated as one concrete date when the event repeats.
-- A recurring public page such as `/events/hack-hours` should resolve to a concrete upcoming/open instance for signup.
-- Event-series data is default/config data. Instance-specific facts belong on `event_instances`.
-
-### Event Instance
-
-One concrete occurrence of an event series: `2026-06-27 Hack Hours`, `2026-07-22 Demo Hours`.
-
-Current table: `event_instances`
-
-Owns:
-- date/time/location/capacity/status for one occurrence
-- operational roster scope
-- check-in scope
-- photos/media scope
-- follow-up/cockpit scope
-
-Rules:
-- Signups, check-ins, event photos, and instance project submissions should all scope to `event_instance_id` when the event has instances.
-- Reusable slugs are routing conveniences, not the operational source of truth.
-- Admin UI should expose concrete instances as first-class rows.
-
-### Participation
-
-A person's relationship with one event instance.
-
-Current tables:
-- `signups` stores the durable signup row.
-- `event_participant_events` stores append-only participation facts.
-- `event_participant_current_state` is the current-state projection.
-
-Owns:
-- intent/state: signed up, checked in, no-show, cancelled, waitlisted
-- participant role: attendee, demo presenter, mentor, volunteer, organizer, etc.
-- emergency/readiness linkage
-- attendance history
-
-Rules:
-- “Signup” is an action/input. The domain concept is participation.
-- Current state should be derived from append-only events where possible.
-- Participant role should not be scattered across arbitrary metadata conventions. Until there is a dedicated column, it must have a single helper/API contract.
-
-### Project
-
-A durable thing a person/team is building.
-
-Current tables:
-- `projects`
-- `project_members`
-- legacy/import source: `submissions`
-
-Owns:
-- title, description, repo/demo/media links
-- team/members
-- public showcase identity
-- canonical migration link to older submissions when needed
-
-Rules:
-- A project can exist outside any one event.
-- A project can be submitted/demoed at multiple event instances over time.
-- Public project pages must not leak contact/private payload data.
-
-### Event Project Submission
-
-A project's relationship with a specific event series/instance: submitted, demoed, showcased, hidden, winner, etc.
-
-Current table: `event_project_submissions`
-
-Owns:
-- event context for a project
-- submission/demo status
-- judging/showcase visibility
-- link back to legacy `submissions` when needed
-
-Rules:
-- This is not the project itself.
-- Demo Hours should use this layer to represent “demoed at Jul 22 Demo Hours.”
-- Awards attach to project/event context, not raw signup rows.
-
-### Badge / Community State
-
-A durable community achievement or progression signal.
-
-Current tables:
-- `badges`
-- `user_badges`
-
-Owns:
-- attendance/progression badges
-- project/demo badges
-- awards and contribution markers
-
-Rules:
-- Badges should encode useful community state, not just decoration.
-- Start with explicit code/data rules. Do not build a generalized rules engine until repeated pain proves it.
-
-### Content
-
-Editorial/public pages: event pages, blog posts, recap pages, announcements.
-
-Current state:
-- event pages mostly come from `events.page_content` and frontend/static assets
-- blog-related work is adjacent and should not be mixed into participation tables
-
-Rules:
-- Content is presentation/publication.
-- Content may reference events, projects, and people, but should not become the source of truth for attendance or submissions.
-
-### Campaign / Message / Delivery
-
-Outbound communication: email drafts, announcement campaigns, segments, send history, delivery state.
-
-Current state:
-- mailing list and Resend sync live outside the core event model
-- event follow-up drafts exist in cockpit/follow-up helpers
-
-Rules:
-- Email is not a core domain object; it is a communication artifact.
-- Campaigns target segments derived from people/participation/project facts.
-- Sending remains approval-gated.
-- Delivery logs should not mutate the underlying event facts.
+- Milestone 0 is docs/tests only. It must not create `functions/_lib/domain/*`, change routes, deploy, run migrations, or mutate production data.
+- Recurrence generation, public announcements, email sends, campaign launches, and message deliveries require human approval before they affect real users.
+- `Campaign`, `MessageDraft`, and `MessageDelivery` work must preserve approval-gated sending. Drafting or previewing copy is not permission to send it.
+- Delivery logs and campaign state must never rewrite the underlying event, participation, project, or badge facts.
 
 ## Current recurrence truth
 
-`events.recurrence_rule_json` exists, but today it is passive metadata. There is no automatic generator that creates `event_instances` from it.
+`events.recurrence_rule_json` exists, and the current codebase includes guarded recurrence helpers plus tests for idempotent instance generation. Recurrence metadata should still be treated carefully:
 
-Current behavior:
-- event creation/update stores `recurrence_rule_json`
-- signup/check-in paths resolve against existing open `event_instances`
-- if no open instance exists, public signup fails with “No open instance is available for this event”
-
-Therefore recurring events currently require manual instance creation/open/close.
-
-## Target recurrence behavior
-
-The platform should support an idempotent instance generator:
-
-1. Read active/open event series with `recurrence_rule_json`.
-2. Generate concrete `event_instances` for the next N occurrences.
-3. Use stable `instance_key` values such as `2026-07-22-1800`.
-4. Never duplicate an existing `(event_slug, instance_key)`.
-5. Copy default venue/capacity/title from the event series unless the instance overrides them.
-6. Optionally auto-close old instances after `ends_at`.
-7. Keep human approval for public announcement/email sends.
-
-First implementation should be boring:
-- a script and admin button/manual endpoint first
-- scheduled automation later
-- no silent production mutation before review
+- event creation/update can store `recurrence_rule_json`;
+- signup/check-in paths resolve against existing open `event_instances`;
+- if no open instance exists, public signup fails instead of silently creating production state;
+- any production instance creation/open/close workflow must remain explicit and reviewable.
 
 ## Boundary rules
 
-- If it answers “what gathering is this?” it belongs to Event Series / Event Instance.
-- If it answers “who is this human?” it belongs to User/Person.
-- If it answers “what is this person’s state at this instance?” it belongs to Participation.
-- If it answers “what did this team build?” it belongs to Project.
-- If it answers “where was this project shown/submitted?” it belongs to Event Project Submission.
-- If it answers “what should we say/send?” it belongs to Campaign/Message.
-- If it answers “what appears publicly?” it belongs to Content or a safe public projection.
+- If it answers “who is this human?” it belongs to `Person`.
+- If it answers “what program/public event concept is this?” it belongs to `EventSeries`.
+- If it answers “what concrete gathering/date is this?” it belongs to `EventInstance`.
+- If it answers “what is this person's state at this instance?” it belongs to `Participation`.
+- If it answers “what did this team build?” it belongs to `Project`.
+- If it answers “where was this project shown/submitted?” it belongs to `EventProjectSubmission`.
+- If it answers “what achievement exists?” it belongs to `Badge`.
+- If it answers “who earned which badge, when, and why?” it belongs to `BadgeAward`.
+- If it answers “what appears publicly?” it belongs to `ContentItem` or a safe public projection.
+- If it answers “who should hear from us?” it belongs to `AudienceSegment`.
+- If it answers “what communication are we planning?” it belongs to `Campaign`.
+- If it answers “what are we preparing to say?” it belongs to `MessageDraft`.
+- If it answers “what was sent and what happened?” it belongs to `MessageDelivery`.
+- If it answers “who changed important state?” it belongs to `AuditEvent`.
 
 ## Refactor posture
 
@@ -221,6 +105,6 @@ Do not big-bang rename the database. The safer sequence is:
 
 1. Freeze vocabulary in docs and tests.
 2. Add domain helper modules that expose the right concepts while preserving existing tables.
-3. Move routes to the helpers one slice at a time.
+3. Move routes to helpers one slice at a time.
 4. Add migrations only when a concept cannot be safely represented with current tables.
 5. Keep public routes/API compatibility unless intentionally changed.

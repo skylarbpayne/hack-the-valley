@@ -83,25 +83,26 @@
           </div>
 
           <form id="signup-form" class="grid sm:grid-cols-2 gap-4">
+            <p id="signed-in-signup-note" class="hidden sm:col-span-2 rounded-2xl border border-bc-cyan/40 bg-bc-cyan/10 px-4 py-3 text-sm text-cyan-100"></p>
             <div id="signup-role-field" class="hidden sm:col-span-2"></div>
-            <label class="block sm:col-span-2">
+            <label class="block sm:col-span-2" data-profile-signup-field>
               <span class="text-sm font-semibold text-slate-200">Full name *</span>
               <input name="name" required class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
             </label>
-            <label class="block sm:col-span-2">
+            <label class="block sm:col-span-2" data-profile-signup-field>
               <span class="text-sm font-semibold text-slate-200">Email *</span>
               <input name="email" type="email" required class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
             </label>
-            <label class="block sm:col-span-2">
+            <label class="block sm:col-span-2" data-profile-signup-field>
               <span class="text-sm font-semibold text-slate-200">Emergency contact name *</span>
               <input name="emergency_contact_name" required class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
             </label>
-            <label class="block sm:col-span-2">
+            <label class="block sm:col-span-2" data-profile-signup-field>
               <span class="text-sm font-semibold text-slate-200">Emergency contact phone *</span>
               <input name="emergency_contact_phone" required autocomplete="tel" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
               <span class="block text-xs text-slate-500 mt-1">Used only if organizers need a safety contact during the event.</span>
             </label>
-            <label class="sm:col-span-2 flex gap-3 items-start text-sm text-slate-300">
+            <label class="sm:col-span-2 flex gap-3 items-start text-sm text-slate-300" data-email-list-field>
               <input name="email_list_opt_in" type="checkbox" checked class="mt-1 accent-bc-cyan">
               <span>Add me to the Hack the Valley email list for event updates.</span>
             </label>
@@ -127,7 +128,7 @@
   </footer>
 
   <script>
-    const state = { events: [], selected: null, completedSignups: new Set() };
+    const state = { events: [], selected: null, completedSignups: new Set(), currentUser: null };
     const params = new URLSearchParams(window.location.search);
     const pathEventMatch = window.location.pathname.match(/^\/events\/([^/]+)\/?$/);
     const requestedSlug = pathEventMatch ? decodeURIComponent(pathEventMatch[1]) : (params.get("event") || params.get("slug"));
@@ -249,6 +250,28 @@
         .join("");
     }
 
+    function updateSignedInSignupMode() {
+      const signedIn = Boolean(state.currentUser);
+      const note = $("signed-in-signup-note");
+      note.classList.toggle("hidden", !signedIn);
+      note.textContent = signedIn
+        ? `You're signed in as ${state.currentUser.name || state.currentUser.email}. This signup only needs your event choice.`
+        : "";
+      document.querySelectorAll("[data-profile-signup-field], [data-email-list-field]").forEach((field) => {
+        field.hidden = signedIn;
+        field.querySelectorAll("input, textarea, select").forEach((input) => {
+          if (signedIn) {
+            if (input.required) input.dataset.wasRequired = "1";
+            input.required = false;
+            input.disabled = true;
+          } else {
+            input.disabled = false;
+            if (input.dataset.wasRequired === "1") input.required = true;
+          }
+        });
+      });
+    }
+
     function noUpcomingMarkup() {
       return `
         <p class="text-bc-cyan uppercase tracking-widest text-sm font-bold mb-3">Upcoming</p>
@@ -315,6 +338,7 @@
       $("event-description").textContent = selected.description || "Community builder session.";
       renderTextBlock($("event-page-content"), selected.page_content);
       renderSignupRoleField(selected);
+      updateSignedInSignupMode();
       $("event-when").textContent = formatDateRange(selected);
       $("event-where").textContent = eventLocation(selected);
       const signupOpen = selected.status === "open";
@@ -341,6 +365,16 @@
         $("upcoming-events-panel").innerHTML = noUpcomingMarkup();
         console.warn(error);
       }
+    }
+
+    async function loadCurrentUser() {
+      try {
+        const response = await fetch("/api/me", { headers: { Accept: "application/json" } });
+        if (!response.ok) return;
+        const data = await response.json();
+        state.currentUser = data.user || null;
+        updateSignedInSignupMode();
+      } catch (_) {}
     }
 
     document.addEventListener("click", (event) => {
@@ -375,6 +409,7 @@
       const formElement = event.currentTarget;
       const form = new FormData(formElement);
       const payload = Object.fromEntries(form.entries());
+      if (state.currentUser) payload.signed_in_signup = true;
       payload.email_list_opt_in = form.get("email_list_opt_in") === "on";
       payload.source = "events-page";
 
@@ -390,14 +425,21 @@
         state.completedSignups.add(state.selected.slug);
         button.textContent = "You're signed up";
         button.disabled = true;
-        message.textContent = "You're on the list. Emergency contact saved. Organizers can check you in by search when you arrive.";
+        message.textContent = state.currentUser
+          ? "You're on the list. Your event choice was saved from your signed-in account."
+          : "You're on the list. Emergency contact saved. Organizers can check you in by search when you arrive.";
       } catch (error) {
         button.disabled = false;
         message.textContent = error.message;
       }
     });
 
-    loadEvents();
+    async function init() {
+      await loadCurrentUser();
+      await loadEvents();
+    }
+
+    init();
   </script>
 </body>
 </html>

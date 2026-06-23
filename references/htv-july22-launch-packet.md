@@ -5,7 +5,7 @@ Prepared: 2026-06-22 PDT
 ## Assumptions to confirm
 
 - Next Hack Hours follows the existing cadence: Saturday, June 27, 2026, 8:00–10:00 AM PDT at Panera, 10900 Stockdale Hwy Ste 100.
-- Demo Hours is Wednesday, July 22, 2026, 6:00–8:00 PM PDT at Mesh Cowork, 2005 Eye Street Ste 8, Bakersfield, CA 93301.
+- Demo Hours is Wednesday, July 22, 2026, 6:00–8:00 PM PDT at Mesh Cowork, 2020 Eye street.
 - Demo Hours signup roles should be `attend` and `demo`.
 
 ## Role config for Demo Hours
@@ -73,7 +73,7 @@ INSERT INTO events (
   '2026-07-23T01:00:00.000Z',
   '2026-07-23T03:00:00.000Z',
   'Mesh Cowork',
-  '2005 Eye Street Ste 8, Bakersfield, CA 93301',
+  '2020 Eye street',
   NULL,
   'open',
   '/assets/events/demo-hours.png',
@@ -102,7 +102,7 @@ INSERT INTO event_instances (
 ) VALUES (
   'inst_demo_hours_20260722', 'demo-hours', '2026-07-22', 'Demo Hours',
   '2026-07-23T01:00:00.000Z', '2026-07-23T03:00:00.000Z',
-  'Mesh Cowork', '2005 Eye Street Ste 8, Bakersfield, CA 93301', NULL, 'open', NULL,
+  'Mesh Cowork', '2020 Eye street', NULL, 'open', NULL,
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 )
 ON CONFLICT(event_slug, instance_key) DO UPDATE SET
@@ -140,7 +140,7 @@ Bring whatever you’re working on: an app, school project, agent workflow, data
 
 **Demo Hours**  
 Wednesday, July 22, 6:00–8:00 PM  
-Mesh Cowork — 2005 Eye Street Ste 8
+Mesh Cowork — 2020 Eye street
 
 This is our first community demo night. You can sign up to attend, or sign up to demo something. “Demo” can mean polished, janky, half-working, or mostly a lesson learned — the point is to share what you’re building and make it easier for more people in the Valley to ship.
 

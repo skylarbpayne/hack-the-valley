@@ -1,6 +1,7 @@
 import {
   addSignupToEmailList,
   applySignupRole,
+  getCurrentUserFromRequest,
   getDb,
   getEvent,
   handleErrors,
@@ -54,17 +55,22 @@ export async function onRequestPost(context) {
       return jsonResponse({ error: "No open instance is available for this event" }, { status: 409 });
     }
 
+    const currentUser = await getCurrentUserFromRequest(db, context.request);
     const rawInput = await readJson(context.request);
     const roleInput = applySignupRole(rawInput, event);
     const input = roleInput.input;
-    const { signup, errors } = normalizeSignupInput(input, context.params.slug);
+    const signupOptions = { requireEmergencyContact: !currentUser, currentUser };
+    const { signup, errors } = normalizeSignupInput(input, context.params.slug, signupOptions);
     const allErrors = [...roleInput.errors, ...errors];
     if (allErrors.length) {
       return jsonResponse({ error: allErrors.join("; "), errors: allErrors }, { status: 400 });
     }
 
     const mailingListResult = await addSignupToEmailList(context.env, signup, event);
-    const savedSignup = await upsertSignup(db, context.params.slug, input, mailingListResult, instance);
+    const savedSignup = await upsertSignup(db, context.params.slug, input, mailingListResult, instance, {
+      ...signupOptions,
+      source: currentUser ? "signed-in-event-signup" : "signup-api"
+    });
 
     return jsonResponse({
       success: true,
@@ -75,10 +81,11 @@ export async function onRequestPost(context) {
         event_instance_id: savedSignup.event_instance_id,
         signup_role: roleInput.signup_role,
         user_id: savedSignup.user_id,
+        signed_in: Boolean(currentUser),
         name: savedSignup.name,
         email: savedSignup.email,
         mailing_list_status: savedSignup.mailing_list_status,
-        emergency_contact_present: true
+        emergency_contact_present: !currentUser
       }
     }, { status: 201 });
   });

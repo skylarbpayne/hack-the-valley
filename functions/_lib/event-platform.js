@@ -108,6 +108,11 @@ export async function requireSuperAdminAccess(request, env, scope = {}) {
   return await requireRoleAccess(request, env, ["super_admin"], scope);
 }
 
+export async function getCurrentUserFromRequest(db, request) {
+  const token = cookieValue(request, "htv_session") || request.headers.get("x-htv-session") || "";
+  return await getCurrentUserFromSession(db, token);
+}
+
 export function getDb(env) {
   const db = env.HTV_DB || env.SUBMISSIONS_DB || env.DB;
   if (!db) {
@@ -228,9 +233,11 @@ export function normalizeHelperInterestInput(input = {}, currentUser = null) {
   return { helperInterest, errors };
 }
 
-export function normalizeSignupInput(input, eventSlug, { requireEmergencyContact = true } = {}) {
-  const email = normalizeEmail(input.email);
-  const name = String(input.name || `${input.first_name || ""} ${input.last_name || ""}`).trim();
+export function normalizeSignupInput(input, eventSlug, { requireEmergencyContact = true, currentUser = null } = {}) {
+  const email = normalizeEmail(input.email) || normalizeEmail(currentUser?.email);
+  const suppliedName = String(input.name || `${input.first_name || ""} ${input.last_name || ""}`).trim();
+  const currentUserName = trimOrNull(currentUser?.name) || trimOrNull(`${currentUser?.first_name || ""} ${currentUser?.last_name || ""}`);
+  const name = suppliedName || currentUserName || email;
   const nameParts = splitName(name);
   const firstName = String(input.first_name || nameParts.firstName).trim();
   const lastName = String(input.last_name || nameParts.lastName).trim();
@@ -243,8 +250,8 @@ export function normalizeSignupInput(input, eventSlug, { requireEmergencyContact
     name,
     first_name: firstName,
     last_name: lastName,
-    phone: trimOrNull(input.phone),
-    school: trimOrNull(input.school || input.university),
+    phone: trimOrNull(input.phone) || trimOrNull(currentUser?.phone),
+    school: trimOrNull(input.school ?? input.university) || trimOrNull(currentUser?.school),
     year: trimOrNull(input.year),
     experience: trimOrNull(input.experience),
     notes: trimOrNull(input.notes || input.message),
@@ -1749,13 +1756,13 @@ async function updateUserProfileEmergencyContacts(db, userId, contacts = []) {
   }
 }
 
-export async function upsertSignup(db, eventSlug, input, mailingListResult, eventInstance = null, { requireEmergencyContact = true, source = "signup-api" } = {}) {
-  const { signup, errors } = normalizeSignupInput(input, eventSlug, { requireEmergencyContact });
+export async function upsertSignup(db, eventSlug, input, mailingListResult, eventInstance = null, { requireEmergencyContact = true, source = "signup-api", currentUser = null } = {}) {
+  const { signup, errors } = normalizeSignupInput(input, eventSlug, { requireEmergencyContact, currentUser });
   if (errors.length) {
     throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
   }
 
-  const user = await upsertUser(db, signup);
+  const user = currentUser?.id ? currentUser : await upsertUser(db, signup);
   const now = new Date().toISOString();
   const signupId = input.id && String(input.id).startsWith("sgn_") ? String(input.id) : generateId("sgn");
   const resolvedInstance = eventInstance || await resolveSignupEventInstance(db, eventSlug);
@@ -2422,7 +2429,8 @@ export function renderEventPageHtml(event) {
   const description = escapeHtml(event.description || "Hack the Valley community event.");
   const content = renderText(event.page_content || event.description || "More event details are coming soon.");
   const image = event.image_url ? `<img class="event-hero-image" src="${escapeHtml(event.image_url)}" alt="${title}">` : "";
-  const venue = escapeHtml(event.venue_name || event.venue_address || "Location TBA");
+  const venueParts = [event.venue_name, event.venue_address].filter(Boolean);
+  const venue = escapeHtml(venueParts.length ? venueParts.join(" • ") : "Location TBA");
   const when = escapeHtml(formatEventDate(event.starts_at));
   const roleConfig = signupRoleConfigForEvent(event);
   const roleField = roleConfig.roles.length > 1 ? `
@@ -2434,17 +2442,41 @@ export function renderEventPageHtml(event) {
     <form id="signup-form" class="signup-card">
       <h2>Save your spot</h2>
       <p class="signup-help">Emergency contact is for event safety only — not profile enrichment.</p>
+      <p id="signed-in-signup-note" class="signed-in-signup-note" hidden></p>
       ${roleField}
-      <label>Name <input name="name" required autocomplete="name"></label>
-      <label>Email <input name="email" type="email" required autocomplete="email"></label>
-      <label>Emergency contact name <input name="emergency_contact_name" required autocomplete="off"></label>
-      <label>Emergency contact phone <input name="emergency_contact_phone" required autocomplete="tel"></label>
-      <label class="checkbox"><input name="email_list_opt_in" type="checkbox" checked> Send me Hack the Valley updates</label>
+      <label data-profile-signup-field>Name <input name="name" required autocomplete="name"></label>
+      <label data-profile-signup-field>Email <input name="email" type="email" required autocomplete="email"></label>
+      <label data-profile-signup-field>Emergency contact name <input name="emergency_contact_name" required autocomplete="off"></label>
+      <label data-profile-signup-field>Emergency contact phone <input name="emergency_contact_phone" required autocomplete="tel"></label>
+      <label class="checkbox" data-email-list-field><input name="email_list_opt_in" type="checkbox" checked> Send me Hack the Valley updates</label>
       <button type="submit">Save my spot</button>
       <p id="form-message" role="status"></p>
     </form>
     <script>
-      document.getElementById("signup-form").addEventListener("submit", async (event) => {
+      const signupForm = document.getElementById("signup-form");
+      let signedInUser = null;
+      async function applySignedInSignupMode() {
+        try {
+          const response = await fetch("/api/me", { headers: { Accept: "application/json" } });
+          if (!response.ok) return;
+          const data = await response.json();
+          signedInUser = data.user || null;
+          if (!signedInUser) return;
+          const note = document.getElementById("signed-in-signup-note");
+          note.hidden = false;
+          note.textContent = "You're signed in as " + (signedInUser.name || signedInUser.email) + ". This signup only needs your event choice.";
+          signupForm.querySelectorAll("[data-profile-signup-field], [data-email-list-field]").forEach((field) => {
+            field.hidden = true;
+            field.querySelectorAll("input, textarea, select").forEach((input) => {
+              input.required = false;
+              input.disabled = true;
+            });
+          });
+        } catch (_) {}
+      }
+      applySignedInSignupMode();
+
+      signupForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         const form = event.currentTarget;
         const button = form.querySelector("button");
@@ -2452,6 +2484,7 @@ export function renderEventPageHtml(event) {
         button.disabled = true;
         message.textContent = "Submitting…";
         const body = Object.fromEntries(new FormData(form).entries());
+        if (signedInUser) body.signed_in_signup = true;
         body.email_list_opt_in = new FormData(form).get("email_list_opt_in") === "on";
         body.source = "event-detail-page";
         try {
@@ -2480,7 +2513,7 @@ export function renderEventPageHtml(event) {
   <title>${title} — Hack the Valley</title>
   <meta name="description" content="${description}">
   <style>
-    body{margin:0;background:#0f172a;color:#f8fafc;font-family:Inter,ui-sans-serif,system-ui,sans-serif}a{color:#67e8f9}.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 72px}.nav{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;margin-bottom:48px}.brand{font-weight:900;text-decoration:none;color:#fff}.participant-nav{display:flex;flex-wrap:wrap;gap:8px;font-size:.9rem;font-weight:800}.participant-nav a{border-radius:999px;padding:8px 12px;text-decoration:none;color:#cbd5e1}.participant-nav a:hover{background:#1e293b;color:#67e8f9}.participant-nav a[aria-current="page"]{background:rgba(103,232,249,.14);box-shadow:inset 0 0 0 1px rgba(103,232,249,.36);color:#67e8f9}.hero{display:grid;gap:28px}.kicker{text-transform:uppercase;letter-spacing:.24em;color:#67e8f9;font-weight:800;font-size:.8rem}h1{font-size:clamp(2.5rem,7vw,5.5rem);line-height:.92;margin:.25em 0}.lede{font-size:1.25rem;color:#cbd5e1;max-width:760px}.event-hero-image{width:100%;max-height:760px;object-fit:contain;background:#020617;border-radius:28px;border:1px solid #334155}.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:28px 0}.meta div,.content,.signup-card{background:#111827;border:1px solid #334155;border-radius:22px;padding:22px}.content{font-size:1.08rem;line-height:1.7;color:#dbeafe}.content p{margin:0 0 1em}.signup-card{margin-top:28px;max-width:680px}.signup-card label{display:block;margin:14px 0;color:#cbd5e1}.signup-card input,.signup-card textarea{box-sizing:border-box;width:100%;margin-top:6px;border-radius:12px;border:1px solid #475569;background:#020617;color:#fff;padding:12px}.signup-role-field{border:1px solid #334155;border-radius:16px;padding:14px;margin:14px 0}.signup-role-field legend{font-weight:900;color:#f8fafc}.role-option{display:flex!important;gap:10px;align-items:flex-start;border:1px solid #334155;border-radius:12px;padding:12px}.role-option input{width:auto;margin-top:3px}.role-option strong,.role-option small{display:block}.role-option small{color:#94a3b8;margin-top:2px}.signup-card .checkbox{display:flex;gap:10px;align-items:center}.signup-card .checkbox input{width:auto}.signup-card button{border:0;border-radius:14px;background:#67e8f9;color:#0f172a;font-weight:900;padding:14px 22px;cursor:pointer}.signup-card button:disabled{opacity:.7;cursor:not-allowed}
+    body{margin:0;background:#0f172a;color:#f8fafc;font-family:Inter,ui-sans-serif,system-ui,sans-serif}a{color:#67e8f9}.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 72px}.nav{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;margin-bottom:48px}.brand{font-weight:900;text-decoration:none;color:#fff}.participant-nav{display:flex;flex-wrap:wrap;gap:8px;font-size:.9rem;font-weight:800}.participant-nav a{border-radius:999px;padding:8px 12px;text-decoration:none;color:#cbd5e1}.participant-nav a:hover{background:#1e293b;color:#67e8f9}.participant-nav a[aria-current="page"]{background:rgba(103,232,249,.14);box-shadow:inset 0 0 0 1px rgba(103,232,249,.36);color:#67e8f9}.hero{display:grid;gap:28px}.kicker{text-transform:uppercase;letter-spacing:.24em;color:#67e8f9;font-weight:800;font-size:.8rem}h1{font-size:clamp(2.5rem,7vw,5.5rem);line-height:.92;margin:.25em 0}.lede{font-size:1.25rem;color:#cbd5e1;max-width:760px}.event-hero-image{width:100%;max-height:760px;object-fit:contain;background:#020617;border-radius:28px;border:1px solid #334155}.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:28px 0}.meta div,.content,.signup-card{background:#111827;border:1px solid #334155;border-radius:22px;padding:22px}.content{font-size:1.08rem;line-height:1.7;color:#dbeafe}.content p{margin:0 0 1em}.signup-card{margin-top:28px;max-width:680px}.signup-card label{display:block;margin:14px 0;color:#cbd5e1}.signup-card input,.signup-card textarea{box-sizing:border-box;width:100%;margin-top:6px;border-radius:12px;border:1px solid #475569;background:#020617;color:#fff;padding:12px}.signup-role-field{border:1px solid #334155;border-radius:16px;padding:14px;margin:14px 0}.signup-role-field legend{font-weight:900;color:#f8fafc}.role-option{display:flex!important;gap:10px;align-items:flex-start;border:1px solid #334155;border-radius:12px;padding:12px}.role-option input{width:auto;margin-top:3px}.role-option strong{display:block;color:#fff}.role-option small{display:block;color:#94a3b8;margin-top:4px}.checkbox{display:flex!important;gap:10px;align-items:flex-start}.checkbox input{width:auto;margin-top:3px}.signed-in-signup-note{border:1px solid rgba(103,232,249,.35);background:rgba(103,232,249,.12);color:#cffafe;border-radius:14px;padding:12px 14px}button{border:0;border-radius:999px;padding:13px 22px;background:#67e8f9;color:#020617;font-weight:900;cursor:pointer}button:disabled{opacity:.6;cursor:not-allowed}#form-message{color:#cbd5e1}.signup-help{color:#94a3b8;margin-top:0}
   </style>
 </head>
 <body data-event-detail-page="${slug}">

@@ -1,6 +1,4 @@
 import {
-  addSignupToEmailList,
-  applySignupRole,
   getCurrentUserFromRequest,
   getDb,
   getEvent,
@@ -8,11 +6,9 @@ import {
   jsonResponse,
   listSignups,
   methodNotAllowed,
-  normalizeParticipationInput,
   readJson,
-  registerParticipation,
+  registerEventSignup,
   requireAdmin,
-  resolveSignupEventInstance,
   signupsToCsv
 } from "../../../../_lib/event-platform.js";
 
@@ -42,40 +38,11 @@ export async function onRequestGet(context) {
 export async function onRequestPost(context) {
   return handleErrors(async () => {
     const db = getDb(context.env);
-    const event = await getEvent(db, context.params.slug);
-    if (!event || event.status === "archived") {
-      return jsonResponse({ error: "Event not found" }, { status: 404 });
-    }
-    if (event.status !== "open") {
-      return jsonResponse({ error: "Signups are not open for this event" }, { status: 409 });
-    }
-
-    const instance = await resolveSignupEventInstance(db, context.params.slug);
-    if (!instance) {
-      return jsonResponse({ error: "No open instance is available for this event" }, { status: 409 });
-    }
-
     const currentUser = await getCurrentUserFromRequest(db, context.request);
     const rawInput = await readJson(context.request);
-    const roleInput = applySignupRole(rawInput, event);
-    const input = roleInput.input;
-    const participation = normalizeParticipationInput(input, event, currentUser);
-    const allErrors = [...roleInput.errors, ...participation.errors];
-    if (allErrors.length) {
-      return jsonResponse({ error: allErrors.join("; "), errors: allErrors }, { status: 400 });
-    }
-
-    const mailingListResult = await addSignupToEmailList(context.env, participation.signup, event);
-    const registration = await registerParticipation(db, {
-      person: participation.person,
-      eventSeries: event,
-      eventInstance: instance,
-      eventRole: participation.eventRole,
-      safetyInput: participation.safetyInput,
-      source: currentUser ? "signed-in-event-signup" : "signup-api",
-      signup: participation.signup,
-      mailingListResult
-    });
+    const registration = await registerEventSignup(db, context.env, context.params.slug, rawInput, { currentUser });
+    const event = registration.event;
+    const participation = registration.input;
     const savedSignup = registration.signup;
 
     return jsonResponse({

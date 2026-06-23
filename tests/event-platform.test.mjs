@@ -33,6 +33,8 @@ import {
   validateRecurrenceRule
 } from "../functions/_lib/recurrence.js";
 import worker from "../worker.js";
+import { onRequestPost as postEventSignup } from "../functions/api/events/[slug]/signups/index.js";
+import { onRequestPost as postEventCheckin } from "../functions/api/events/[slug]/checkins/index.js";
 
 function roleAwareAdminDb({ role = "admin", users = [] } = {}) {
   return {
@@ -64,6 +66,144 @@ function roleAwareAdminDb({ role = "admin", users = [] } = {}) {
       };
     }
   };
+}
+
+function participationRouteDb({ currentUser = null, role = "admin" } = {}) {
+  const event = {
+    slug: "demo-hours",
+    title: "Demo Hours",
+    status: "open",
+    signup_fields_json: JSON.stringify({
+      role_label: "I want to",
+      default_role: "attend",
+      roles: [{ value: "attend", label: "Attend" }, { value: "demo", label: "Demo something" }]
+    })
+  };
+  const instances = [
+    { id: "inst_demo_current", event_slug: "demo-hours", instance_key: "current", starts_at: "2026-07-22T01:00:00.000Z", status: "open" },
+    { id: "inst_demo_selected", event_slug: "demo-hours", instance_key: "selected", starts_at: "2026-07-29T01:00:00.000Z", status: "closed" }
+  ];
+  const usersById = new Map([
+    ["usr_admin", { id: "usr_admin", email: "admin@example.com", name: "Admin User", metadata_json: null }],
+    ["usr_existing", { id: "usr_existing", email: "selected@example.com", name: "Selected User", first_name: "Selected", last_name: "User", phone: "661-555-0100", metadata_json: null }]
+  ]);
+  const usersByEmail = new Map([...usersById.values()].map((user) => [user.email, user]));
+  if (currentUser) {
+    usersById.set(currentUser.id, currentUser);
+    usersByEmail.set(currentUser.email, currentUser);
+  }
+  const signups = [];
+  const emergencyContacts = [];
+  const participantEvents = [];
+  let userSeq = 0;
+
+  function stateFor(eventInstanceId, userId) {
+    const rows = participantEvents.filter((row) => row.event_instance_id === eventInstanceId && row.user_id === userId);
+    return {
+      signed_up_at: rows.find((row) => row.event_type === "signed_up")?.occurred_at || null,
+      checked_in_at: rows.find((row) => row.event_type === "checked_in")?.occurred_at || null,
+      checked_out_at: null,
+      cancelled_at: null
+    };
+  }
+
+  function signupRow(signup) {
+    const user = usersById.get(signup.user_id) || {};
+    const state = stateFor(signup.event_instance_id, signup.user_id);
+    return {
+      ...signup,
+      ...state,
+      email: user.email,
+      name: signup.name || user.name,
+      first_name: signup.first_name || user.first_name,
+      last_name: signup.last_name || user.last_name,
+      phone: signup.phone || user.phone,
+      school: signup.school || user.school,
+      signup_role: JSON.parse(signup.metadata_json || "{}").signup_role || null
+    };
+  }
+
+  const db = {
+    event,
+    instances,
+    usersById,
+    usersByEmail,
+    signups,
+    emergencyContacts,
+    participantEvents,
+    prepare(sql) {
+      return {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async first() {
+          if (/FROM user_sessions/.test(sql)) {
+            return currentUser ? { ...currentUser, session_id: "ses_test", session_expires_at: "2099-01-01T00:00:00.000Z" } : null;
+          }
+          if (/FROM roles/.test(sql)) {
+            return role && this.args.includes(role) ? { role, scope_type: "global", scope_id: "*", created_at: "2026-01-01T00:00:00.000Z" } : null;
+          }
+          if (/FROM events\s+WHERE slug = \?/.test(sql)) return this.args[0] === event.slug ? event : null;
+          if (/FROM event_instances\s+WHERE event_slug = \? AND status = 'open'/.test(sql)) return instances.find((row) => row.event_slug === this.args[0] && row.status === "open") || null;
+          if (/SELECT \* FROM event_instances WHERE event_slug = \? AND id = \?/.test(sql)) return instances.find((row) => row.event_slug === this.args[0] && row.id === this.args[1]) || null;
+          if (/SELECT \* FROM users WHERE id = \?/.test(sql)) return usersById.get(this.args[0]) || null;
+          if (/SELECT \* FROM users WHERE email = \?/.test(sql)) return usersByEmail.get(this.args[0]) || null;
+          if (/FROM emergency_contacts/.test(sql)) return emergencyContacts.find((row) => row.event_instance_id === this.args[0] && row.user_id === this.args[1]) || null;
+          if (/FROM signups s\s+JOIN users u/.test(sql)) {
+            const eventInstanceId = this.args.length === 3 ? this.args[1] : this.args[0];
+            const userId = this.args.at(-1);
+            const signup = signups.find((row) => row.event_instance_id === eventInstanceId && row.user_id === userId);
+            return signup ? signupRow(signup) : null;
+          }
+          throw new Error(`Unexpected first() query: ${sql}`);
+        },
+        async all() {
+          if (/FROM users u\s+LEFT JOIN signups s/.test(sql)) return { results: [] };
+          if (/FROM signups s\s+JOIN users u/.test(sql)) return { results: signups.map(signupRow) };
+          if (/FROM roles/.test(sql)) return { results: [] };
+          return { results: [] };
+        },
+        async run() {
+          if (/INSERT INTO users/.test(sql)) {
+            const [requestedId, email, name, firstName, lastName, phone, school, metadataJson, createdAt, updatedAt] = this.args;
+            const user = usersByEmail.get(email) || { id: requestedId || `usr_${++userSeq}`, email, created_at: createdAt };
+            Object.assign(user, { name: name || user.name || null, first_name: firstName || user.first_name || null, last_name: lastName || user.last_name || null, phone: phone || user.phone || null, school: school || user.school || null, metadata_json: metadataJson || user.metadata_json || null, updated_at: updatedAt });
+            usersByEmail.set(email, user);
+            usersById.set(user.id, user);
+            return { success: true };
+          }
+          if (/UPDATE users\s+SET metadata_json = \?/.test(sql)) {
+            const [metadataJson, updatedAt, userId] = this.args;
+            const user = usersById.get(userId);
+            if (user) Object.assign(user, { metadata_json: metadataJson, updated_at: updatedAt });
+            return { success: true };
+          }
+          if (/INSERT INTO signups/.test(sql)) {
+            const [id, eventSlug, eventInstanceId, userId, name, firstName, lastName, phone, school, year, experience, notes, emailListOptIn, metadataJson, mailingStatus, mailingDetail, createdAt, updatedAt] = this.args;
+            let signup = signups.find((row) => row.event_instance_id === eventInstanceId && row.user_id === userId);
+            if (!signup) {
+              signup = { id, event_slug: eventSlug, event_instance_id: eventInstanceId, user_id: userId, created_at: createdAt };
+              signups.push(signup);
+            }
+            Object.assign(signup, { name, first_name: firstName, last_name: lastName, phone, school, year, experience, notes, email_list_opt_in: emailListOptIn, metadata_json: metadataJson, mailing_list_status: mailingStatus, mailing_list_detail: mailingDetail, updated_at: updatedAt });
+            return { success: true };
+          }
+          if (/INSERT INTO emergency_contacts/.test(sql)) {
+            const [id, eventInstanceId, userId, signupId, name, relationship, phone, source, createdAt, updatedAt] = this.args;
+            emergencyContacts.push({ id, event_instance_id: eventInstanceId, user_id: userId, signup_id: signupId, name, relationship, phone, source, created_at: createdAt, updated_at: updatedAt });
+            return { success: true };
+          }
+          if (/INSERT OR IGNORE INTO event_participant_events/.test(sql)) {
+            const [id, eventSlug, eventInstanceId, userId, signupId, eventType, actor, source, dataJson, occurredAt, createdAt] = this.args;
+            if (!participantEvents.some((row) => row.id === id)) participantEvents.push({ id, event_slug: eventSlug, event_instance_id: eventInstanceId, user_id: userId, signup_id: signupId, event_type: eventType, actor, source, data_json: dataJson, occurred_at: occurredAt, created_at: createdAt });
+            return { success: true };
+          }
+          throw new Error(`Unexpected run() query: ${sql}`);
+        }
+      };
+    }
+  };
+  return db;
 }
 
 test("slugify creates stable event slugs", () => {
@@ -709,14 +849,45 @@ test("rendered event detail page shows venue name and address and supports signe
   assert.match(html, /body\.signed_in_signup = true/);
 });
 
-test("signed-in event signup API uses Participation commands with session profile safety readiness", () => {
-  const source = readFileSync(new URL("../functions/api/events/[slug]/signups/index.js", import.meta.url), "utf8");
-  assert.match(source, /getCurrentUserFromRequest/);
-  assert.match(source, /normalizeParticipationInput\(input, event, currentUser\)/);
-  assert.match(source, /registerParticipation\(db, \{/);
-  assert.match(source, /source: currentUser \? "signed-in-event-signup" : "signup-api"/);
-  assert.match(source, /readiness: registration\.readiness/);
-  assert.match(source, /signed_in: Boolean\(currentUser\)/);
+test("signed-in event signup route uses session identity through Participation and preserves instance role state", async () => {
+  const currentUser = {
+    id: "usr_session",
+    email: "session@example.com",
+    name: "Session User",
+    first_name: "Session",
+    last_name: "User",
+    phone: "661-555-0000",
+    metadata_json: null
+  };
+  const db = participationRouteDb({ currentUser });
+  const response = await postEventSignup({
+    request: new Request("https://hackthevalley.org/api/events/demo-hours/signups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie: "htv_session=test-session" },
+      body: JSON.stringify({
+        user_id: "usr_victim",
+        person_id: "usr_victim",
+        email: "victim@example.com",
+        name: "Victim Person",
+        signup_role: "demo"
+      })
+    }),
+    env: { HTV_DB: db },
+    params: { slug: "demo-hours" }
+  });
+
+  assert.equal(response.status, 201);
+  const body = await response.json();
+  assert.equal(body.signup.signed_in, true);
+  assert.equal(body.signup.user_id, "usr_session");
+  assert.equal(body.signup.email, "session@example.com");
+  assert.equal(body.signup.event_instance_id, "inst_demo_current");
+  assert.equal(body.signup.signup_role, "demo");
+  assert.equal(body.signup.emergency_contact_present, false);
+  assert.equal(db.signups.length, 1);
+  assert.equal(db.signups[0].user_id, "usr_session");
+  assert.match(db.signups[0].metadata_json, /"signup_role":"demo"/);
+  assert.equal(db.participantEvents.some((event) => event.event_type === "signed_up" && event.source === "signed-in-event-signup"), true);
 });
 
 test("check-in search ranks signed-up attendees first while searching all users", async () => {
@@ -794,11 +965,38 @@ test("manual attendee check-in can create/signup/check in through Participation 
   assert.match(participationSource, /eventInstanceId/);
 });
 
-test("admin check-in can reuse existing users without emergency contact", () => {
-  const source = readFileSync(new URL("../functions/_lib/event-platform.js", import.meta.url), "utf8");
-  assert.match(source, /normalizeSignupInput\(input, eventSlug, \{ requireEmergencyContact = true, currentUser = null \} = \{\}\)/);
-  assert.match(source, /requireEmergencyContact: !input\.user_id/);
-  assert.match(source, /if \(!input\.user_id\) \{/);
+test("admin check-in route reuses selected existing users without emergency contact or body identity overrides", async () => {
+  const db = participationRouteDb({ currentUser: { id: "usr_admin", email: "admin@example.com", name: "Admin User", metadata_json: null } });
+  const response = await postEventCheckin({
+    request: new Request("https://hackthevalley.org/api/events/demo-hours/checkins?instance_id=inst_demo_current", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie: "htv_session=admin-session" },
+      body: JSON.stringify({
+        event_instance_id: "inst_demo_selected",
+        user_id: "usr_existing",
+        email: "attacker@example.com",
+        name: "Body Override",
+        actor: "forged-actor"
+      })
+    }),
+    env: { HTV_DB: db },
+    params: { slug: "demo-hours" }
+  });
+
+  assert.equal(response.status, 201);
+  const body = await response.json();
+  assert.equal(body.signup.user_id, "usr_existing");
+  assert.equal(body.signup.email, "selected@example.com");
+  assert.equal(body.signup.name, "Selected User");
+  assert.equal(body.signup.event_instance_id, "inst_demo_selected");
+  assert.equal(body.instance.id, "inst_demo_selected");
+  assert.equal(db.signups.length, 1);
+  assert.equal(db.signups[0].user_id, "usr_existing");
+  assert.equal(db.signups[0].event_instance_id, "inst_demo_selected");
+  assert.equal(db.emergencyContacts.length, 0);
+  const checkedInEvent = db.participantEvents.find((event) => event.event_type === "checked_in" && event.event_instance_id === "inst_demo_selected");
+  assert.ok(checkedInEvent);
+  assert.equal(checkedInEvent.actor, "usr_admin");
 });
 
 test("admin portal exposes event check-in search and manual walk-up form", () => {

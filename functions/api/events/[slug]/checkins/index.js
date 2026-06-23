@@ -1,41 +1,22 @@
 import {
-  addSignupToEmailList,
-  checkInAttendee,
+  checkInEventAttendee,
   getDb,
-  getEvent,
-  getEventInstance,
   handleErrors,
   jsonResponse,
+  listEventCheckinCandidates,
   methodNotAllowed,
   readJson,
-  requireAdmin,
-  resolveSignupEventInstance,
-  searchCheckinCandidates
+  requireAdmin
 } from "../../../../_lib/event-platform.js";
-
-async function resolveCheckinInstance(db, eventSlug, requestedInstanceId) {
-  if (requestedInstanceId) {
-    const instance = await getEventInstance(db, eventSlug, requestedInstanceId);
-    if (!instance) throw Object.assign(new Error("Event instance not found"), { status: 404 });
-    return instance;
-  }
-  const instance = await resolveSignupEventInstance(db, eventSlug);
-  if (!instance) throw Object.assign(new Error("No open instance is available for this event"), { status: 409 });
-  return instance;
-}
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
     await requireAdmin(context.request, context.env);
     const db = getDb(context.env);
-    const event = await getEvent(db, context.params.slug);
-    if (!event || event.status === "archived") return jsonResponse({ error: "Event not found" }, { status: 404 });
-
     const url = new URL(context.request.url);
-    const instance = await resolveCheckinInstance(db, context.params.slug, url.searchParams.get("instance_id"));
     const query = url.searchParams.get("query") || url.searchParams.get("q") || "";
-    const candidates = await searchCheckinCandidates(db, context.params.slug, {
-      eventInstanceId: instance.id,
+    const { event, instance, candidates } = await listEventCheckinCandidates(db, context.params.slug, {
+      requestedInstanceId: url.searchParams.get("instance_id"),
       query,
       limit: url.searchParams.get("limit") || 25
     });
@@ -46,21 +27,15 @@ export async function onRequestGet(context) {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    await requireAdmin(context.request, context.env);
+    const access = await requireAdmin(context.request, context.env);
     const db = getDb(context.env);
-    const event = await getEvent(db, context.params.slug);
-    if (!event || event.status === "archived") return jsonResponse({ error: "Event not found" }, { status: 404 });
-
     const url = new URL(context.request.url);
     const input = await readJson(context.request);
-    const instance = await resolveCheckinInstance(db, context.params.slug, input.event_instance_id || url.searchParams.get("instance_id"));
-
-    const result = await checkInAttendee(db, event, input, {
-      eventInstance: instance,
-      actor: input.actor || "admin",
-      source: "admin-checkin",
-      syncEmailList: (signup) => addSignupToEmailList(context.env, signup, event)
+    const result = await checkInEventAttendee(db, context.env, context.params.slug, input, {
+      requestedInstanceId: input.event_instance_id || url.searchParams.get("instance_id"),
+      actor: access.user?.id || "admin"
     });
+    const { event, instance } = result;
 
     return jsonResponse({
       success: true,

@@ -311,13 +311,14 @@ export function normalizeHelperInterestInput(input = {}, currentUser = null) {
 }
 
 export function normalizeSignupInput(input, eventSlug, { requireEmergencyContact = true, currentUser = null } = {}) {
-  const email = normalizeEmail(input.email) || normalizeEmail(currentUser?.email);
-  const suppliedName = String(input.name || `${input.first_name || ""} ${input.last_name || ""}`).trim();
+  const hasCurrentUser = Boolean(currentUser?.id || currentUser?.email);
+  const email = hasCurrentUser ? normalizeEmail(currentUser?.email) : normalizeEmail(input.email);
+  const suppliedName = hasCurrentUser ? "" : String(input.name || `${input.first_name || ""} ${input.last_name || ""}`).trim();
   const currentUserName = trimOrNull(currentUser?.name) || trimOrNull(`${currentUser?.first_name || ""} ${currentUser?.last_name || ""}`);
   const name = suppliedName || currentUserName || email;
   const nameParts = splitName(name);
-  const firstName = String(input.first_name || nameParts.firstName).trim();
-  const lastName = String(input.last_name || nameParts.lastName).trim();
+  const firstName = String(hasCurrentUser ? (currentUser?.first_name || nameParts.firstName) : (input.first_name || nameParts.firstName)).trim();
+  const lastName = String(hasCurrentUser ? (currentUser?.last_name || nameParts.lastName) : (input.last_name || nameParts.lastName)).trim();
   const wantsEmailList = input.email_list_opt_in !== false;
   const emergency = normalizeEmergencyContactInput(input);
 
@@ -327,8 +328,8 @@ export function normalizeSignupInput(input, eventSlug, { requireEmergencyContact
     name,
     first_name: firstName,
     last_name: lastName,
-    phone: trimOrNull(input.phone) || trimOrNull(currentUser?.phone),
-    school: trimOrNull(input.school ?? input.university) || trimOrNull(currentUser?.school),
+    phone: hasCurrentUser ? trimOrNull(currentUser?.phone) : trimOrNull(input.phone),
+    school: hasCurrentUser ? trimOrNull(currentUser?.school) : trimOrNull(input.school ?? input.university),
     year: trimOrNull(input.year),
     experience: trimOrNull(input.experience),
     notes: trimOrNull(input.notes || input.message),
@@ -1504,6 +1505,54 @@ export async function upsertSignup(db, eventSlug, input, mailingListResult, even
   return result.signup;
 }
 
+export async function registerEventSignup(db, env, eventSlug, input = {}, { currentUser = null, syncEmailList = addSignupToEmailList } = {}) {
+  const event = await getEvent(db, eventSlug);
+  if (!event || event.status === "archived") {
+    throw Object.assign(new Error("Event not found"), { status: 404 });
+  }
+  if (event.status !== "open") {
+    throw Object.assign(new Error("Signups are not open for this event"), { status: 409 });
+  }
+
+  const instance = await resolveSignupEventInstance(db, eventSlug);
+  if (!instance) {
+    throw Object.assign(new Error("No open instance is available for this event"), { status: 409 });
+  }
+
+  const roleInput = applySignupRole(input, event);
+  const participation = normalizeParticipationInput(roleInput.input, event, currentUser);
+  const allErrors = [...roleInput.errors, ...participation.errors];
+  if (allErrors.length) {
+    throw Object.assign(new Error(allErrors.join("; ")), { status: 400, errors: allErrors });
+  }
+
+  const mailingListResult = syncEmailList
+    ? await syncEmailList(env, participation.signup, event)
+    : { status: "skipped_not_configured", detail: "No email-list sync callback configured" };
+  const registration = await registerParticipation(db, {
+    person: participation.person,
+    eventSeries: event,
+    eventInstance: instance,
+    eventRole: participation.eventRole,
+    safetyInput: participation.safetyInput,
+    source: currentUser ? "signed-in-event-signup" : "signup-api",
+    signup: participation.signup,
+    mailingListResult
+  });
+
+  return {
+    ...registration,
+    event,
+    eventSeries: event,
+    instance,
+    eventInstance: instance,
+    input: participation,
+    currentUser,
+    signedIn: Boolean(currentUser),
+    mailingListResult
+  };
+}
+
 export async function upsertEmergencyContact(db, { eventInstanceId, userId, signupId = null, contact, source = "signup" }) {
   const { contact: normalized, errors } = normalizeEmergencyContactInput({ emergency_contact: contact || {} });
   if (errors.length) {
@@ -1790,6 +1839,17 @@ export async function getEventInstance(db, eventSlug, eventInstanceId) {
   return await db.prepare("SELECT * FROM event_instances WHERE event_slug = ? AND id = ?").bind(eventSlug, eventInstanceId).first();
 }
 
+export async function resolveCheckinEventInstance(db, eventSlug, requestedInstanceId = null) {
+  if (requestedInstanceId) {
+    const instance = await getEventInstance(db, eventSlug, requestedInstanceId);
+    if (!instance) throw Object.assign(new Error("Event instance not found"), { status: 404 });
+    return instance;
+  }
+  const instance = await resolveSignupEventInstance(db, eventSlug);
+  if (!instance) throw Object.assign(new Error("No open instance is available for this event"), { status: 409 });
+  return instance;
+}
+
 async function getSignupByInstanceAndUser(db, eventSlug, eventInstanceId, userId) {
   if (!eventInstanceId || !userId) return null;
   return await db.prepare(`
@@ -1884,6 +1944,18 @@ export async function searchCheckinCandidates(db, eventSlug, { eventInstanceId, 
   return result.results || [];
 }
 
+export async function listEventCheckinCandidates(db, eventSlug, { requestedInstanceId = null, query = "", limit = 25 } = {}) {
+  const event = await getEvent(db, eventSlug);
+  if (!event || event.status === "archived") throw Object.assign(new Error("Event not found"), { status: 404 });
+  const instance = await resolveCheckinEventInstance(db, eventSlug, requestedInstanceId);
+  const candidates = await searchCheckinCandidates(db, eventSlug, {
+    eventInstanceId: instance.id,
+    query,
+    limit
+  });
+  return { event, instance, candidates };
+}
+
 export async function checkInAttendee(db, event, input, { eventInstance = null, actor = "admin", source = "admin-checkin", syncEmailList = null } = {}) {
   const resolvedInstance = eventInstance || await resolveSignupEventInstance(db, event.slug);
   if (!resolvedInstance) {
@@ -1891,34 +1963,37 @@ export async function checkInAttendee(db, event, input, { eventInstance = null, 
   }
 
   let userInput = { ...input };
-  if (input.user_id && (!input.email || !input.name)) {
-    const existingUser = await getUserById(db, input.user_id);
+  let existingUser = null;
+  if (input.user_id) {
+    existingUser = await getUserById(db, input.user_id);
     if (!existingUser) throw Object.assign(new Error("User not found"), { status: 404 });
     userInput = {
-      ...existingUser,
       ...input,
-      email: input.email || existingUser.email,
-      name: input.name || existingUser.name || `${existingUser.first_name || ""} ${existingUser.last_name || ""}`.trim(),
-      first_name: input.first_name || existingUser.first_name,
-      last_name: input.last_name || existingUser.last_name,
-      phone: input.phone || existingUser.phone,
-      school: input.school || existingUser.school
+      id: existingUser.id,
+      user_id: existingUser.id,
+      email: existingUser.email,
+      name: existingUser.name || `${existingUser.first_name || ""} ${existingUser.last_name || ""}`.trim(),
+      first_name: existingUser.first_name,
+      last_name: existingUser.last_name,
+      phone: existingUser.phone,
+      school: existingUser.school
     };
   }
 
-  let savedSignup = input.user_id
-    ? await getSignupByInstanceAndUser(db, event.slug, resolvedInstance.id, input.user_id)
+  let savedSignup = existingUser
+    ? await getSignupByInstanceAndUser(db, event.slug, resolvedInstance.id, existingUser.id)
     : null;
 
   if (!savedSignup) {
-    const { signup, errors } = normalizeSignupInput(userInput, event.slug, { requireEmergencyContact: !input.user_id });
+    const { signup, errors } = normalizeSignupInput(userInput, event.slug, { requireEmergencyContact: !existingUser, currentUser: existingUser });
     if (errors.length) throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
     const mailingListResult = syncEmailList
       ? await syncEmailList(signup)
       : { status: "skipped_not_configured", detail: "No email-list sync callback configured" };
     savedSignup = await upsertSignup(db, event.slug, userInput, mailingListResult, resolvedInstance, {
-      requireEmergencyContact: !input.user_id,
-      source
+      requireEmergencyContact: !existingUser,
+      source,
+      currentUser: existingUser
     });
   } else if (input.emergency_contact_name || input.emergency_contact_phone || input.emergency_contact?.name || input.emergency_contact?.phone) {
     const { contact, errors } = normalizeEmergencyContactInput(input);
@@ -1932,7 +2007,7 @@ export async function checkInAttendee(db, event, input, { eventInstance = null, 
     });
   }
 
-  if (!input.user_id) {
+  if (!existingUser) {
     const emergency = await getEmergencyContactStatus(db, resolvedInstance.id, savedSignup.user_id);
     if (!emergency.present) {
       throw Object.assign(new Error("Emergency contact is required before check-in."), { status: 409, code: "missing_emergency_contact" });
@@ -1953,6 +2028,18 @@ export async function checkInAttendee(db, event, input, { eventInstance = null, 
     checked_in_at: checkin.checked_in_at,
     already_checked_in: checkin.already_checked_in
   };
+}
+
+export async function checkInEventAttendee(db, env, eventSlug, input = {}, { requestedInstanceId = null, actor = "admin" } = {}) {
+  const event = await getEvent(db, eventSlug);
+  if (!event || event.status === "archived") throw Object.assign(new Error("Event not found"), { status: 404 });
+  const instance = await resolveCheckinEventInstance(db, eventSlug, requestedInstanceId);
+  return await checkInAttendee(db, event, input, {
+    eventInstance: instance,
+    actor,
+    source: "admin-checkin",
+    syncEmailList: (signup) => addSignupToEmailList(env, signup, event)
+  });
 }
 
 export async function addSignupToEmailList(env, signup, event) {

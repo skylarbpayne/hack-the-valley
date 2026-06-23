@@ -14,7 +14,9 @@ import {
   listHelperInterests,
   normalizeEventInput,
   normalizeHelperInterestInput,
+  normalizeParticipationInput,
   normalizeSignupInput,
+  registerParticipation,
   requireAdmin,
   requireSuperAdminAccess,
   renderEventPageHtml,
@@ -707,12 +709,13 @@ test("rendered event detail page shows venue name and address and supports signe
   assert.match(html, /body\.signed_in_signup = true/);
 });
 
-test("signed-in event signup API can use session profile instead of requiring contact fields", () => {
+test("signed-in event signup API uses Participation commands with session profile safety readiness", () => {
   const source = readFileSync(new URL("../functions/api/events/[slug]/signups/index.js", import.meta.url), "utf8");
   assert.match(source, /getCurrentUserFromRequest/);
-  assert.match(source, /const signupOptions = \{ requireEmergencyContact: !currentUser, currentUser \}/);
-  assert.match(source, /requireEmergencyContact: !currentUser/);
+  assert.match(source, /normalizeParticipationInput\(input, event, currentUser\)/);
+  assert.match(source, /registerParticipation\(db, \{/);
   assert.match(source, /source: currentUser \? "signed-in-event-signup" : "signup-api"/);
+  assert.match(source, /readiness: registration\.readiness/);
   assert.match(source, /signed_in: Boolean\(currentUser\)/);
 });
 
@@ -780,13 +783,15 @@ test("check-in search defaults to all signups for the selected event instance", 
   assert.equal(candidates.every((candidate) => candidate.is_signed_up === 1), true);
 });
 
-test("manual attendee check-in can create/signup/check in and stores a checked_in participant event", () => {
-  const source = readFileSync(new URL("../functions/_lib/event-platform.js", import.meta.url), "utf8");
-  assert.match(source, /export async function checkInAttendee/);
-  assert.match(source, /await upsertSignup\(/);
-  assert.match(source, /'checked_in'/);
-  assert.match(source, /INSERT OR IGNORE INTO event_participant_events/);
-  assert.match(source, /event_instance_id/);
+test("manual attendee check-in can create/signup/check in through Participation and stores checked_in event", () => {
+  const platformSource = readFileSync(new URL("../functions/_lib/event-platform.js", import.meta.url), "utf8");
+  const participationSource = readFileSync(new URL("../functions/_lib/domain/participation.js", import.meta.url), "utf8");
+  assert.match(platformSource, /export async function checkInAttendee/);
+  assert.match(platformSource, /await upsertSignup\(/);
+  assert.match(platformSource, /checkInParticipant\(db, \{/);
+  assert.match(participationSource, /eventType: "checked_in"/);
+  assert.match(participationSource, /INSERT OR IGNORE INTO event_participant_events/);
+  assert.match(participationSource, /eventInstanceId/);
 });
 
 test("admin check-in can reuse existing users without emergency contact", () => {
@@ -930,6 +935,8 @@ test("event list includes past and active instances for admin selection", async 
 test("event-platform keeps legacy event imports while exposing domain event helpers", async () => {
   assert.equal(typeof getEventSeries, "function");
   assert.equal(typeof listEventSeries, "function");
+  assert.equal(typeof normalizeParticipationInput, "function");
+  assert.equal(typeof registerParticipation, "function");
 
   const db = {
     prepare(sql) {
@@ -974,13 +981,17 @@ test("signup resolution chooses an open concrete event instance for a reusable s
   assert.match(sqls.join("\n"), /status = 'open'/);
 });
 
-test("event signup writes signups and participant events against a concrete instance", () => {
-  const source = readFileSync(new URL("../functions/_lib/event-platform.js", import.meta.url), "utf8");
-  assert.match(source, /event_instance_id/);
-  assert.match(source, /ON CONFLICT\(event_instance_id, user_id\)/);
-  assert.match(source, /INSERT INTO signups/);
-  assert.match(source, /INSERT OR IGNORE INTO event_participant_events/);
-  assert.match(source, /savedSignup\.event_instance_id/);
+test("event signup writes signups and participant events against a concrete instance through Participation", () => {
+  const platformSource = readFileSync(new URL("../functions/_lib/event-platform.js", import.meta.url), "utf8");
+  const participationSource = readFileSync(new URL("../functions/_lib/domain/participation.js", import.meta.url), "utf8");
+  assert.match(platformSource, /registerParticipation\(db, \{/);
+  assert.match(platformSource, /person: currentUser\?\.id \? currentUser : signup/);
+  assert.doesNotMatch(platformSource, /id: input\.user_id/);
+  assert.match(participationSource, /event_instance_id/);
+  assert.match(participationSource, /ON CONFLICT\(event_instance_id, user_id\)/);
+  assert.match(participationSource, /INSERT INTO signups/);
+  assert.match(participationSource, /INSERT OR IGNORE INTO event_participant_events/);
+  assert.match(participationSource, /eventInstance\.id/);
 });
 
 test("event schema has editable page content and a forward cleanup migration", () => {
@@ -1154,10 +1165,10 @@ test("worker renders real per-event HTML from D1 for /events/<slug>", async () =
   assert.doesNotMatch(html, /id="upcoming-events-panel"/);
 });
 
-test("event signup writes an append-only signed_up participant event", () => {
-  const source = readFileSync(new URL("../functions/_lib/event-platform.js", import.meta.url), "utf8");
+test("event signup writes an append-only signed_up participant event through Participation", () => {
+  const source = readFileSync(new URL("../functions/_lib/domain/participation.js", import.meta.url), "utf8");
   assert.match(source, /INSERT OR IGNORE INTO event_participant_events/);
-  assert.match(source, /'signed_up'/);
+  assert.match(source, /eventType: "signed_up"/);
   assert.match(source, /evt_\$\{savedSignup\.id\}_signed_up/);
 });
 

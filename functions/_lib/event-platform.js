@@ -9,6 +9,14 @@ import {
   toEventInstance,
   toEventSeries
 } from "./domain/events.js";
+import {
+  cancelParticipation,
+  checkInParticipant,
+  listParticipationRoster as domainListParticipationRoster,
+  normalizeParticipationInput,
+  registerParticipation,
+  resolveParticipationReadiness
+} from "./domain/participation.js";
 
 export {
   EventInstanceSchema,
@@ -25,6 +33,15 @@ export {
   toEventInstance,
   toEventSeries
 } from "./domain/events.js";
+
+export {
+  cancelParticipation,
+  checkInParticipant,
+  listParticipationRoster,
+  normalizeParticipationInput,
+  registerParticipation,
+  resolveParticipationReadiness
+} from "./domain/participation.js";
 
 const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -1743,87 +1760,23 @@ export async function upsertSignup(db, eventSlug, input, mailingListResult, even
     throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
   }
 
-  const user = currentUser?.id ? currentUser : await upsertUser(db, signup);
-  const now = new Date().toISOString();
-  const signupId = input.id && String(input.id).startsWith("sgn_") ? String(input.id) : generateId("sgn");
   const resolvedInstance = eventInstance || await resolveSignupEventInstance(db, eventSlug);
   if (!resolvedInstance) {
     throw Object.assign(new Error("No open instance is available for this event"), { status: 409 });
   }
 
-  await db.prepare(`
-    INSERT INTO signups (
-      id, event_slug, event_instance_id, user_id, name, first_name, last_name, phone, school, year, experience, notes,
-      email_list_opt_in, metadata_json, mailing_list_status, mailing_list_detail, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(event_instance_id, user_id) DO UPDATE SET
-      name = excluded.name,
-      first_name = excluded.first_name,
-      last_name = excluded.last_name,
-      phone = excluded.phone,
-      school = excluded.school,
-      year = excluded.year,
-      experience = excluded.experience,
-      notes = excluded.notes,
-      email_list_opt_in = excluded.email_list_opt_in,
-      metadata_json = excluded.metadata_json,
-      mailing_list_status = excluded.mailing_list_status,
-      mailing_list_detail = excluded.mailing_list_detail,
-      updated_at = excluded.updated_at
-  `).bind(
-    signupId,
-    signup.event_slug,
-    resolvedInstance.id,
-    user.id,
-    signup.name,
-    signup.first_name,
-    signup.last_name,
-    signup.phone,
-    signup.school,
-    signup.year,
-    signup.experience,
-    signup.notes,
-    signup.email_list_opt_in,
-    signup.metadata_json,
-    mailingListResult.status,
-    mailingListResult.detail,
-    now,
-    now
-  ).run();
-
-  const savedSignup = await db.prepare(`
-    SELECT s.*, u.email
-    FROM signups s
-    JOIN users u ON u.id = s.user_id
-    WHERE s.event_slug = ? AND s.event_instance_id = ? AND s.user_id = ?
-  `).bind(signup.event_slug, resolvedInstance.id, user.id).first();
-
-  if (requireEmergencyContact || signup.emergency_contact.name || signup.emergency_contact.phone) {
-    await upsertEmergencyContact(db, {
-      eventInstanceId: resolvedInstance.id,
-      userId: user.id,
-      signupId: savedSignup.id,
-      contact: signup.emergency_contact,
-      source: "signup"
-    });
-  }
-
-  await db.prepare(`
-    INSERT OR IGNORE INTO event_participant_events (
-      id, event_slug, event_instance_id, user_id, signup_id, event_type, actor, source, data_json, occurred_at, created_at
-    ) VALUES (?, ?, ?, ?, ?, 'signed_up', NULL, ?, NULL, ?, ?)
-  `).bind(
-    `evt_${savedSignup.id}_signed_up`,
-    savedSignup.event_slug,
-    savedSignup.event_instance_id,
-    savedSignup.user_id,
-    savedSignup.id,
+  const result = await registerParticipation(db, {
+    person: currentUser?.id ? currentUser : signup,
+    eventSeries: { slug: eventSlug },
+    eventInstance: resolvedInstance,
+    eventRole: parseJsonObject(signup.metadata_json, {}).signup_role || null,
+    safetyInput: requireEmergencyContact || signup.emergency_contact.name || signup.emergency_contact.phone ? signup.emergency_contact : null,
     source,
-    savedSignup.created_at || now,
-    now
-  ).run();
+    signup: { ...signup, id: input.id },
+    mailingListResult
+  });
 
-  return savedSignup;
+  return result.signup;
 }
 
 export async function upsertEmergencyContact(db, { eventInstanceId, userId, signupId = null, contact, source = "signup" }) {
@@ -2261,35 +2214,19 @@ export async function checkInAttendee(db, event, input, { eventInstance = null, 
     }
   }
 
-  const alreadyCheckedIn = Boolean(savedSignup.checked_in_at);
-  if (!alreadyCheckedIn) {
-    const now = new Date().toISOString();
-    await db.prepare(`
-      INSERT OR IGNORE INTO event_participant_events (
-        id, event_slug, event_instance_id, user_id, signup_id, event_type, actor, source, data_json, occurred_at, created_at
-      ) VALUES (?, ?, ?, ?, ?, 'checked_in', ?, ?, ?, ?, ?)
-    `).bind(
-      `evt_${resolvedInstance.id}_${savedSignup.user_id}_checked_in`,
-      event.slug,
-      resolvedInstance.id,
-      savedSignup.user_id,
-      savedSignup.id,
-      actor,
-      source,
-      stringifyJson({ manual: true }),
-      now,
-      now
-    ).run();
-  }
+  const checkin = await checkInParticipant(db, {
+    personId: savedSignup.user_id,
+    eventInstanceId: resolvedInstance.id,
+    actor,
+    source
+  });
 
-  const refreshed = await getSignupByInstanceAndUser(db, event.slug, resolvedInstance.id, savedSignup.user_id);
-  const checkedInAt = refreshed?.checked_in_at || savedSignup.checked_in_at || new Date().toISOString();
   return {
     event,
     instance: resolvedInstance,
-    signup: refreshed || { ...savedSignup, checked_in_at: checkedInAt },
-    checked_in_at: checkedInAt,
-    already_checked_in: alreadyCheckedIn
+    signup: checkin.signup,
+    checked_in_at: checkin.checked_in_at,
+    already_checked_in: checkin.already_checked_in
   };
 }
 

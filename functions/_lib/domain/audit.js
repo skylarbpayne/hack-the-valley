@@ -1,0 +1,168 @@
+import {
+  parseJsonObject,
+  stringOrNull
+} from "./shared.js";
+
+export function toAuditEvent(row = {}) {
+  const metadata = parseJsonObject(row.metadata_json, {});
+  const target = resolveRowTarget(row, metadata);
+
+  return {
+    id: stringOrNull(row.id),
+    action: stringOrNull(row.action),
+    actorUserId: stringOrNull(row.actor_user_id),
+    targetType: target.targetType,
+    targetId: target.targetId,
+    approvalId: stringOrNull(metadata.approvalId ?? metadata.approval_id),
+    targetEmail: stringOrNull(row.target_email) || stringOrNull(metadata.targetEmail ?? metadata.target_email),
+    role: stringOrNull(row.role) || stringOrNull(metadata.role),
+    scopeType: stringOrNull(row.scope_type) || stringOrNull(metadata.scopeType ?? metadata.scope_type) || "global",
+    scopeId: stringOrNull(row.scope_id) || stringOrNull(metadata.scopeId ?? metadata.scope_id) || "*",
+    metadata,
+    createdAt: stringOrNull(row.created_at)
+  };
+}
+
+export function buildAuditEvent({
+  action,
+  actorUserId = null,
+  targetType = null,
+  targetId = null,
+  approvalId = null,
+  metadata = {}
+} = {}) {
+  const normalizedAction = stringOrNull(action);
+  if (!normalizedAction) {
+    throw Object.assign(new Error("Audit action is required."), { status: 400, code: "validation_error" });
+  }
+
+  const createdAt = new Date().toISOString();
+  const event = {
+    action: normalizedAction,
+    actorUserId: stringOrNull(actorUserId),
+    targetType: stringOrNull(targetType),
+    targetId: stringOrNull(targetId),
+    approvalId: stringOrNull(approvalId),
+    metadata: parseJsonObject(metadata, {}),
+    createdAt
+  };
+
+  return {
+    id: generateAuditEventId(),
+    ...event
+  };
+}
+
+export async function appendAuditEvent(db, event) {
+  if (!db?.prepare) throw Object.assign(new Error("A D1 database binding is required."), { status: 500 });
+  const normalized = normalizeAuditEvent(event);
+  const storageMetadata = metadataForStorage(normalized);
+  const metadataJson = JSON.stringify(storageMetadata);
+
+  await db.prepare(`
+    INSERT INTO admin_audit_events (id, action, actor_user_id, target_user_id, target_email, role, scope_type, scope_id, metadata_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    normalized.id,
+    normalized.action,
+    normalized.actorUserId,
+    targetUserId(normalized),
+    stringOrNull(normalized.metadata.targetEmail ?? normalized.metadata.target_email),
+    stringOrNull(normalized.metadata.role),
+    normalized.scopeType,
+    normalized.scopeId,
+    metadataJson,
+    normalized.createdAt
+  ).run();
+
+  return { ...normalized, metadata: storageMetadata };
+}
+
+function normalizeAuditEvent(event = {}) {
+  const action = stringOrNull(event.action);
+  if (!action) throw Object.assign(new Error("Audit action is required."), { status: 400, code: "validation_error" });
+
+  const metadata = parseJsonObject(event.metadata, {});
+  const targetType = stringOrNull(event.targetType ?? metadata.targetType ?? metadata.target_type);
+  const targetId = stringOrNull(event.targetId ?? metadata.targetId ?? metadata.target_id);
+  const approvalId = stringOrNull(event.approvalId ?? metadata.approvalId ?? metadata.approval_id);
+  const createdAt = stringOrNull(event.createdAt) || new Date().toISOString();
+
+  return {
+    id: stringOrNull(event.id) || generateAuditEventId(),
+    action,
+    actorUserId: stringOrNull(event.actorUserId),
+    targetType,
+    targetId,
+    approvalId,
+    metadata,
+    scopeType: stringOrNull(event.scopeType ?? metadata.scopeType ?? metadata.scope_type) || targetType || "global",
+    scopeId: stringOrNull(event.scopeId ?? metadata.scopeId ?? metadata.scope_id) || targetId || "*",
+    createdAt
+  };
+}
+
+function metadataForStorage(event) {
+  return {
+    ...event.metadata,
+    ...(event.targetType ? { targetType: event.targetType } : {}),
+    ...(event.targetId ? { targetId: event.targetId } : {}),
+    ...(event.approvalId ? { approvalId: event.approvalId } : {})
+  };
+}
+
+function targetUserId(event) {
+  return event.targetType === "user" ? event.targetId : null;
+}
+
+function generateAuditEventId() {
+  if (globalThis.crypto?.randomUUID) {
+    return `audit_${globalThis.crypto.randomUUID().replaceAll("-", "")}`;
+  }
+
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  return `audit_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function resolveRowTarget(row, metadata) {
+  const metadataTargetType = stringOrNull(metadata.targetType ?? metadata.target_type);
+  const metadataTargetId = stringOrNull(metadata.targetId ?? metadata.target_id);
+  if (metadataTargetType && metadataTargetId) {
+    return { targetType: metadataTargetType, targetId: metadataTargetId };
+  }
+
+  const rowTargetUserId = stringOrNull(row.target_user_id);
+  if (rowTargetUserId) {
+    return { targetType: "user", targetId: rowTargetUserId };
+  }
+
+  const scopeTargetType = scopedTargetType(row.scope_type, row.scope_id);
+  const scopeTargetId = scopedTargetId(row.scope_id);
+  if (scopeTargetType && scopeTargetId) {
+    return { targetType: scopeTargetType, targetId: scopeTargetId };
+  }
+
+  return { targetType: metadataTargetType, targetId: metadataTargetId };
+}
+
+function scopedTargetType(scopeType, scopeId) {
+  const normalizedScopeType = stringOrNull(scopeType);
+  const normalizedScopeId = stringOrNull(scopeId);
+  if (!normalizedScopeType || normalizedScopeType === "global") return null;
+  if (!normalizedScopeId || normalizedScopeId === "*") return null;
+  return normalizedScopeType;
+}
+
+function scopedTargetId(scopeId) {
+  const normalizedScopeId = stringOrNull(scopeId);
+  if (!normalizedScopeId || normalizedScopeId === "*") return null;
+  return normalizedScopeId;
+}

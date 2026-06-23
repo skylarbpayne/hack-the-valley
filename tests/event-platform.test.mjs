@@ -23,6 +23,11 @@ import {
   upsertEvent,
   upsertUser
 } from "../functions/_lib/event-platform.js";
+import {
+  ensureEventInstances,
+  generateEventInstanceCandidates,
+  validateRecurrenceRule
+} from "../functions/_lib/recurrence.js";
 import worker from "../worker.js";
 
 function roleAwareAdminDb({ role = "admin", users = [] } = {}) {
@@ -96,6 +101,92 @@ test("event input supports optional capacity, photos, editable page content, and
   assert.equal(event.page_content, "Agenda, parking, eligibility, and recap links live here.");
   assert.match(event.signup_fields_json, /"default_role":"attend"/);
   assert.equal(event.recurrence_rule_json, JSON.stringify({ frequency: "yearly", interval: 1 }));
+});
+
+test("weekly recurrence rules generate stable upcoming event instance candidates", () => {
+  const { errors } = validateRecurrenceRule({
+    frequency: "weekly",
+    interval: 1,
+    timezone: "America/Los_Angeles",
+    day_of_week: "saturday",
+    start_time: "08:00",
+    duration_minutes: 120,
+    starts_on: "2026-06-27",
+    generate_weeks_ahead: 2
+  });
+  assert.deepEqual(errors, []);
+
+  const candidates = generateEventInstanceCandidates({
+    slug: "hack-hours",
+    title: "Hack Hours",
+    venue_name: "Panera Bread",
+    venue_address: "10900 Stockdale Hwy, Bakersfield, CA 93311",
+    capacity: 24,
+    recurrence_rule_json: JSON.stringify({
+      frequency: "weekly",
+      interval: 1,
+      timezone: "America/Los_Angeles",
+      day_of_week: "saturday",
+      start_time: "08:00",
+      duration_minutes: 120,
+      starts_on: "2026-06-27",
+      generate_weeks_ahead: 2
+    })
+  }, { now: "2026-06-22T12:00:00.000Z" });
+
+  assert.equal(candidates.length, 2);
+  assert.equal(candidates[0].id, "inst_hack_hours_2026_06_27_0800");
+  assert.equal(candidates[0].instance_key, "2026-06-27-0800");
+  assert.equal(candidates[0].starts_at, "2026-06-27T15:00:00.000Z");
+  assert.equal(candidates[0].ends_at, "2026-06-27T17:00:00.000Z");
+  assert.equal(candidates[0].status, "draft");
+  assert.equal(candidates[0].venue_name, "Panera Bread");
+});
+
+test("recurring event instance generation is idempotent and insert-missing only", async () => {
+  const rows = [{ instance_key: "2026-06-27-0800", id: "existing" }];
+  const inserted = [];
+  const db = {
+    prepare(sql) {
+      return {
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async all() {
+          assert.match(sql, /FROM event_instances/);
+          return { results: rows };
+        },
+        async run() {
+          assert.match(sql, /INSERT INTO event_instances/);
+          inserted.push(this.args);
+          rows.push({ id: this.args[0], instance_key: this.args[2] });
+          return { success: true };
+        }
+      };
+    }
+  };
+  const event = {
+    slug: "hack-hours",
+    title: "Hack Hours",
+    recurrence_rule_json: JSON.stringify({
+      frequency: "weekly",
+      interval: 1,
+      timezone: "America/Los_Angeles",
+      day_of_week: "saturday",
+      start_time: "08:00",
+      duration_minutes: 120,
+      starts_on: "2026-06-27",
+      generate_weeks_ahead: 2
+    })
+  };
+
+  const first = await ensureEventInstances(db, event, { now: "2026-06-22T12:00:00.000Z" });
+  assert.equal(first.existing.length, 1);
+  assert.equal(first.created.length, 1);
+  assert.equal(inserted[0][2], "2026-07-04-0800");
+
+  const second = await ensureEventInstances(db, event, { now: "2026-06-22T12:00:00.000Z" });
+  assert.equal(second.created.length, 0);
+  assert.equal(inserted.length, 1);
 });
 
 test("upsertEvent persists event page fields", async () => {

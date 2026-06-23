@@ -8,12 +8,12 @@ import {
   jsonResponse,
   listSignups,
   methodNotAllowed,
-  normalizeSignupInput,
+  normalizeParticipationInput,
   readJson,
+  registerParticipation,
   requireAdmin,
   resolveSignupEventInstance,
-  signupsToCsv,
-  upsertSignup
+  signupsToCsv
 } from "../../../../_lib/event-platform.js";
 
 export async function onRequestGet(context) {
@@ -59,33 +59,40 @@ export async function onRequestPost(context) {
     const rawInput = await readJson(context.request);
     const roleInput = applySignupRole(rawInput, event);
     const input = roleInput.input;
-    const signupOptions = { requireEmergencyContact: !currentUser, currentUser };
-    const { signup, errors } = normalizeSignupInput(input, context.params.slug, signupOptions);
-    const allErrors = [...roleInput.errors, ...errors];
+    const participation = normalizeParticipationInput(input, event, currentUser);
+    const allErrors = [...roleInput.errors, ...participation.errors];
     if (allErrors.length) {
       return jsonResponse({ error: allErrors.join("; "), errors: allErrors }, { status: 400 });
     }
 
-    const mailingListResult = await addSignupToEmailList(context.env, signup, event);
-    const savedSignup = await upsertSignup(db, context.params.slug, input, mailingListResult, instance, {
-      ...signupOptions,
-      source: currentUser ? "signed-in-event-signup" : "signup-api"
+    const mailingListResult = await addSignupToEmailList(context.env, participation.signup, event);
+    const registration = await registerParticipation(db, {
+      person: participation.person,
+      eventSeries: event,
+      eventInstance: instance,
+      eventRole: participation.eventRole,
+      safetyInput: participation.safetyInput,
+      source: currentUser ? "signed-in-event-signup" : "signup-api",
+      signup: participation.signup,
+      mailingListResult
     });
+    const savedSignup = registration.signup;
 
     return jsonResponse({
       success: true,
       message: "Signup received",
       event: { slug: event.slug, title: event.title },
+      readiness: registration.readiness,
       signup: {
         id: savedSignup.id,
         event_instance_id: savedSignup.event_instance_id,
-        signup_role: roleInput.signup_role,
+        signup_role: participation.eventRole,
         user_id: savedSignup.user_id,
         signed_in: Boolean(currentUser),
         name: savedSignup.name,
         email: savedSignup.email,
         mailing_list_status: savedSignup.mailing_list_status,
-        emergency_contact_present: !currentUser
+        emergency_contact_present: Boolean(registration.readiness?.safety_contact_present)
       }
     }, { status: 201 });
   });

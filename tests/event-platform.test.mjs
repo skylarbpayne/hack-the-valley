@@ -8,7 +8,9 @@ import {
   checkInAttendee,
   createHelperInterest,
   csvEscape,
+  getEventSeries,
   listEvents,
+  listEventSeries,
   listHelperInterests,
   normalizeEventInput,
   normalizeHelperInterestInput,
@@ -233,6 +235,41 @@ test("upsertEvent persists event page fields", async () => {
   assert.ok(prepared[0].args.includes("/images/events/2026/hero.jpg"));
   assert.ok(prepared[0].args.includes("Editable event page body"));
   assert.ok(prepared[0].args.includes(JSON.stringify({ frequency: "yearly" })));
+});
+
+test("upsertEvent rejects invalid JSON configs before DB writes", async () => {
+  const prepared = [];
+  const writes = [];
+  const db = {
+    prepare(sql) {
+      prepared.push(sql);
+      return {
+        bind(...args) {
+          this.args = args;
+          return this;
+        },
+        async run() {
+          writes.push({ sql, args: this.args });
+          return { success: true };
+        },
+        async first() {
+          return null;
+        }
+      };
+    }
+  };
+
+  await assert.rejects(
+    () => upsertEvent(db, { title: "Broken", signup_fields_json: "[]" }),
+    /signup_fields_json must be a JSON object/
+  );
+  await assert.rejects(
+    () => upsertEvent(db, { title: "Broken", recurrence_rule_json: JSON.stringify({ interval: 0 }) }),
+    /recurrence_rule_json\.interval/
+  );
+
+  assert.equal(prepared.length, 0);
+  assert.equal(writes.length, 0);
 });
 
 test("upsertUser gives users their own ID space and never uses email as ID", async () => {
@@ -890,6 +927,29 @@ test("event list includes past and active instances for admin selection", async 
   assert.deepEqual(events[0].instances.map((instance) => instance.instance_key), ["2026-06-13", "2026-06-20"]);
 });
 
+test("event-platform keeps legacy event imports while exposing domain event helpers", async () => {
+  assert.equal(typeof getEventSeries, "function");
+  assert.equal(typeof listEventSeries, "function");
+
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async all() {
+          if (/FROM events e/.test(sql)) return { results: [{ slug: "demo-hours", title: "Demo Hours", status: "open" }] };
+          if (/FROM event_instances/.test(sql)) return { results: [] };
+          return { results: [] };
+        }
+      };
+    }
+  };
+
+  const [legacyEvent] = await listEvents(db);
+  const [domainEvent] = await listEventSeries(db);
+  assert.equal(legacyEvent.kind, "event_series");
+  assert.equal(domainEvent.kind, "event_series");
+});
+
 test("signup resolution chooses an open concrete event instance for a reusable slug", async () => {
   const sqls = [];
   const db = {
@@ -1063,7 +1123,7 @@ test("worker renders real per-event HTML from D1 for /events/<slug>", async () =
     prepare(sql) {
       return {
         bind(slug) {
-          assert.match(sql, /FROM events WHERE slug = \?/);
+          assert.match(sql, /FROM events\s+WHERE slug = \?/);
           assert.equal(slug, "hack-the-valley-2026");
           return this;
         },

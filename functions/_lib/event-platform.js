@@ -1,3 +1,31 @@
+import {
+  getEventSeries as domainGetEventSeries,
+  listEventInstances as domainListEventInstances,
+  listEventSeries as domainListEventSeries,
+  normalizeEventSeriesInput,
+  parseSignupFieldConfig,
+  previewGeneratedInstances,
+  resolveOpenEventInstance,
+  toEventInstance,
+  toEventSeries
+} from "./domain/events.js";
+
+export {
+  EventInstanceSchema,
+  EventSeriesSchema,
+  RecurrenceRuleSchema,
+  SignupFieldConfigSchema,
+  getEventSeries,
+  listEventSeries,
+  normalizeEventInstanceInput,
+  normalizeEventSeriesInput,
+  parseSignupFieldConfig,
+  previewGeneratedInstances,
+  resolveOpenEventInstance,
+  toEventInstance,
+  toEventSeries
+} from "./domain/events.js";
+
 const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "no-store"
@@ -143,37 +171,7 @@ export function splitName(name) {
 }
 
 export function normalizeEventInput(input, existing = {}) {
-  const title = String(input.title ?? existing.title ?? "").trim();
-  const explicitSlug = input.slug !== undefined && input.slug !== null && String(input.slug).trim() !== "";
-  const slug = explicitSlug ? String(input.slug).trim() : slugify(title || existing.slug);
-  const status = String(input.status ?? existing.status ?? "draft").trim().toLowerCase();
-
-  const event = {
-    slug,
-    title,
-    description: trimOrNull(input.description ?? existing.description),
-    starts_at: trimOrNull(input.starts_at ?? existing.starts_at),
-    ends_at: trimOrNull(input.ends_at ?? existing.ends_at),
-    venue_name: trimOrNull(input.venue_name ?? existing.venue_name),
-    venue_address: trimOrNull(input.venue_address ?? existing.venue_address),
-    capacity: input.capacity ?? existing.capacity ?? null,
-    status,
-    image_url: trimOrNull(input.image_url ?? existing.image_url),
-    page_content: trimOrNull(input.page_content ?? existing.page_content),
-    signup_fields_json: stringifyJson(input.signup_fields ?? input.signup_fields_json ?? existing.signup_fields_json ?? null),
-    recurrence_rule_json: stringifyJson(input.recurrence_rule ?? input.recurrence_rule_json ?? existing.recurrence_rule_json ?? null)
-  };
-
-  const errors = [];
-  if (!event.title) errors.push("title is required");
-  if (!event.slug || !SLUG_RE.test(event.slug)) errors.push("slug must use lowercase letters, numbers, and hyphens");
-  if (!OPEN_STATUSES.has(event.status)) errors.push("status must be draft, open, closed, or archived");
-  if (event.capacity !== null && event.capacity !== "" && (!Number.isInteger(Number(event.capacity)) || Number(event.capacity) < 1)) {
-    errors.push("capacity must be a positive integer when provided");
-  }
-  event.capacity = event.capacity === null || event.capacity === "" ? null : Number(event.capacity);
-
-  return { event, errors };
+  return normalizeEventSeriesInput(input, existing);
 }
 
 export function normalizeEmergencyContactInput(input = {}) {
@@ -333,13 +331,30 @@ function normalizeSignupRoleValue(value) {
 }
 
 export function signupRolesForEvent(event = {}) {
+  return signupRoleConfigForEvent(event).roles;
+}
+
+function signupRoleConfigForEvent(event = {}) {
+  try {
+    const config = parseSignupFieldConfig(event);
+    return {
+      roles: config.roles || [],
+      default_role: config.default_role || null,
+      label: config.label || "How do you want to participate?"
+    };
+  } catch {
+    return legacySignupRoleConfigForEvent(event);
+  }
+}
+
+function legacySignupRoleConfigForEvent(event = {}) {
   const config = parseJsonObject(event.signup_fields_json, {});
   const rawRoles = Array.isArray(config.roles)
     ? config.roles
     : Array.isArray(config.signup_roles)
       ? config.signup_roles
       : [];
-  return rawRoles
+  const roles = rawRoles
     .map((role) => {
       const source = role && typeof role === "object" ? role : { value: role, label: role };
       const value = normalizeSignupRoleValue(source.value || source.id || source.key || source.label);
@@ -351,16 +366,10 @@ export function signupRolesForEvent(event = {}) {
       };
     })
     .filter(Boolean);
-}
-
-function signupRoleConfigForEvent(event = {}) {
-  const config = parseJsonObject(event.signup_fields_json, {});
-  const roles = signupRolesForEvent(event);
   const requestedDefault = normalizeSignupRoleValue(config.default_role || config.defaultRole);
-  const defaultRole = roles.find((role) => role.value === requestedDefault)?.value || roles[0]?.value || null;
   return {
     roles,
-    default_role: defaultRole,
+    default_role: roles.find((role) => role.value === requestedDefault)?.value || roles[0]?.value || null,
     label: trimOrNull(config.role_label || config.signup_role_label) || "How do you want to participate?"
   };
 }
@@ -1389,27 +1398,11 @@ export function sessionCookie(token, expiresAt) {
 }
 
 export async function listEvents(db, { includeArchived = false } = {}) {
-  const baseSelect = `
-    SELECT
-      e.*,
-      (SELECT COUNT(*) FROM event_instances ei WHERE ei.event_slug = e.slug) AS instance_count,
-      (SELECT ei.id FROM event_instances ei WHERE ei.event_slug = e.slug AND ei.status = 'open' ORDER BY ei.starts_at IS NULL, ei.starts_at ASC, ei.created_at ASC LIMIT 1) AS active_instance_id,
-      (SELECT ei.instance_key FROM event_instances ei WHERE ei.event_slug = e.slug AND ei.status = 'open' ORDER BY ei.starts_at IS NULL, ei.starts_at ASC, ei.created_at ASC LIMIT 1) AS active_instance_key
-    FROM events e
-  `;
-  const sql = includeArchived
-    ? `${baseSelect} ORDER BY COALESCE(e.starts_at, e.created_at) DESC`
-    : `${baseSelect} WHERE e.status != 'archived' ORDER BY COALESCE(e.starts_at, e.created_at) DESC`;
-  const result = await db.prepare(sql).all();
-  const events = result.results || [];
-  return await Promise.all(events.map(async (event) => ({
-    ...event,
-    instances: await listEventInstances(db, event.slug)
-  })));
+  return await domainListEventSeries(db, { includeArchived });
 }
 
 export async function getEvent(db, slug) {
-  return await db.prepare("SELECT * FROM events WHERE slug = ?").bind(slug).first();
+  return await domainGetEventSeries(db, slug);
 }
 
 function instanceKeyFromStartsAt(value) {
@@ -1460,23 +1453,11 @@ export async function upsertEventInstance(db, event) {
 }
 
 export async function resolveSignupEventInstance(db, eventSlug) {
-  return await db.prepare(`
-    SELECT *
-    FROM event_instances
-    WHERE event_slug = ? AND status = 'open'
-    ORDER BY starts_at IS NULL, starts_at ASC, created_at ASC
-    LIMIT 1
-  `).bind(eventSlug).first();
+  return await resolveOpenEventInstance(db, eventSlug);
 }
 
 export async function listEventInstances(db, eventSlug) {
-  const result = await db.prepare(`
-    SELECT *
-    FROM event_instances
-    WHERE event_slug = ?
-    ORDER BY starts_at IS NULL, starts_at ASC, created_at ASC
-  `).bind(eventSlug).all();
-  return result.results || [];
+  return await domainListEventInstances(db, eventSlug);
 }
 
 export async function upsertEvent(db, input, existing = {}) {

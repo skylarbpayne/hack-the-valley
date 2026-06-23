@@ -6,7 +6,7 @@
 
 **Architecture:** Build a domain/use-case boundary around the current Cloudflare Worker + D1 app before changing storage. Routes and admin UI call command/query helpers. Storage remains compatible while we introduce typed domain concepts, audit receipts, approval gates, and targeted schema additions only when the current tables cannot safely represent the domain.
 
-**Tech Stack:** Cloudflare Workers, D1 SQLite, vanilla JS modules with JSDoc types, existing `node:test` suite, existing admin dashboard in `public/admin.html`, GitHub Actions deploy workflow.
+**Tech Stack:** Cloudflare Workers, D1 SQLite, vanilla JS modules with JSDoc types, existing `node:test` suite, existing admin dashboard in `public/admin.html`, GitHub Actions deploy workflow. Tooling is adopted phase-by-phase: Valibot for runtime boundary schemas, AST-grep for narrow architecture guardrails, and a local SQLite/Wrangler migration replay script before schema churn. Drizzle/Kysely/OpenAPI stay deferred until the command boundary proves they are worth their weight.
 
 ---
 
@@ -21,6 +21,21 @@ The right move is a staged strangler migration:
 3. **Keep D1 tables compatible.** Existing tables (`events`, `event_instances`, `signups`, `event_participant_events`, `projects`, `badges`, etc.) remain storage implementation details until command helpers prove a better schema is needed.
 4. **Make admin dashboard command-oriented.** The admin UI should say “create event instance,” “check in participant,” “award badge,” “draft campaign,” not “edit row.”
 5. **Gate side effects hard.** Drafting/previewing is safe. Sending email, publishing public content, production D1 backfills, destructive migrations, and credential/provider changes require explicit approval.
+6. **Adopt tools only when they protect a phase.** No abstract tooling spike as a side quest. Each tool lands with the domain milestone that needs it and must have one real rule/schema/script protecting a real HTV foot-gun.
+
+## Tooling adoption map
+
+This plan folds the standardized open-source tooling into the migration milestones instead of treating it as a separate platform project.
+
+| Tooling | Adopt in | What it protects | What it does **not** mean |
+|---|---:|---|---|
+| Valibot | Milestone 1, then extended in 2–8 | runtime schemas for command inputs, D1 JSON columns, domain DTO parsing, consistent validation errors | no TypeScript migration, no schema for every legacy row on day one |
+| Local migration replay script | Milestone 1, then required in every schema milestone | `schema.sql` + numbered migrations apply cleanly to fresh SQLite/D1-compatible DB; destructive migration review markers | no switch away from Wrangler/D1 migrations |
+| AST-grep | Milestone 8, then extended in 9–10 | approval-gate and architecture guardrails such as no direct sends outside campaign commands and no new direct route SQL in migrated domains | no giant lint stack, no noisy generic rules |
+| OpenAPI / generated clients | Revisit after Milestone 9 or 10 | stable public/event/admin command contracts once route shapes settle | not a prerequisite for the domain model |
+| Drizzle / Kysely / ORM | Revisit in Milestone 11 only if SQL churn is the actual bottleneck | typed query/schema tooling if the repo moves toward TypeScript or repeated multi-table SQL gets painful | not part of the initial migration; no big-bang ORM rewrite |
+
+Dependency rule: every new runtime or check dependency gets a one-paragraph note in the PR body explaining which domain boundary it protects. If it is not wired into `npm run check` or a named verification command, it is not actually adopted.
 
 ## Current codebase facts this plan assumes
 
@@ -50,6 +65,7 @@ Verified from the repo:
   - `npm run check`
   - `node --check` for touched JS files when needed
   - sequential migration smoke: apply `schema.sql`, then every `migrations/*.sql` to one temporary SQLite DB
+- Planned tooling upgrades are phase-scoped, not global rewrites: Valibot first for boundary schemas, AST-grep later for targeted guardrails, migration replay as a script before broader schema changes.
 
 ## Target domain model
 
@@ -394,7 +410,7 @@ Create the final domain boundary as small modules, not one eternal junk drawer.
 
 ```txt
 functions/_lib/domain/
-  shared.js              # ids, time, json, validation, result helpers
+  shared.js              # ids, time, json, Valibot schema wrappers, result helpers
   people.js              # Person, safety profile, roles, profile readiness
   events.js              # EventSeries, EventInstance, recurrence preview/apply helpers
   participation.js       # Participation commands, readiness, check-in/cancel/no-show
@@ -494,6 +510,14 @@ Standard approval-required result:
 - Create: `functions/_lib/domain/index.js`
 - Create: `tests/domain-shared.test.mjs`
 - Create: `tests/domain-audit.test.mjs`
+- Create: `scripts/check-migrations.mjs`
+- Modify: `package.json` scripts for `db:migrations:check`
+- Add dependency: `valibot`
+
+**Phase tooling:**
+
+- Introduce Valibot as the one runtime schema standard. Keep it small: shared schema wrappers and command input schemas only, not a full legacy-row rewrite.
+- Introduce `scripts/check-migrations.mjs` so the migration smoke is reproducible instead of copied shell snippets. Wire it into a named script now; add it to `npm run check` once it is stable and not noisy.
 
 **Implementation notes:**
 
@@ -505,6 +529,7 @@ Standard approval-required result:
 - `numberOrNull(value)`
 - `ok(entity, extras)`
 - `validationError(errors)`
+- `parseWithSchema(schema, input)` / `safeParseWithSchema(schema, input)` thin wrappers around Valibot so call sites do not import library-specific error formatting everywhere
 - `approvalRequired(action, preview, reason)`
 - `stableId(prefix, parts)`
 
@@ -522,7 +547,9 @@ Do not change `admin_audit_events` yet unless it blocks generic audit events. Fo
 
 - Pure unit tests pass without Cloudflare bindings.
 - Existing app tests pass.
+- `npm run db:migrations:check` passes locally.
 - No route imports changed yet except tests.
+- Valibot is present but only used through shared/domain schema helpers.
 
 ### Milestone 2 — Events domain module
 
@@ -536,6 +563,12 @@ Do not change `admin_audit_events` yet unless it blocks generic audit events. Fo
 - Modify: `functions/api/events/[slug].js`
 - Test: `tests/domain-events.test.mjs`
 - Update existing: `tests/event-platform.test.mjs`
+
+**Phase tooling:**
+
+- Add Valibot schemas for `EventSeries`, `EventInstance`, `SignupFieldConfig`, and `RecurrenceRule`.
+- Use schemas at mapper boundaries: D1 row/JSON in, domain DTO out.
+- Do not generate OpenAPI yet; these schemas exist to stabilize internal command/query contracts first.
 
 **Commands/queries:**
 
@@ -561,6 +594,7 @@ Do not change `admin_audit_events` yet unless it blocks generic audit events. Fo
 - Public event page behavior unchanged.
 - Admin create/update event behavior unchanged.
 - Tests prove EventSeries/EventInstance mapping and signup role parsing.
+- Valibot rejects malformed `signup_fields_json` / `recurrence_rule_json` with useful validation errors.
 - Recurrence preview has idempotent deterministic output, but no production apply path yet.
 
 ### Milestone 3 — Participation domain module
@@ -576,6 +610,12 @@ Do not change `admin_audit_events` yet unless it blocks generic audit events. Fo
 - Modify: `functions/_lib/event-platform.js` compatibility exports
 - Test: `tests/domain-participation.test.mjs`
 - Update: `tests/event-platform.test.mjs`
+
+**Phase tooling:**
+
+- Add Valibot schemas/enums for `ParticipationRole`, `ParticipationState`, and `RegisterParticipationInput`.
+- Use the schema at the signup/check-in route boundary before touching D1.
+- Keep route response shape compatible; validation errors may be normalized, not product-redesigned.
 
 **Commands/queries:**
 
@@ -611,6 +651,12 @@ Do not change `admin_audit_events` yet unless it blocks generic audit events. Fo
 - Add migration only if approved: `migrations/00xx_person_safety_profile.sql`
 - Modify: profile/me route(s), signup command, check-in readiness
 - Test: `tests/domain-people.test.mjs`
+
+**Phase tooling:**
+
+- Add Valibot schema for `PersonSafetyProfile` and readiness blockers.
+- Add public-serializer tests that prove emergency contact/safety fields do not leak into public project/event/leaderboard outputs.
+- Do not add AST-grep yet unless a specific leak pattern emerges; tests are enough for this phase.
 
 **Schema option A — minimal/no new table:**
 
@@ -651,6 +697,11 @@ Recommendation: use **Option A first** unless we need admin querying/reporting. 
 - Modify: `functions/api/users/[id]/badges.js`
 - Modify: user state/leaderboard helpers if they read badge data directly
 - Test: `tests/domain-badges.test.mjs`
+
+**Phase tooling:**
+
+- Add Valibot schemas for `Badge`, `BadgeAward`, and `AwardBadgeInput`.
+- If revoke columns are introduced, require `npm run db:migrations:check` in the PR and add a seeded migration smoke for duplicate/revoked awards.
 
 **Commands/queries:**
 
@@ -693,6 +744,11 @@ Do not add revoke UI until the API and audit behavior exist.
 - Test: `tests/domain-projects.test.mjs`
 - Test: `tests/domain-event-project-submissions.test.mjs`
 
+**Phase tooling:**
+
+- Add Valibot schemas for `Project`, `ProjectMember`, `EventProjectSubmission`, and public showcase serializers.
+- Do not add typed SQL/ORM here. If the project/submission queries get ugly, isolate them behind query helpers and write tests first; revisit Drizzle/Kysely only in Milestone 11.
+
 **Commands/queries:**
 
 - `createProject(db, { ownerPerson, title, teamName, description, links })`
@@ -728,6 +784,11 @@ Do not add revoke UI until the API and audit behavior exist.
 - Optional future migration: `content_items`
 - Test: `tests/domain-content.test.mjs`
 
+**Phase tooling:**
+
+- Add Valibot schemas for `ContentItem`, `CreateContentDraftInput`, and publish approval packet shape.
+- Do not introduce OpenAPI or a CMS framework here. Content schemas are internal guardrails until dashboard-authored content exists.
+
 **Commands/queries:**
 
 - `createContentDraft({ kind, title, bodyHtml, related })`
@@ -756,6 +817,13 @@ Do not add `content_items` until we need dashboard-authored content to survive o
 - Optional migration: `campaigns`, `message_drafts`, `message_deliveries`
 - Test: `tests/domain-campaigns.test.mjs`
 - Update admin UI copy around draft/approval/send
+
+**Phase tooling:**
+
+- Add Valibot schemas for `Campaign`, `AudienceSegment`, `MessageDraft`, `MessageDelivery`, and send/schedule approval packets.
+- Introduce AST-grep with the first narrow rule in this phase: forbid direct non-dry-run Resend/broadcast sends outside `functions/_lib/domain/campaigns.js` or the approved campaign adapter.
+- Add a second rule or test fixture that flags browser `confirm()` as approval provenance in send/publish flows.
+- Wire the guardrail script as `npm run guardrails`; only add it to `npm run check` after false positives are under control.
 
 **Recommended schema when ready:**
 
@@ -822,6 +890,11 @@ Non-dry-run send/schedule must require approval provenance before:
 - Possibly create: `functions/api/admin/audit.js`
 - Test: admin HTML/content tests or browser smoke where practical
 
+**Phase tooling:**
+
+- Extend AST-grep rules only where the admin surface has a real command endpoint to call. Useful checks: no new admin workflow that labels a button as `send`, `publish`, `apply recurrence`, or `backfill` without routing through an approval-aware command.
+- If API contracts feel useful, generate or hand-write a narrow contract for command endpoints only after the dashboard calls are stable. Do not make OpenAPI a prerequisite for the UI refactor.
+
 **Dashboard sections:**
 
 1. **Events**
@@ -879,6 +952,11 @@ Non-dry-run send/schedule must require approval provenance before:
 6. badge route → BadgeAward commands
 7. campaign draft/preview/send endpoint, when introduced → Content/Campaign commands
 
+**Phase tooling:**
+
+- After each route moves behind a domain module, add or extend an AST-grep rule that flags new direct `db.prepare(...)` calls in that route/domain area unless explicitly allowlisted.
+- Keep the rule scoped to migrated domains; do not try to ban all SQL everywhere in one PR.
+
 **Rule:**
 
 After each route migrates, tests should prove old external API behavior still works unless intentionally changed.
@@ -892,6 +970,12 @@ After each route migrates, tests should prove old external API behavior still wo
 ### Milestone 11 — Schema upgrades/backfills only after command stability
 
 **Goal:** Add storage that the command layer has proven necessary.
+
+**Phase tooling:**
+
+- `npm run db:migrations:check` is mandatory for every schema PR by this point and should run inside `npm run check`.
+- Revisit Drizzle/Kysely only here, and only if hand-written SQL remains the actual source of bugs after command modules and schemas exist. If adopted, pilot one low-risk read path first.
+- Add SQL linting only if migration review keeps missing real issues; do not add generic lint noise for vibes.
 
 Candidate migrations, in likely order:
 
@@ -912,6 +996,12 @@ Candidate migrations, in likely order:
 
 **Goal:** Remove legacy abstractions after all call sites move.
 
+**Phase tooling:**
+
+- Delete obsolete guardrail allowlist entries as compatibility routes disappear.
+- Consider narrow OpenAPI generation for stable public/event APIs only if there is a real consumer. Otherwise, leave contracts in tests and Valibot schemas.
+- Remove unused validation adapters, migration exceptions, and AST-grep suppressions.
+
 **Candidates:**
 
 - shrink or split `functions/_lib/event-platform.js`
@@ -930,21 +1020,25 @@ Candidate migrations, in likely order:
 
 ## PR slicing plan
 
-### PR A — Domain module skeleton
+### PR A — Domain module skeleton + first tooling
 
 - Add `functions/_lib/domain/shared.js`, `audit.js`, `index.js`.
+- Add Valibot through shared/domain schema wrappers.
+- Add `scripts/check-migrations.mjs` and `npm run db:migrations:check`.
 - Add pure tests.
 - No route behavior changes.
 
 ### PR B — Events module
 
 - Add `domain/events.js`.
+- Add Valibot schemas for event series/instances/signup config/recurrence.
 - Delegate event mapping/signup-field parsing.
 - Add recurrence preview helper, dry-run only.
 
 ### PR C — Participation module
 
 - Add `domain/participation.js`.
+- Add Valibot schemas/enums for participation command input/state.
 - Move signup/check-in normalization and state transitions.
 - Preserve signed-in signup behavior.
 
@@ -968,6 +1062,8 @@ Candidate migrations, in likely order:
 ### PR G — Content/campaign draft boundary
 
 - Add `domain/content.js` and `domain/campaigns.js`.
+- Add Valibot schemas for content/campaign/message DTOs.
+- Introduce initial AST-grep send/approval guardrails.
 - Dry-run preview remains safe.
 - Non-dry-run sends return approval-required unless approval provenance exists.
 
@@ -975,11 +1071,14 @@ Candidate migrations, in likely order:
 
 - Update `public/admin.html` to workflow sections.
 - Add read-only workflow/audit endpoint if helpful.
+- Extend AST-grep only for real admin-command foot-guns discovered in this phase.
 - No new dangerous actions.
 
 ### PR I+ — Persisted campaign/content/audit storage
 
 - Add new tables only after command shapes are stable.
+- Run `npm run db:migrations:check` and seeded migration smokes.
+- Revisit Drizzle/Kysely only if SQL churn is now the bottleneck.
 - Backfills/production writes require approval.
 
 ---
@@ -1016,15 +1115,25 @@ Keep existing route behavior tests and add regressions for:
 - campaign dry-run/preview has no external send
 - non-approved campaign send returns approval-required before provider fetch
 
+### Tooling / guardrail tests
+
+Valibot schemas should have focused tests at the command boundary where malformed input becomes `validation_error`; do not snapshot giant schema internals.
+
+AST-grep rules require fixtures: one bad sample that fails and one good sample that passes. Rules should name the real HTV foot-gun they protect.
+
+`npm run db:migrations:check` owns migration replay, sequence checks, integrity checks, and destructive-operation markers.
+
 ### Migration tests
 
 For every schema PR:
 
 ```bash
+npm run db:migrations:check
+# If debugging locally, the script should be equivalent to:
 rm -f /tmp/htv-schema-smoke.db
 sqlite3 /tmp/htv-schema-smoke.db < schema.sql
 for f in migrations/*.sql; do sqlite3 /tmp/htv-schema-smoke.db < "$f"; done
-sqlite3 /tmp/htv-schema-smoke.db ".schema" >/tmp/htv-schema-smoke.schema
+sqlite3 /tmp/htv-schema-smoke.db "PRAGMA integrity_check"
 ```
 
 ### Standard verification per PR
@@ -1032,6 +1141,8 @@ sqlite3 /tmp/htv-schema-smoke.db ".schema" >/tmp/htv-schema-smoke.schema
 ```bash
 npm test
 npm run check
+npm run db:migrations:check # once introduced in Milestone 1
+npm run guardrails          # once introduced in Milestone 8
 node --check functions/_lib/domain/<touched>.js
 ```
 
@@ -1048,6 +1159,8 @@ Allowed without additional approval:
 - docs/plans
 - local tests
 - pure domain modules
+- adding Valibot schemas/helpers with no behavior change
+- adding migration/AST-grep checks that only run locally/CI
 - route refactors that preserve behavior
 - dry-run previews
 - draft packets
@@ -1061,6 +1174,7 @@ Requires Skylar approval:
 - production D1 writes/backfills outside normal deployed migrations
 - destructive migrations
 - credential/env/provider changes
+- new runtime frameworks/ORMs/router migrations beyond Valibot/AST-grep/migration scripts
 - cron/automation that mutates production state
 
 ---
@@ -1091,6 +1205,10 @@ Mitigation: dashboard sections mirror workflows and commands, not database table
 
 Mitigation: encode generic metadata first; add `audit_events` only when needed.
 
+### Risk: tooling sprawl
+
+Mitigation: Valibot, AST-grep, and migration replay each land only with a concrete phase acceptance test. Drizzle/Kysely/OpenAPI remain deferred until a stable command boundary creates real pull. No tool gets adopted unless it prevents a named HTV bug class.
+
 ---
 
 ## Done definition for the full migration
@@ -1108,10 +1226,12 @@ The migration is done when:
 9. Campaign/MessageDelivery can be reasoned about without reading provider-specific Resend code.
 10. `functions/_lib/event-platform.js` is either a small compatibility facade or retired.
 11. `docs/domain-model.md` maps each domain concept to storage and command modules.
-12. `npm test`, `npm run check`, migration smoke, and relevant browser smokes pass.
+12. Valibot schemas protect command inputs/DTO parsing at each migrated domain boundary.
+13. AST-grep guardrails protect approval-gated sends/publishes and migrated routes from known architectural backslides.
+14. `npm test`, `npm run check`, `npm run db:migrations:check`, and relevant browser smokes pass.
 
 ## Recommended immediate next step
 
-Start with **PR A: Domain module skeleton**.
+Start with **PR A: Domain module skeleton + first tooling**.
 
-It is low-risk, makes the codebase easier to reason about immediately, and gives every later PR a clean place to put behavior. Do not start with campaign tables or admin dashboard UI. That would build a nicer cockpit around the same conceptual mess.
+It is low-risk, makes the codebase easier to reason about immediately, and gives every later PR a clean place to put behavior. Include Valibot wrappers and the migration replay script here so later phases have real guardrails. Do not start with campaign tables, OpenAPI, Drizzle, or admin dashboard UI. That would build a nicer cockpit around the same conceptual mess.

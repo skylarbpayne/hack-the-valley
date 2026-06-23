@@ -1449,10 +1449,11 @@ test("schema and migrations add public project awards table", () => {
 });
 
 test("worker routes user state and badge award APIs behind admin auth", async () => {
+  const statements = [];
   const fakeDb = {
     prepare(sql) {
       return {
-        bind(...args) { this.args = args; return this; },
+        bind(...args) { statements.push({ sql, args }); this.args = args; return this; },
         async run() { return { success: true }; },
         async first() {
           if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
@@ -1478,11 +1479,15 @@ test("worker routes user state and badge award APIs behind admin auth", async ()
   const badgeResponse = await worker.fetch(new Request(badgeUrl, {
     method: "POST",
     headers: adminHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ badge_slug: "shared-demo", event_instance_id: "inst_1", source: "admin" })
+    body: JSON.stringify({ badge_slug: "shared-demo", event_instance_id: "inst_1", source: "derived", awarded_by: "usr_forged" })
   }), { HTV_DB: withAdminRoleDb(fakeDb), HTV_ADMIN_TOKEN: "secret" }, {});
   assert.equal(badgeResponse.status, 200);
   const awarded = await badgeResponse.json();
   assert.equal(awarded.badge.slug, "shared-demo");
+  const badgeInsert = statements.find((statement) => /INSERT OR IGNORE INTO user_badges/.test(statement.sql));
+  assert.ok(badgeInsert);
+  assert.equal(badgeInsert.args[5], "admin");
+  assert.equal(badgeInsert.args[6], "usr_admin");
 });
 
 test("worker routes follow-up packet API and requires admin", async () => {

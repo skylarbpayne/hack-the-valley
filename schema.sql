@@ -363,11 +363,20 @@ CREATE TABLE IF NOT EXISTS user_badges (
   awarded_by TEXT,
   awarded_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
+  revoked_at TEXT,
+  revoked_by TEXT,
+  revoke_reason TEXT,
   UNIQUE(user_id, badge_id, event_instance_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_badges_user_awarded
   ON user_badges(user_id, awarded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_badges_user_active_awarded
+  ON user_badges(user_id, awarded_at DESC)
+  WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_user_badges_revoked_at
+  ON user_badges(revoked_at)
+  WHERE revoked_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_user_badges_event
   ON user_badges(event_instance_id, badge_id);
 

@@ -26,6 +26,12 @@ import {
   snapshotPersonSafetyForEvent,
   updatePersonSafetyProfile
 } from "./domain/people.js";
+import {
+  decorateBadge,
+  dedupeBadges,
+  deriveBadgesFromFacts,
+  listPersonBadges
+} from "./domain/badges.js";
 
 export {
   EventInstanceSchema,
@@ -59,6 +65,20 @@ export {
   snapshotPersonSafetyForEvent,
   updatePersonSafetyProfile
 } from "./domain/people.js";
+
+export {
+  awardBadge,
+  badgeIconUrl,
+  dedupeBadges,
+  decorateBadge,
+  defaultBadgeForSlug,
+  deriveBadgesForPerson,
+  deriveBadgesFromFacts,
+  ensureBadge,
+  listBadgeCatalog,
+  listPersonBadges,
+  revokeBadgeAward
+} from "./domain/badges.js";
 
 const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -462,75 +482,6 @@ export function normalizeProjectInput(input = {}, existing = {}) {
   if (!project.title) errors.push("project title is required");
   if (!project.slug || !SLUG_RE.test(project.slug)) errors.push("project slug must use lowercase letters, numbers, and hyphens");
   return { project, errors };
-}
-
-const DEFAULT_BADGES = {
-  "first-attendance": { id: "bdg_first_attendance", name: "First Attendance", description: "Showed up to a Hack the Valley event.", badge_type: "attendance" },
-  "repeat-attendee": { id: "bdg_repeat_attendee", name: "Repeat Attendee", description: "Came back for another Hack the Valley event.", badge_type: "attendance" },
-  "three-time-attendee": { id: "bdg_three_time_attendee", name: "3x Attendee", description: "Attended three Hack the Valley sessions.", badge_type: "attendance" },
-  "shared-demo": { id: "bdg_shared_demo", name: "Shared a Demo", description: "Shared a project or demo with the community.", badge_type: "demo" },
-  "helped-mentor": { id: "bdg_helped_mentor", name: "Helped or Mentored", description: "Helped another builder, mentored, or organized.", badge_type: "contribution" },
-  "attended-htv-2026": { id: "bdg_attended_htv_2026", name: "HTV 2026 Attendee", description: "Checked in at Hack the Valley 2026.", badge_type: "attendance" },
-  "won-prize-htv-2026": { id: "bdg_won_prize_htv_2026", name: "HTV 2026 Prize Winner", description: "Won a prize at Hack the Valley 2026.", badge_type: "award" },
-  "won-overall-htv-2026": { id: "bdg_won_overall_htv_2026", name: "HTV 2026 Overall Winner", description: "Won the Overall Prize at Hack the Valley 2026.", badge_type: "award" },
-  "submitted-project": { id: "bdg_submitted_project", name: "Project Shipper", description: "Submitted a project to the Hack the Valley community.", badge_type: "project" },
-  "attended-hack-hours": { id: "bdg_attended_hack_hours", name: "Hack Hours Regular", description: "Checked in at a Hack Hours event.", badge_type: "attendance" }
-};
-
-function defaultBadgeForSlug(slug) {
-  return DEFAULT_BADGES[slug] || {
-    id: `bdg_${slug.replace(/-/g, "_")}`,
-    name: slug.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" "),
-    description: null,
-    badge_type: "community"
-  };
-}
-
-function badgeIconUrl(slug) {
-  return `/images/badges/${encodeURIComponent(slug || "community")}.svg`;
-}
-
-function decorateBadge(row = {}) {
-  const defaults = defaultBadgeForSlug(row.slug || "community");
-  const slug = row.slug || defaults.id.replace(/^bdg_/, "").replace(/_/g, "-");
-  return {
-    slug,
-    name: row.name || defaults.name,
-    description: row.description ?? defaults.description,
-    badge_type: row.badge_type || defaults.badge_type,
-    event_instance_id: row.event_instance_id || null,
-    project_id: row.project_id || null,
-    source: row.source || "derived",
-    awarded_by: row.awarded_by || null,
-    awarded_at: row.awarded_at || row.occurred_at || null,
-    icon_url: row.icon_url || badgeIconUrl(slug)
-  };
-}
-
-function dedupeBadges(badges = []) {
-  const seen = new Set();
-  const output = [];
-  for (const badge of badges.map(decorateBadge)) {
-    if (!badge.slug || seen.has(badge.slug)) continue;
-    seen.add(badge.slug);
-    output.push(badge);
-  }
-  return output;
-}
-
-function derivedBadgesForState({ attendance = [], projects = [], projectAwards = [] } = {}) {
-  const derived = [];
-  const hasCheckedIn = (slug) => attendance.some((event) => event.event_slug === slug && event.event_type === "checked_in");
-  if (hasCheckedIn("hack-the-valley-2026")) derived.push(decorateBadge({ slug: "attended-htv-2026", awarded_at: attendance.find((event) => event.event_slug === "hack-the-valley-2026")?.occurred_at }));
-  if (hasCheckedIn("hack-hours")) derived.push(decorateBadge({ slug: "attended-hack-hours", awarded_at: attendance.find((event) => event.event_slug === "hack-hours")?.occurred_at }));
-  if (projects.length > 0) derived.push(decorateBadge({ slug: "submitted-project", project_id: projects[0]?.project_id, awarded_at: projects[0]?.submission_created_at || projects[0]?.created_at }));
-  if (projectAwards.length > 0) {
-    const firstAward = projectAwards[0];
-    derived.push(decorateBadge({ slug: "won-prize-htv-2026", project_id: firstAward.project_id, awarded_at: firstAward.awarded_at || firstAward.created_at }));
-  }
-  const overall = projectAwards.find((award) => award.award_slug === "overall" || /overall/i.test(award.award_title || ""));
-  if (overall) derived.push(decorateBadge({ slug: "won-overall-htv-2026", project_id: overall.project_id, awarded_at: overall.awarded_at || overall.created_at }));
-  return derived;
 }
 
 function sanitizeProjectRow(row = {}) {
@@ -1039,49 +990,6 @@ export async function getPublicProjectHeroMedia(db, { eventSlug, projectSlug } =
   return null;
 }
 
-export async function ensureBadge(db, { slug, name, description = null, badge_type = "community", rule_json = null } = {}) {
-  const safeSlug = slugify(slug || name);
-  if (!safeSlug) throw Object.assign(new Error("badge slug is required"), { status: 400 });
-  const defaults = defaultBadgeForSlug(safeSlug);
-  const now = new Date().toISOString();
-  await db.prepare(`
-    INSERT INTO badges (id, slug, name, description, badge_type, rule_json, active, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-    ON CONFLICT(slug) DO UPDATE SET
-      name = COALESCE(excluded.name, badges.name),
-      description = COALESCE(excluded.description, badges.description),
-      badge_type = COALESCE(excluded.badge_type, badges.badge_type),
-      rule_json = COALESCE(excluded.rule_json, badges.rule_json),
-      active = 1,
-      updated_at = excluded.updated_at
-  `).bind(
-    defaults.id,
-    safeSlug,
-    name || defaults.name,
-    description ?? defaults.description,
-    badge_type || defaults.badge_type,
-    stringifyJson(rule_json),
-    now,
-    now
-  ).run();
-  return await db.prepare("SELECT * FROM badges WHERE slug = ?").bind(safeSlug).first();
-}
-
-export async function awardBadge(db, { userId, badgeSlug, badge = null, eventInstanceId = null, projectId = null, source = "admin", awardedBy = null } = {}) {
-  if (!userId) throw Object.assign(new Error("userId is required"), { status: 400 });
-  const ensuredBadge = await ensureBadge(db, badge || { slug: badgeSlug });
-  if (!ensuredBadge) throw Object.assign(new Error("Badge could not be created"), { status: 500 });
-  const now = new Date().toISOString();
-  const id = `ubg_${userId}_${ensuredBadge.id}_${eventInstanceId || "global"}`.replace(/[^a-zA-Z0-9_]+/g, "_");
-  await db.prepare(`
-    INSERT OR IGNORE INTO user_badges (
-      id, user_id, badge_id, event_instance_id, project_id, source, awarded_by, awarded_at, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(id, userId, ensuredBadge.id, eventInstanceId, projectId, source, awardedBy, now, now).run();
-  const award = await db.prepare("SELECT * FROM user_badges WHERE user_id = ? AND badge_id = ? AND event_instance_id IS ?").bind(userId, ensuredBadge.id, eventInstanceId).first();
-  return { badge: ensuredBadge, award: award || { id, user_id: userId, badge_id: ensuredBadge.id, event_instance_id: eventInstanceId, project_id: projectId, source, awarded_by: awardedBy, awarded_at: now } };
-}
-
 export async function getUserCommunityState(db, userId) {
   const user = await getUserById(db, userId);
   if (!user) throw Object.assign(new Error("User not found"), { status: 404 });
@@ -1099,13 +1007,7 @@ export async function getUserCommunityState(db, userId) {
       ORDER BY occurred_at DESC
       LIMIT 100
     `).bind(userId).all(),
-    db.prepare(`
-      SELECT b.slug, b.name, b.description, b.badge_type, ub.event_instance_id, ub.project_id, ub.source, ub.awarded_by, ub.awarded_at
-      FROM user_badges ub
-      JOIN badges b ON b.id = ub.badge_id
-      WHERE ub.user_id = ?
-      ORDER BY ub.awarded_at DESC
-    `).bind(userId).all(),
+    listPersonBadges(db, userId),
     db.prepare(`
       SELECT p.id AS project_id, p.slug, p.title, p.team_name, p.description, p.repo_url, p.demo_url,
              p.canonical_submission_id, cs.payload_json, cs.uploads_json,
@@ -1152,8 +1054,8 @@ export async function getUserCommunityState(db, userId) {
   ]);
   const attendanceRows = attendance.results || [];
   const projectRows = (projects.results || []).map(sanitizeProjectRow);
-  const storedBadges = badges.results || [];
-  const derivedBadges = derivedBadgesForState({ attendance: attendanceRows, projects: projectRows, projectAwards: projectAwards.results || [] });
+  const storedBadges = badges || [];
+  const derivedBadges = deriveBadgesFromFacts({ attendance: attendanceRows, projects: projectRows, projectAwards: projectAwards.results || [] });
   const safetyProfile = safetyProfileFromPerson(user);
   return {
     user: {

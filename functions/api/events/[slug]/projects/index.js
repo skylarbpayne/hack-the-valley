@@ -1,9 +1,9 @@
 import {
   getDb,
   handleErrors,
-  listEventProjectSubmissions,
   methodNotAllowed
 } from "../../../../_lib/event-platform.js";
+import { listEventProjectSubmissions } from "../../../../_lib/domain/submissions.js";
 import {
   isAuthorized,
   jsonResponse,

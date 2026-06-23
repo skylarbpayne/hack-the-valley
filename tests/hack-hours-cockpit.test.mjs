@@ -164,15 +164,20 @@ test("legacy submit paths redirect to the project workspace", async () => {
 
 test("claimProjectForUser creates a project and records owner membership", async () => {
   const statements = [];
+  let insertedProject = false;
   const db = {
     prepare(sql) {
       const statement = {
         sql,
         args: [],
         bind(...args) { this.args = args; statements.push(this); return this; },
-        async run() { return { success: true }; },
+        async run() {
+          if (/INSERT INTO projects/.test(sql)) insertedProject = true;
+          return { success: true };
+        },
         async first() {
-          if (/FROM projects/.test(sql)) return { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep" };
+          if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
+          if (/FROM projects/.test(sql)) return insertedProject ? { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep" } : null;
           return null;
         },
         async all() { return { results: [] }; }
@@ -235,7 +240,7 @@ test("participant submit cannot restore an organizer-hidden event project", asyn
         async first() {
           if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
           if (/FROM projects p/.test(sql) && /project_members pm/.test(sql)) return { id: "prj_hidden", slug: "hidden", title: "Hidden Smoke" };
-          if (/FROM event_project_submissions/.test(sql) && /status = 'hidden'/.test(sql)) return { id: "eps_hidden", status: "hidden" };
+          if (/FROM event_project_submissions/.test(sql)) return { id: "eps_hidden", status: "hidden" };
           return null;
         },
         async all() { return { results: [] }; }
@@ -244,7 +249,7 @@ test("participant submit cannot restore an organizer-hidden event project", asyn
   };
   await assert.rejects(
     () => submitOwnedProjectToEvent(db, "usr_maya", "prj_hidden", { event_slug: "hack-the-valley-2026" }),
-    /hidden by an organizer/
+    /closed by an organizer/
   );
 });
 
@@ -441,17 +446,21 @@ test("public project and leaderboard surfaces still omit emergency contact detai
 
 test("/api/me/projects can create a project and associate it with an event context", async () => {
   const statements = [];
+  let insertedProject = false;
   const fakeDb = {
     prepare(sql) {
       const statement = {
         sql,
         args: [],
         bind(...args) { this.args = args; statements.push(this); return this; },
-        async run() { return { success: true }; },
+        async run() {
+          if (/INSERT INTO projects/.test(sql)) insertedProject = true;
+          return { success: true };
+        },
         async first() {
           if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
           if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
-          if (/FROM projects/.test(sql)) return { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep" };
+          if (/FROM projects/.test(sql)) return insertedProject ? { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep" } : null;
           return null;
         },
         async all() {

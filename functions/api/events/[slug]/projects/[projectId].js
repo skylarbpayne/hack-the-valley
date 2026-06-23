@@ -2,9 +2,9 @@ import {
   getDb,
   handleErrors,
   methodNotAllowed,
-  readJson,
-  updateEventProjectSubmissionStatus
+  readJson
 } from "../../../../_lib/event-platform.js";
+import { updateEventProjectSubmissionStatus } from "../../../../_lib/domain/submissions.js";
 import {
   isAuthorized,
   jsonResponse,

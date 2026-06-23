@@ -2,14 +2,16 @@ import {
   getDb,
   handleErrors,
   jsonResponse,
-  linkProjectSubmission,
-  listEventProjectSubmissions,
   methodNotAllowed,
   readJson,
-  requireOrganizerAccess,
-  upsertProject,
-  upsertProjectFromSubmission
+  requireOrganizerAccess
 } from "../../../../../../_lib/event-platform.js";
+import { upsertProject } from "../../../../../../_lib/domain/projects.js";
+import {
+  linkProjectSubmission,
+  listEventProjectSubmissions,
+  upsertProjectFromSubmission
+} from "../../../../../../_lib/domain/submissions.js";
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {

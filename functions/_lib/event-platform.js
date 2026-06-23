@@ -32,6 +32,20 @@ import {
   deriveBadgesFromFacts,
   listPersonBadges
 } from "./domain/badges.js";
+import {
+  claimProjectForUser as domainClaimProjectForUser,
+  normalizeProjectInput as domainNormalizeProjectInput,
+  updateOwnedProjectForUser as domainUpdateOwnedProjectForUser,
+  upsertProject as domainUpsertProject
+} from "./domain/projects.js";
+import {
+  linkProjectSubmission as domainLinkProjectSubmission,
+  listEventProjectSubmissions as domainListEventProjectSubmissions,
+  listPublicProjects as domainListPublicProjects,
+  submitOwnedProjectToEvent as domainSubmitOwnedProjectToEvent,
+  updateEventProjectSubmissionStatus as domainUpdateEventProjectSubmissionStatus,
+  upsertProjectFromSubmission as domainUpsertProjectFromSubmission
+} from "./domain/submissions.js";
 
 export {
   EventInstanceSchema,
@@ -79,6 +93,17 @@ export {
   listPersonBadges,
   revokeBadgeAward
 } from "./domain/badges.js";
+
+export {
+  addProjectMember,
+  createProject,
+  updateProject
+} from "./domain/projects.js";
+
+export {
+  setEventProjectSubmissionStatus,
+  submitProjectToEvent
+} from "./domain/submissions.js";
 
 const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -465,23 +490,7 @@ function firstPresent(...values) {
 }
 
 export function normalizeProjectInput(input = {}, existing = {}) {
-  const title = firstPresent(input.title, input.project_title, input.projectTitle, existing.title);
-  const slug = firstPresent(input.slug, existing.slug, slugify(title));
-  const tracks = normalizeTracks(input.tracks ?? input.track ?? existing.tracks_json);
-  const project = {
-    slug,
-    title,
-    team_name: firstPresent(input.team_name, input.teamName, input.team, existing.team_name),
-    description: firstPresent(input.description, input.summary, existing.description),
-    repo_url: firstPresent(input.repo_url, input.repoLink, input.repository_url, input.repository, existing.repo_url),
-    demo_url: firstPresent(input.demo_url, input.demoLink, input.demo, existing.demo_url),
-    tracks_json: stringifyJson(tracks),
-    canonical_submission_id: firstPresent(input.canonical_submission_id, input.submission_id, existing.canonical_submission_id)
-  };
-  const errors = [];
-  if (!project.title) errors.push("project title is required");
-  if (!project.slug || !SLUG_RE.test(project.slug)) errors.push("project slug must use lowercase letters, numbers, and hyphens");
-  return { project, errors };
+  return domainNormalizeProjectInput(input, existing);
 }
 
 function sanitizeProjectRow(row = {}) {
@@ -554,60 +563,11 @@ function sanitizePublicProjectRow(row = {}) {
 }
 
 export async function upsertProject(db, input = {}) {
-  const { project, errors } = normalizeProjectInput(input);
-  if (errors.length) throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
-  const now = new Date().toISOString();
-  const id = input.id && String(input.id).startsWith("prj_") ? String(input.id) : `prj_${project.slug.replace(/-/g, "_")}`;
-  await db.prepare(`
-    INSERT INTO projects (
-      id, slug, title, team_name, description, repo_url, demo_url, tracks_json, canonical_submission_id, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(slug) DO UPDATE SET
-      title = excluded.title,
-      team_name = COALESCE(excluded.team_name, projects.team_name),
-      description = COALESCE(excluded.description, projects.description),
-      repo_url = COALESCE(excluded.repo_url, projects.repo_url),
-      demo_url = COALESCE(excluded.demo_url, projects.demo_url),
-      tracks_json = COALESCE(excluded.tracks_json, projects.tracks_json),
-      canonical_submission_id = COALESCE(excluded.canonical_submission_id, projects.canonical_submission_id),
-      updated_at = excluded.updated_at
-  `).bind(
-    id,
-    project.slug,
-    project.title,
-    project.team_name,
-    project.description,
-    project.repo_url,
-    project.demo_url,
-    project.tracks_json,
-    project.canonical_submission_id,
-    now,
-    now
-  ).run();
-  return await db.prepare("SELECT * FROM projects WHERE slug = ?").bind(project.slug).first();
+  return await domainUpsertProject(db, input);
 }
 
 export async function claimProjectForUser(db, userId, input = {}) {
-  if (!userId) throw Object.assign(new Error("userId is required"), { status: 400 });
-  const project = await upsertProject(db, input);
-  const user = await getUserById(db, userId);
-  const now = new Date().toISOString();
-  const role = input.role || "owner";
-  const source = input.source || "participant_dashboard";
-  const id = `prm_${project.id}_${userId}`.replace(/[^a-zA-Z0-9_]+/g, "_");
-  await db.prepare(`
-    INSERT INTO project_members (
-      id, project_id, user_id, name, email, role, source, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(project_id, user_id) DO UPDATE SET
-      role = CASE WHEN project_members.role = 'owner' THEN project_members.role ELSE excluded.role END,
-      source = excluded.source
-  `).bind(id, project.id, userId, user?.name || input.name || null, user?.email || input.email || null, role, source, now).run();
-  const membership = await db.prepare("SELECT * FROM project_members WHERE project_id = ? AND user_id = ?").bind(project.id, userId).first();
-  return {
-    project: sanitizeProjectRow(project),
-    membership: membership || { id, project_id: project.id, user_id: userId, role, source, created_at: now }
-  };
+  return await domainClaimProjectForUser(db, userId, input);
 }
 
 async function getOwnedProject(db, userId, projectId) {
@@ -632,210 +592,31 @@ async function getOwnedProject(db, userId, projectId) {
 }
 
 export async function updateOwnedProjectForUser(db, userId, projectId, input = {}) {
-  const existing = await getOwnedProject(db, userId, projectId);
-  const { project, errors } = normalizeProjectInput(input, existing);
-  if (errors.length) throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
-  const now = new Date().toISOString();
-  await db.prepare(`
-    UPDATE projects
-    SET slug = ?,
-        title = ?,
-        team_name = ?,
-        description = ?,
-        repo_url = ?,
-        demo_url = ?,
-        tracks_json = ?,
-        canonical_submission_id = ?,
-        updated_at = ?
-    WHERE id = ?
-  `).bind(
-    project.slug,
-    project.title,
-    project.team_name,
-    project.description,
-    project.repo_url,
-    project.demo_url,
-    project.tracks_json,
-    project.canonical_submission_id,
-    now,
-    existing.id
-  ).run();
-  const saved = await db.prepare("SELECT * FROM projects WHERE id = ?").bind(existing.id).first();
-  return { project: sanitizeProjectRow(saved || { ...existing, ...project, updated_at: now }) };
+  return await domainUpdateOwnedProjectForUser(db, userId, projectId, input);
 }
 
 export async function submitOwnedProjectToEvent(db, userId, projectId, input = {}) {
-  const project = await getOwnedProject(db, userId, projectId);
-  const eventSlug = input.event_slug || input.eventSlug;
-  if (!eventSlug) throw Object.assign(new Error("event_slug is required"), { status: 400 });
-  const explicitInstanceId = input.event_instance_id || input.eventInstanceId || null;
-  const hiddenSubmission = await db.prepare(`
-    SELECT id, status
-    FROM event_project_submissions
-    WHERE event_slug = ? AND project_id = ? AND status = 'hidden'
-    LIMIT 1
-  `).bind(eventSlug, project.id).first();
-  if (hiddenSubmission) {
-    throw Object.assign(new Error("This project submission was hidden by an organizer. Ask an organizer to restore it before submitting again."), { status: 409 });
-  }
-  const eventInstance = explicitInstanceId ? null : await resolveSignupEventInstance(db, eventSlug);
-  const submission = await linkProjectSubmission(db, {
-    eventSlug,
-    eventInstanceId: explicitInstanceId || eventInstance?.id || null,
-    projectId: project.id,
-    submissionId: input.submission_id || input.submissionId || project.canonical_submission_id || null,
-    status: input.status || "submitted",
-    source: "participant_dashboard"
-  });
-  return { project: sanitizeProjectRow(project), submission };
+  return await domainSubmitOwnedProjectToEvent(db, userId, projectId, input);
 }
 
 export async function updateEventProjectSubmissionStatus(db, { eventSlug, projectId, status = "hidden" } = {}) {
-  if (!eventSlug) throw Object.assign(new Error("eventSlug is required"), { status: 400 });
-  if (!projectId) throw Object.assign(new Error("projectId is required"), { status: 400 });
-  const allowed = new Set(["submitted", "accepted", "showcased", "winner", "rejected", "hidden"]);
-  const normalizedStatus = String(status || "hidden").trim().toLowerCase();
-  if (!allowed.has(normalizedStatus)) throw Object.assign(new Error("Unsupported project submission status"), { status: 400 });
-  const existing = await db.prepare(`
-    SELECT eps.*, p.title, p.team_name
-    FROM event_project_submissions eps
-    JOIN projects p ON p.id = eps.project_id
-    WHERE eps.event_slug = ? AND eps.project_id = ?
-    LIMIT 1
-  `).bind(eventSlug, projectId).first();
-  if (!existing) throw Object.assign(new Error("Event project submission not found"), { status: 404 });
-  const now = new Date().toISOString();
-  await db.prepare(`
-    UPDATE event_project_submissions
-    SET status = ?, updated_at = ?
-    WHERE event_slug = ? AND project_id = ?
-  `).bind(normalizedStatus, now, eventSlug, projectId).run();
-  return {
-    ...existing,
-    status: normalizedStatus,
-    updated_at: now
-  };
+  return await domainUpdateEventProjectSubmissionStatus(db, { eventSlug, projectId, status });
 }
 
 export async function linkProjectSubmission(db, { eventSlug, eventInstanceId = null, projectId, submissionId = null, status = "submitted", source = "submission_portal" } = {}) {
-  if (!eventSlug) throw Object.assign(new Error("eventSlug is required"), { status: 400 });
-  if (!projectId) throw Object.assign(new Error("projectId is required"), { status: 400 });
-  const now = new Date().toISOString();
-  const id = `eps_${eventSlug}_${eventInstanceId || "event"}_${projectId}_${submissionId || "manual"}`.replace(/[^a-zA-Z0-9_]+/g, "_");
-  await db.prepare(`
-    INSERT INTO event_project_submissions (
-      id, event_slug, event_instance_id, project_id, submission_id, status, source, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      status = excluded.status,
-      source = excluded.source,
-      updated_at = excluded.updated_at
-  `).bind(id, eventSlug, eventInstanceId, projectId, submissionId, status, source, now, now).run();
-  return { id, event_slug: eventSlug, event_instance_id: eventInstanceId, project_id: projectId, submission_id: submissionId, status, source };
+  return await domainLinkProjectSubmission(db, { eventSlug, eventInstanceId, projectId, submissionId, status, source });
 }
 
 export async function upsertProjectFromSubmission(db, submissionId, { eventSlug = "hack-the-valley-2026", eventInstanceId = null, status = "submitted" } = {}) {
-  const submission = await db.prepare("SELECT * FROM submissions WHERE id = ?").bind(submissionId).first();
-  if (!submission) throw Object.assign(new Error("Submission not found"), { status: 404 });
-  const payload = parseJsonObject(submission.payload_json, {});
-  const project = await upsertProject(db, {
-    title: submission.project_title,
-    team_name: submission.team_name,
-    description: payload.description,
-    repo_url: payload.repoLink || payload.repo_url || payload.repository,
-    demo_url: payload.demoLink || payload.demo_url || payload.demo,
-    tracks: payload.tracks || submission.track,
-    canonical_submission_id: submission.id
-  });
-  await linkProjectSubmission(db, { eventSlug, eventInstanceId, projectId: project.id, submissionId: submission.id, status });
-  return project;
+  return await domainUpsertProjectFromSubmission(db, submissionId, { eventSlug, eventInstanceId, status });
 }
 
 export async function listEventProjectSubmissions(db, eventSlug, eventInstanceId = null, { includeHidden = false } = {}) {
-  const statusFilter = includeHidden ? "" : "AND eps.status != 'hidden'";
-  const instanceFilter = eventInstanceId ? "AND eps.event_instance_id = ?" : "";
-  const args = eventInstanceId ? [eventSlug, eventInstanceId] : [eventSlug];
-  const result = await db.prepare(`
-    SELECT
-      eps.event_slug,
-      eps.event_instance_id,
-      eps.status,
-      eps.source,
-      eps.created_at,
-      p.id AS project_id,
-      p.slug,
-      p.title,
-      p.team_name,
-      p.description,
-      p.repo_url,
-      p.demo_url,
-      p.tracks_json,
-      s.id AS submission_id
-    FROM event_project_submissions eps
-    JOIN projects p ON p.id = eps.project_id
-    LEFT JOIN submissions s ON s.id = eps.submission_id
-    WHERE eps.event_slug = ? ${instanceFilter} ${statusFilter}
-    ORDER BY lower(p.title) ASC
-  `).bind(...args).all();
-  return (result.results || []).map(sanitizeProjectRow);
+  return await domainListEventProjectSubmissions(db, eventSlug, eventInstanceId, { includeHidden });
 }
 
 export async function listPublicProjects(db, { eventSlug = null, includeHidden = false } = {}) {
-  const filters = [];
-  const args = [];
-  if (eventSlug) {
-    filters.push("eps.event_slug = ?");
-    args.push(eventSlug);
-  }
-  if (!includeHidden) {
-    filters.push("eps.status NOT IN ('hidden', 'rejected')");
-  }
-  const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
-  const result = await db.prepare(`
-    SELECT
-      eps.event_slug,
-      eps.status,
-      MAX(eps.updated_at) AS updated_at,
-      p.id AS project_id,
-      p.slug,
-      p.title,
-      p.team_name,
-      p.description,
-      p.repo_url,
-      p.demo_url,
-      p.tracks_json,
-      MIN(s.created_at) AS submission_created_at,
-      (
-        SELECT s2.uploads_json
-        FROM event_project_submissions eps2
-        JOIN submissions s2 ON s2.id = eps2.submission_id
-        WHERE eps2.event_slug = eps.event_slug
-          AND eps2.project_id = p.id
-          AND s2.uploads_json IS NOT NULL
-          AND s2.uploads_json != '[]'
-        ORDER BY s2.created_at ASC
-        LIMIT 1
-      ) AS hero_uploads_json,
-      COALESCE(
-        json_group_array(
-          CASE WHEN epa.id IS NOT NULL THEN json_object(
-            'award_slug', epa.award_slug,
-            'award_title', epa.award_title,
-            'award_rank', epa.award_rank,
-            'prize_amount_cents', epa.prize_amount_cents
-          ) END
-        ) FILTER (WHERE epa.id IS NOT NULL),
-        '[]'
-      ) AS awards_json
-    FROM event_project_submissions eps
-    JOIN projects p ON p.id = eps.project_id
-    LEFT JOIN submissions s ON s.id = eps.submission_id
-    LEFT JOIN event_project_awards epa ON epa.event_slug = eps.event_slug AND epa.project_id = p.id
-    ${where}
-    GROUP BY eps.event_slug, eps.status, p.id, p.slug, p.title, p.team_name, p.description, p.repo_url, p.demo_url, p.tracks_json
-    ORDER BY CASE WHEN COUNT(epa.id) > 0 THEN 0 ELSE 1 END, lower(p.title) ASC
-  `).bind(...args).all();
-  return (result.results || []).map(sanitizePublicProjectRow);
+  return await domainListPublicProjects(db, { eventSlug, includeHidden });
 }
 
 function leaderboardScore(row = {}) {

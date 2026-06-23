@@ -48,6 +48,19 @@ jobs:
             echo "Skipping deploy: add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets."
           fi
 
+      - name: Backup production D1 before migrations
+        if: steps.deploy_secrets.outputs.available == 'true'
+        run: ./scripts/backup-production-d1.sh
+
+      - name: Upload production D1 backup artifact
+        if: steps.deploy_secrets.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: htv-d1-backup-${{ github.sha }}
+          path: artifacts/d1-backups/
+          retention-days: 30
+          if-no-files-found: error
+
       - name: Ensure app D1 database and apply migrations
         if: steps.deploy_secrets.outputs.available == 'true'
         run: ./scripts/setup-hack-the-valley-d1.sh

@@ -369,11 +369,12 @@ test("/api/me lets the signed-in user update private emergency contact info for 
   assert.ok(contactWrite.args.includes("profile"));
 });
 
-test("/api/me rejects emergency contact updates for event instances the participant does not own", async () => {
+test("/api/me rejects emergency contact updates for event instances the participant does not own before profile writes", async () => {
+  const statements = [];
   const fakeDb = {
     prepare(sql) {
       return {
-        bind(...args) { this.args = args; return this; },
+        bind(...args) { statements.push({ sql, args }); this.args = args; return this; },
         async run() { return { success: true }; },
         async first() {
           if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
@@ -394,6 +395,8 @@ test("/api/me rejects emergency contact updates for event instances the particip
   }), { HTV_DB: fakeDb }, {});
   assert.equal(response.status, 403);
   assert.match(await response.text(), /own event signups/);
+  assert.equal(statements.some((statement) => /UPDATE users/.test(statement.sql)), false);
+  assert.equal(statements.some((statement) => /INSERT INTO emergency_contacts/.test(statement.sql)), false);
 });
 
 test("authorized event signup exports include the latest emergency contact details", async () => {

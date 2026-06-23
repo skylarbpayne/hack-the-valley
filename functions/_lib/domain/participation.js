@@ -1,4 +1,10 @@
 import { parseSignupFieldConfig } from "./events.js";
+import {
+  personSafetyReadiness,
+  safetyProfileFromPerson,
+  snapshotPersonSafetyForEvent,
+  updatePersonSafetyProfile
+} from "./people.js";
 import { parseJsonObject, stringOrNull } from "./shared.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -12,26 +18,26 @@ export function normalizeParticipationInput(input = {}, eventSeries = {}, curren
     errors.push(`participation role must be one of: ${roleConfig.roles.map((role) => role.value).join(", ")}`);
   }
 
+  const hasCurrentPerson = Boolean(currentPerson?.id || currentPerson?.email);
   const currentName = trimOrNull(currentPerson?.name) || trimOrNull(`${currentPerson?.first_name || ""} ${currentPerson?.last_name || ""}`);
   const suppliedName = trimOrNull(input.name) || trimOrNull(`${input.first_name || ""} ${input.last_name || ""}`);
-  const email = normalizeEmail(input.email) || normalizeEmail(currentPerson?.email);
-  const name = suppliedName || currentName || email;
+  const email = hasCurrentPerson ? normalizeEmail(currentPerson?.email) : normalizeEmail(input.email);
+  const name = hasCurrentPerson ? currentName || email : suppliedName || email;
   const nameParts = splitName(name);
   const person = {
     id: trimOrNull(currentPerson?.id),
     email,
     name,
-    first_name: trimOrNull(input.first_name ?? currentPerson?.first_name) || nameParts.firstName,
-    last_name: trimOrNull(input.last_name ?? currentPerson?.last_name) || nameParts.lastName,
-    phone: trimOrNull(input.phone ?? currentPerson?.phone),
-    school: trimOrNull(input.school ?? input.university ?? currentPerson?.school)
+    first_name: hasCurrentPerson ? trimOrNull(currentPerson?.first_name) || nameParts.firstName : trimOrNull(input.first_name) || nameParts.firstName,
+    last_name: hasCurrentPerson ? trimOrNull(currentPerson?.last_name) || nameParts.lastName : trimOrNull(input.last_name) || nameParts.lastName,
+    phone: hasCurrentPerson ? trimOrNull(currentPerson?.phone) : trimOrNull(input.phone),
+    school: hasCurrentPerson ? trimOrNull(currentPerson?.school) : trimOrNull(input.school ?? input.university)
   };
 
   const emergency = normalizeSafetyInput(input);
-  const currentSafety = safetyFromPerson(currentPerson);
+  const currentSafety = safetyProfileFromPerson(currentPerson);
   const effectiveSafety = emergency.hasAny ? emergency.contact : currentSafety.contact;
-  const hasCurrentPerson = Boolean(currentPerson?.id || currentPerson?.email);
-  const readiness = participationReadinessFromSafety(effectiveSafety, { requireSafety: true });
+  const readiness = personSafetyReadiness(effectiveSafety, { requireSafety: true });
 
   if (!eventSeries?.slug && !input.event_slug) errors.push("event slug is required");
   if (!person.name) errors.push("name is required");
@@ -72,7 +78,7 @@ export function normalizeParticipationInput(input = {}, eventSeries = {}, curren
     eventRole,
     event_role: eventRole,
     roles: roleConfig.roles,
-    safetyInput: emergency.complete ? emergency.contact : emergency.hasAny ? emergency.contact : null,
+    safetyInput: emergency.hasAny ? emergency.contact : currentSafety.complete ? currentSafety.contact : null,
     readiness,
     errors
   };
@@ -166,14 +172,15 @@ export async function registerParticipation(db, {
   const savedSignup = await getParticipationSignup(db, eventSeries.slug, eventInstance.id, user.id)
     || { id: signupId, ...savedInput, created_at: now, updated_at: now, email: user.email };
 
-  const safety = normalizeSafetyContact(safetyInput || signup.emergency_contact || null);
+  const safety = normalizeSafetyContact(safetyInput || signup.emergency_contact || safetyProfileFromPerson(user).contact || null);
   if (safety.hasAny) {
     if (!safety.complete) throw Object.assign(new Error(safety.errors.join("; ")), { status: 400, errors: safety.errors });
-    await upsertParticipationSafetyContact(db, {
+    await updatePersonSafetyProfile(db, { personId: user.id, safetyInput: safety.contact, now });
+    await snapshotPersonSafetyForEvent(db, {
       eventInstanceId: eventInstance.id,
-      userId: user.id,
+      personId: user.id,
       signupId: savedSignup.id,
-      contact: safety.contact,
+      safetyProfile: safety.contact,
       source: source === "signed-in-event-signup" ? "signup" : source,
       now
     });
@@ -270,14 +277,17 @@ export async function cancelParticipation(db, { personId, eventInstanceId, actor
 
 export async function resolveParticipationReadiness(db, { personId, eventInstanceId } = {}) {
   if (!personId || !eventInstanceId) {
-    return participationReadinessFromSafety(null, { requireSafety: true });
+    return personSafetyReadiness(null, { requireSafety: true });
   }
   const contact = await db.prepare(`
     SELECT id, event_instance_id, user_id, signup_id, name, relationship, phone, source, created_at, updated_at
     FROM emergency_contacts
     WHERE event_instance_id = ? AND user_id = ?
   `).bind(eventInstanceId, personId).first();
-  return participationReadinessFromSafety(contact, { requireSafety: true });
+  const eventReadiness = personSafetyReadiness(contact, { requireSafety: true });
+  if (eventReadiness.ready) return eventReadiness;
+  const person = await db.prepare("SELECT * FROM users WHERE id = ?").bind(personId).first();
+  return personSafetyReadiness(person, { requireSafety: true });
 }
 
 export async function listParticipationRoster(db, { eventSlug, eventInstanceId = null } = {}) {

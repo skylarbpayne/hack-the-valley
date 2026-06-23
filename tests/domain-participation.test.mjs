@@ -77,6 +77,15 @@ function createParticipationDb() {
             usersById.set(user.id, user);
             return { success: true };
           }
+          if (/UPDATE users\s+SET metadata_json = \?/.test(sql)) {
+            const [metadataJson, updatedAt, userId] = this.args;
+            const user = usersById.get(userId);
+            if (user) {
+              user.metadata_json = metadataJson;
+              user.updated_at = updatedAt;
+            }
+            return { success: true };
+          }
           if (/INSERT INTO signups/.test(sql)) {
             const [id, eventSlug, eventInstanceId, userId, name, firstName, lastName, phone, school, year, experience, notes, emailListOptIn, metadataJson, mailingStatus, mailingDetail, createdAt, updatedAt] = this.args;
             let signup = signups.find((row) => row.event_instance_id === eventInstanceId && row.user_id === userId);
@@ -219,7 +228,9 @@ test("normalizeParticipationInput never trusts request-supplied person identity"
   });
 
   assert.equal(signedIn.person.id, "usr_attacker");
-  assert.equal(signedIn.person.email, "victim@example.com");
+  assert.equal(signedIn.person.email, "attacker@example.com");
+  assert.equal(signedIn.person.name, "Signed In User");
+  assert.equal(signedIn.signup.email, "attacker@example.com");
 
   const anonymous = normalizeParticipationInput({
     user_id: "usr_victim",

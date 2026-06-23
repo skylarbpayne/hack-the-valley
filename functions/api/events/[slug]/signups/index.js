@@ -1,5 +1,6 @@
 import {
   addSignupToEmailList,
+  applySignupRole,
   getDb,
   getEvent,
   handleErrors,
@@ -53,10 +54,13 @@ export async function onRequestPost(context) {
       return jsonResponse({ error: "No open instance is available for this event" }, { status: 409 });
     }
 
-    const input = await readJson(context.request);
+    const rawInput = await readJson(context.request);
+    const roleInput = applySignupRole(rawInput, event);
+    const input = roleInput.input;
     const { signup, errors } = normalizeSignupInput(input, context.params.slug);
-    if (errors.length) {
-      return jsonResponse({ error: errors.join("; "), errors }, { status: 400 });
+    const allErrors = [...roleInput.errors, ...errors];
+    if (allErrors.length) {
+      return jsonResponse({ error: allErrors.join("; "), errors: allErrors }, { status: 400 });
     }
 
     const mailingListResult = await addSignupToEmailList(context.env, signup, event);
@@ -69,6 +73,7 @@ export async function onRequestPost(context) {
       signup: {
         id: savedSignup.id,
         event_instance_id: savedSignup.event_instance_id,
+        signup_role: roleInput.signup_role,
         user_id: savedSignup.user_id,
         name: savedSignup.name,
         email: savedSignup.email,

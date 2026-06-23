@@ -293,6 +293,30 @@ test("signup input normalizes email and legacy school field", () => {
   assert.equal(signup.email_list_opt_in, 1);
 });
 
+test("signed-in signup input can use session profile instead of contact fields", () => {
+  const { signup, errors } = normalizeSignupInput({
+    signup_role: "demo",
+    email: "",
+    phone: ""
+  }, "demo-hours", {
+    requireEmergencyContact: false,
+    currentUser: {
+      id: "usr_ada",
+      name: "Ada Lovelace",
+      email: " ADA@example.COM ",
+      phone: "661-555-0100",
+      school: "CSUB"
+    }
+  });
+
+  assert.deepEqual(errors, []);
+  assert.equal(signup.name, "Ada Lovelace");
+  assert.equal(signup.email, "ada@example.com");
+  assert.equal(signup.phone, "661-555-0100");
+  assert.equal(signup.school, "CSUB");
+  assert.match(signup.metadata_json, /"signup_role":"demo"/);
+});
+
 test("signup roles are configurable and stored in signup metadata", () => {
   const event = {
     slug: "demo-hours",
@@ -613,14 +637,46 @@ test("admin page lists event instances as flat rows without dropdowns", () => {
   assert.doesNotMatch(html, /signup\.notes/);
 });
 
-test("public event signup form collects name, email, emergency contact, and mailing list opt-in only", () => {
+test("public event signup form skips profile fields for signed-in users", () => {
   const html = readFileSync(new URL("../public/events/index.html", import.meta.url), "utf8");
   assert.match(html, /name="emergency_contact_name"/);
   assert.match(html, /name="emergency_contact_phone"/);
+  assert.match(html, /data-profile-signup-field/);
+  assert.match(html, /data-email-list-field/);
+  assert.match(html, /fetch\("\/api\/me"/);
+  assert.match(html, /state\.currentUser/);
+  assert.match(html, /payload\.signed_in_signup = true/);
   assert.doesNotMatch(html, /School \/ organization/);
   assert.doesNotMatch(html, /name="school"/);
   assert.doesNotMatch(html, /name="notes"/);
   assert.doesNotMatch(html, /Anything we should know/);
+});
+
+test("rendered event detail page shows venue name and address and supports signed-in signup mode", () => {
+  const html = renderEventPageHtml({
+    slug: "demo-hours",
+    title: "Demo Hours",
+    description: "Community demo night",
+    starts_at: "2026-07-23T01:00:00.000Z",
+    venue_name: "Mesh Cowork",
+    venue_address: "2020 Eye street",
+    status: "open",
+    signup_fields_json: JSON.stringify({ role_label: "I want to", default_role: "attend", roles: [{ value: "attend", label: "Attend" }, { value: "demo", label: "Demo something" }] })
+  });
+  assert.match(html, /Mesh Cowork • 2020 Eye street/);
+  assert.match(html, /data-profile-signup-field/);
+  assert.match(html, /data-email-list-field/);
+  assert.match(html, /fetch\("\/api\/me"/);
+  assert.match(html, /body\.signed_in_signup = true/);
+});
+
+test("signed-in event signup API can use session profile instead of requiring contact fields", () => {
+  const source = readFileSync(new URL("../functions/api/events/[slug]/signups/index.js", import.meta.url), "utf8");
+  assert.match(source, /getCurrentUserFromRequest/);
+  assert.match(source, /const signupOptions = \{ requireEmergencyContact: !currentUser, currentUser \}/);
+  assert.match(source, /requireEmergencyContact: !currentUser/);
+  assert.match(source, /source: currentUser \? "signed-in-event-signup" : "signup-api"/);
+  assert.match(source, /signed_in: Boolean\(currentUser\)/);
 });
 
 test("check-in search ranks signed-up attendees first while searching all users", async () => {
@@ -698,7 +754,7 @@ test("manual attendee check-in can create/signup/check in and stores a checked_i
 
 test("admin check-in can reuse existing users without emergency contact", () => {
   const source = readFileSync(new URL("../functions/_lib/event-platform.js", import.meta.url), "utf8");
-  assert.match(source, /normalizeSignupInput\(input, eventSlug, \{ requireEmergencyContact = true \} = \{\}\)/);
+  assert.match(source, /normalizeSignupInput\(input, eventSlug, \{ requireEmergencyContact = true, currentUser = null \} = \{\}\)/);
   assert.match(source, /requireEmergencyContact: !input\.user_id/);
   assert.match(source, /if \(!input\.user_id\) \{/);
 });
@@ -931,12 +987,18 @@ test("public events page uses clickable cards, signup CTAs, and a true event-det
   assert.doesNotMatch(html, /event-content-after/);
 });
 
-test("Demo Hours launch packet and migration point at the static poster asset", () => {
+test("Demo Hours launch packet and migrations point at the poster asset and corrected address", () => {
   const launchPacket = readFileSync(new URL("../references/htv-july22-launch-packet.md", import.meta.url), "utf8");
-  const migration = readFileSync(new URL("../migrations/0017_set_demo_hours_header_image.sql", import.meta.url), "utf8");
+  const imageMigration = readFileSync(new URL("../migrations/0017_set_demo_hours_header_image.sql", import.meta.url), "utf8");
+  const addressMigration = readFileSync(new URL("../migrations/0018_update_demo_hours_address.sql", import.meta.url), "utf8");
   assert.match(launchPacket, /'\/assets\/events\/demo-hours\.png'/);
-  assert.match(migration, /WHERE slug = 'demo-hours'/);
-  assert.match(migration, /image_url = '\/assets\/events\/demo-hours\.png'/);
+  assert.match(launchPacket, /2020 Eye street/);
+  assert.doesNotMatch(launchPacket, /2005 Eye/);
+  assert.match(imageMigration, /WHERE slug = 'demo-hours'/);
+  assert.match(imageMigration, /image_url = '\/assets\/events\/demo-hours\.png'/);
+  assert.match(addressMigration, /venue_address = '2020 Eye street'/);
+  assert.match(addressMigration, /WHERE slug = 'demo-hours'/);
+  assert.match(addressMigration, /WHERE event_slug = 'demo-hours'/);
 });
 
 test("worker routes dynamic event APIs on the deployed Worker surface", async () => {

@@ -83,6 +83,7 @@ export {
 
 export {
   awardBadge,
+  awardPersonBadgeFromAdminRoute,
   badgeIconUrl,
   dedupeBadges,
   decorateBadge,
@@ -92,7 +93,10 @@ export {
   ensureBadge,
   listBadgeCatalog,
   listPersonBadges,
-  revokeBadgeAward
+  listPersonBadgesForAdminRoute,
+  revokeBadgeAward,
+  revokePersonBadgeFromAdminRoute,
+  trustedAdminBadgeProvenance
 } from "./domain/badges.js";
 
 export {

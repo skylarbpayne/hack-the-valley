@@ -119,6 +119,39 @@ export async function ensureBadge(db, { slug, name, description = null, badge_ty
   return await db.prepare("SELECT * FROM badges WHERE slug = ?").bind(safeSlug).first();
 }
 
+export async function listPersonBadgesForAdminRoute(db, { personId } = {}) {
+  return await listPersonBadges(db, personId);
+}
+
+export async function awardPersonBadgeFromAdminRoute(db, { personId, input = {}, access = {} } = {}) {
+  const provenance = trustedAdminBadgeProvenance(access);
+  return await awardBadge(db, {
+    personId,
+    badgeSlug: input.badgeSlug ?? input.badge_slug ?? input.slug,
+    badge: input.badge,
+    eventInstanceId: input.eventInstanceId ?? input.event_instance_id ?? null,
+    projectId: input.projectId ?? input.project_id ?? null,
+    source: provenance.source,
+    awardedBy: provenance.actorUserId
+  });
+}
+
+export async function revokePersonBadgeFromAdminRoute(db, { input = {}, query = {}, access = {} } = {}) {
+  const provenance = trustedAdminBadgeProvenance(access);
+  return await revokeBadgeAward(db, {
+    awardId: firstBadgeRouteValue(input.awardId, input.award_id, queryValue(query, "awardId"), queryValue(query, "award_id")),
+    actorUserId: provenance.actorUserId,
+    reason: firstBadgeRouteValue(input.reason, input.revoke_reason, queryValue(query, "reason"), queryValue(query, "revoke_reason"))
+  });
+}
+
+export function trustedAdminBadgeProvenance(access = {}) {
+  return {
+    source: access.bootstrap ? "bootstrap_admin" : "admin",
+    actorUserId: stringOrNull(access.user?.id ?? access.actorUserId ?? access.actor_user_id)
+  };
+}
+
 export async function awardBadge(db, input = {}) {
   const personId = stringOrNull(input.personId ?? input.person_id ?? input.userId ?? input.user_id);
   if (!personId) throw Object.assign(new Error("personId is required"), { status: 400 });
@@ -416,7 +449,21 @@ async function appendBadgeAwardAudit(db, { award, badge, source, actorUserId, re
 
 function shouldAuditAward({ source, actorUserId } = {}) {
   const normalizedSource = String(source || "").trim().toLowerCase();
-  return Boolean(actorUserId || normalizedSource === "admin" || normalizedSource === "manual_admin");
+  return Boolean(actorUserId || normalizedSource === "admin" || normalizedSource === "manual_admin" || normalizedSource === "bootstrap_admin");
+}
+
+function firstBadgeRouteValue(...values) {
+  for (const value of values) {
+    const normalized = stringOrNull(value);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function queryValue(query, name) {
+  if (!query) return null;
+  if (typeof query.get === "function") return query.get(name);
+  return query[name];
 }
 
 async function loadBadgeDerivationFacts(db, personId) {

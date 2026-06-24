@@ -795,10 +795,30 @@ export async function getUserCommunityState(db, userId) {
       ORDER BY role ASC
     `).bind(userId).all(),
     db.prepare(`
-      SELECT event_slug, event_instance_id, signup_id, event_type, actor, source, occurred_at
-      FROM event_participant_events
-      WHERE user_id = ?
-      ORDER BY occurred_at DESC
+      SELECT
+        epe.event_slug,
+        epe.event_instance_id,
+        epe.event_type,
+        epe.occurred_at,
+        e.title AS event_title,
+        e.status AS event_status,
+        e.starts_at AS event_starts_at,
+        e.ends_at AS event_ends_at,
+        e.venue_name AS event_venue_name,
+        e.venue_address AS event_venue_address,
+        ei.instance_key,
+        ei.title AS instance_title,
+        ei.status AS instance_status,
+        ei.starts_at AS instance_starts_at,
+        ei.ends_at AS instance_ends_at,
+        COALESCE(ei.venue_name, e.venue_name) AS venue_name,
+        COALESCE(ei.venue_address, e.venue_address) AS venue_address
+      FROM event_participant_events epe
+      LEFT JOIN events e ON e.slug = epe.event_slug
+      LEFT JOIN event_instances ei ON ei.id = epe.event_instance_id
+      WHERE epe.user_id = ?
+        AND epe.event_type = 'checked_in'
+      ORDER BY COALESCE(ei.starts_at, epe.occurred_at) DESC, epe.occurred_at DESC
       LIMIT 100
     `).bind(userId).all(),
     listPersonBadges(db, userId),
@@ -846,7 +866,23 @@ export async function getUserCommunityState(db, userId) {
       ORDER BY COALESCE(ei.starts_at, s.created_at) DESC, s.created_at DESC
     `).bind(userId).all()
   ]);
-  const attendanceRows = attendance.results || [];
+  const attendanceRows = (attendance.results || []).map((row) => ({
+    event_slug: row.event_slug,
+    event_title: row.event_title || null,
+    event_status: row.event_status || null,
+    event_starts_at: row.event_starts_at || null,
+    event_ends_at: row.event_ends_at || null,
+    event_instance_id: row.event_instance_id || null,
+    instance_key: row.instance_key || null,
+    instance_title: row.instance_title || null,
+    instance_status: row.instance_status || null,
+    instance_starts_at: row.instance_starts_at || null,
+    instance_ends_at: row.instance_ends_at || null,
+    venue_name: row.venue_name || row.event_venue_name || null,
+    venue_address: row.venue_address || row.event_venue_address || null,
+    event_type: row.event_type,
+    occurred_at: row.occurred_at
+  }));
   const projectRows = (projects.results || []).map(sanitizeProjectRow);
   const storedBadges = badges || [];
   const derivedBadges = deriveBadgesFromFacts({ attendance: attendanceRows, projects: projectRows, projectAwards: projectAwards.results || [] });

@@ -3,7 +3,7 @@ import {
   handleErrors,
   methodNotAllowed
 } from "../../../../_lib/event-platform.js";
-import { listEventProjectSubmissions } from "../../../../_lib/domain/submissions.js";
+import { listEventProjectReviewSubmissions } from "../../../../_lib/domain/submissions.js";
 import {
   isAuthorized,
   jsonResponse,
@@ -31,7 +31,7 @@ export async function onRequestGet(context) {
   return withCors(handleErrors(async () => {
     requireSubmissionAdmin(context.request, context.env);
     const db = getDb(context.env);
-    const projects = await listEventProjectSubmissions(db, context.params.slug, null, { includeHidden: true });
+    const projects = await listEventProjectReviewSubmissions(db, { eventSlug: context.params.slug });
     return jsonResponse({ ok: true, projects, count: projects.length });
   }));
 }

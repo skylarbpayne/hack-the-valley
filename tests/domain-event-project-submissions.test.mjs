@@ -2,9 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  listEventProjectReviewSubmissions,
   listEventProjectSubmissions,
+  listOrganizerEventProjectSubmissions,
   listPublicProjects,
   setEventProjectSubmissionStatus,
+  submitEventInstanceProjectSubmission,
   submitOwnedProjectToEvent,
   submitProjectToEvent
 } from "../functions/_lib/domain/submissions.js";
@@ -37,6 +40,14 @@ function createSubmissionDomainDb() {
           return this;
         },
         async run() {
+          if (/INSERT INTO projects/.test(sql)) {
+            const [id, slug, title, teamName, description, repoUrl, demoUrl, tracksJson, canonicalSubmissionId, createdAt, updatedAt] = this.args;
+            const existing = [...projects.values()].find((project) => project.slug === slug);
+            const project = existing || { id, slug, created_at: createdAt };
+            Object.assign(project, { title, team_name: teamName, description, repo_url: repoUrl, demo_url: demoUrl, tracks_json: tracksJson, canonical_submission_id: canonicalSubmissionId, updated_at: updatedAt });
+            projects.set(project.id, project);
+            return { success: true };
+          }
           if (/INSERT INTO event_project_submissions/.test(sql)) {
             const [id, eventSlug, eventInstanceId, projectId, submissionId, status, source, createdAt, updatedAt] = this.args;
             const row = submissions.get(id) || { id, created_at: createdAt };
@@ -68,6 +79,8 @@ function createSubmissionDomainDb() {
             const row = submissions.get(this.args[0]);
             return row ? { ...row, title: "Show Project", team_name: "Show Team" } : null;
           }
+          if (/SELECT \* FROM projects WHERE slug/.test(sql)) return [...projects.values()].find((project) => project.slug === this.args[0]) || null;
+          if (/SELECT \* FROM projects WHERE id/.test(sql)) return projects.get(this.args[0]) || null;
           throw new Error(`Unexpected first query: ${sql}`);
         },
         async all() {
@@ -159,6 +172,36 @@ test("listEventProjectSubmissions returns event rows without private contact fie
   assert.equal(rows[0].title, "Show Project");
   assert.equal(rows[0].submission_id, "sub_show");
   assert.equal(Object.hasOwn(rows[0], "contact_email"), false);
+});
+
+test("event project route boundaries keep review and organizer list filters explicit", async () => {
+  const reviewDb = createSubmissionDomainDb();
+  await listEventProjectReviewSubmissions(reviewDb, { eventSlug: "hack-the-valley-2026" });
+  assert.doesNotMatch(reviewDb.statements.at(-1).sql, /eps\.status != 'hidden'/);
+
+  const organizerDb = createSubmissionDomainDb();
+  await listOrganizerEventProjectSubmissions(organizerDb, { eventSlug: "hack-the-valley-2026", eventInstanceId: "inst_htv_2026" });
+  assert.match(organizerDb.statements.at(-1).sql, /eps\.status != 'hidden'/);
+});
+
+test("event project submission boundary derives provenance from route context", async () => {
+  const db = createSubmissionDomainDb();
+  const project = await submitEventInstanceProjectSubmission(db, {
+    eventSlug: "hack-the-valley-2026",
+    eventInstanceId: "inst_htv_2026",
+    source: "Organizer User",
+    input: {
+      title: "Route Boundary Demo",
+      team_name: "Boundary Team",
+      status: "accepted",
+      source: "request-body-should-not-win"
+    }
+  });
+
+  const row = [...db.submissions.values()].find((submission) => submission.project_id === project.id);
+  assert.equal(row.status, "accepted");
+  assert.equal(row.source, "organizer_user");
+  assert.notEqual(row.source, "request-body-should-not-win");
 });
 
 test("listPublicProjects hides rejected or hidden event submissions but not the project model", async () => {

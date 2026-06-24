@@ -58,6 +58,62 @@ export async function submitOwnedProjectToEvent(db, userId, projectId, input = {
   return { project: sanitizeProjectRow(project), submission };
 }
 
+export async function listEventProjectReviewSubmissions(db, { eventSlug, eventInstanceId = null } = {}) {
+  return await listEventProjectSubmissions(db, { eventSlug, eventInstanceId, includeHidden: true });
+}
+
+export async function listOrganizerEventProjectSubmissions(db, { eventSlug, eventInstanceId } = {}) {
+  return await listEventProjectSubmissions(db, { eventSlug, eventInstanceId, includeHidden: false });
+}
+
+export async function updateEventProjectReviewSubmissionStatus(db, {
+  eventSlug,
+  projectId,
+  status = "hidden",
+  actor = null,
+  now = new Date().toISOString()
+} = {}) {
+  return await updateEventProjectSubmissionStatus(db, { eventSlug, projectId, status, actor, now });
+}
+
+export async function submitEventInstanceProjectSubmission(db, {
+  eventSlug,
+  eventInstanceId,
+  input = {},
+  source = "organizer",
+  now = new Date().toISOString()
+} = {}) {
+  if (!eventSlug) throw Object.assign(new Error("eventSlug is required"), { status: 400 });
+  if (!eventInstanceId) throw Object.assign(new Error("eventInstanceId is required"), { status: 400 });
+  const submissionId = input.submission_id || null;
+  const linkedSubmissionId = input.submission_id || input.submissionId || null;
+  const status = input.status || "submitted";
+  const trustedSource = normalizeTrustedSource(source);
+
+  if (submissionId) {
+    return await upsertProjectFromSubmission(db, submissionId, {
+      eventSlug,
+      eventInstanceId,
+      status,
+      source: trustedSource,
+      now
+    });
+  }
+
+  const projectInput = input.project && typeof input.project === "object" ? input.project : input;
+  const project = await upsertProject(db, projectInput);
+  await linkProjectSubmission(db, {
+    eventSlug,
+    eventInstanceId,
+    projectId: project.id,
+    submissionId: linkedSubmissionId,
+    status,
+    source: trustedSource,
+    now
+  });
+  return project;
+}
+
 export async function setEventProjectSubmissionStatus(db, { submissionId, status = "hidden", actor = null, now = new Date().toISOString() } = {}) {
   if (!db) throw Object.assign(new Error("db is required"), { status: 500 });
   if (!submissionId) throw Object.assign(new Error("submissionId is required"), { status: 400 });
@@ -144,7 +200,7 @@ export async function linkProjectSubmission(db, {
   };
 }
 
-export async function upsertProjectFromSubmission(db, submissionId, { eventSlug = "hack-the-valley-2026", eventInstanceId = null, status = "submitted" } = {}) {
+export async function upsertProjectFromSubmission(db, submissionId, { eventSlug = "hack-the-valley-2026", eventInstanceId = null, status = "submitted", source = "submission_portal", now } = {}) {
   const submission = await db.prepare("SELECT * FROM submissions WHERE id = ?").bind(submissionId).first();
   if (!submission) throw Object.assign(new Error("Submission not found"), { status: 404 });
   const payload = parseJsonObject(submission.payload_json, {});
@@ -157,7 +213,7 @@ export async function upsertProjectFromSubmission(db, submissionId, { eventSlug 
     tracks: payload.tracks || submission.track,
     canonical_submission_id: submission.id
   });
-  await linkProjectSubmission(db, { eventSlug, eventInstanceId, projectId: project.id, submissionId: submission.id, status });
+  await linkProjectSubmission(db, { eventSlug, eventInstanceId, projectId: project.id, submissionId: submission.id, status, source, now });
   return project;
 }
 
@@ -289,6 +345,16 @@ function normalizeSubmissionStatus(status) {
     throw Object.assign(new Error("Unsupported project submission status"), { status: 400 });
   }
   return normalized;
+}
+
+function normalizeTrustedSource(source) {
+  const normalized = String(source || "organizer")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9:_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 96);
+  return normalized || "organizer";
 }
 
 function normalizeTracks(value) {

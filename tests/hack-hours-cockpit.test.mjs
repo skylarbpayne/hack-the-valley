@@ -1242,10 +1242,13 @@ test("follow-up packet builds approval-gated draft and safe segments without eme
 });
 
 test("worker routes event project submissions API and requires admin", async () => {
+  const statements = [];
   const fakeDb = {
     prepare(sql) {
       return {
-        bind(...args) { this.args = args; return this; },
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
         async run() { return { success: true }; },
         async first() {
           if (/FROM submissions/.test(sql)) return { id: "sub_1", project_title: "CalcGuide", team_name: "NewtonsNewts", track: "Education", payload_json: JSON.stringify({ description: "Calculus tutor" }) };
@@ -1264,11 +1267,14 @@ test("worker routes event project submissions API and requires admin", async () 
   const create = await worker.fetch(new Request(url, {
     method: "POST",
     headers: adminHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ submission_id: "sub_1", status: "accepted" })
+    body: JSON.stringify({ submission_id: "sub_1", status: "accepted", source: "request-body-should-not-win" })
   }), { HTV_DB: withAdminRoleDb(fakeDb), HTV_ADMIN_TOKEN: "secret" }, {});
   assert.equal(create.status, 200);
   const created = await create.json();
   assert.equal(created.project.title, "CalcGuide");
+  const eventLinkInsert = statements.find((statement) => /INSERT INTO event_project_submissions/.test(statement.sql));
+  assert.equal(eventLinkInsert.args[6], "organizer:usr_admin");
+  assert.notEqual(eventLinkInsert.args[6], "request-body-should-not-win");
   const list = await worker.fetch(new Request(url, { headers: adminHeaders() }), { HTV_DB: withAdminRoleDb(fakeDb), HTV_ADMIN_TOKEN: "secret" }, {});
   assert.equal(list.status, 200);
   const listed = await list.json();

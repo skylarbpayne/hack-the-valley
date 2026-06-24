@@ -520,13 +520,36 @@ function sanitizeProjectRow(row = {}) {
   return safe;
 }
 
-function normalizeAwards(value) {
-  return parseJsonArray(value).map((award) => ({
-    slug: award.award_slug || award.slug || slugify(award.award_title || award.title || "award"),
-    title: award.award_title || award.title || "Award",
-    rank: Number(award.award_rank || award.rank || 1),
-    prize_amount_cents: award.prize_amount_cents ?? null
-  })).filter((award) => award.title);
+function normalizeAwards(value, eventSlug = null) {
+  return parseJsonArray(value).map((award) => {
+    const title = award.award_title || award.title || "Award";
+    const event = eventDisplayName(award.event_slug || eventSlug);
+    return {
+      slug: award.award_slug || award.slug || slugify(title),
+      title,
+      rank: Number(award.award_rank || award.rank || 1),
+      event_slug: award.event_slug || eventSlug || null,
+      event,
+      display_text: event ? `${title} - ${event}` : title
+    };
+  }).filter((award) => award.title);
+}
+
+function eventDisplayName(eventSlug) {
+  const slug = String(eventSlug || "").trim();
+  if (!slug) return null;
+  return slug
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part, index) => formatEventNamePart(part, index))
+    .join(" ");
+}
+
+function formatEventNamePart(part, index) {
+  if (/^\d+$/.test(part)) return part;
+  const lower = part.toLowerCase();
+  if (index > 0 && new Set(["a", "an", "and", "at", "for", "in", "of", "on", "or", "the", "to"]).has(lower)) return lower;
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
 function isPublicProjectMedia(upload = {}) {
@@ -566,7 +589,7 @@ function sanitizePublicProjectRow(row = {}) {
     tracks: parseJsonArray(row.tracks_json, normalizeTracks(row.tracks_json)),
     event_slug: row.event_slug || null,
     status: row.status || "showcased",
-    awards: normalizeAwards(row.awards_json),
+    awards: normalizeAwards(row.awards_json, row.event_slug),
     hero_media: publicProjectHeroMedia(row),
     submitted_at: row.submission_created_at || row.created_at || null,
     updated_at: row.updated_at || null
@@ -772,10 +795,30 @@ export async function getUserCommunityState(db, userId) {
       ORDER BY role ASC
     `).bind(userId).all(),
     db.prepare(`
-      SELECT event_slug, event_instance_id, signup_id, event_type, actor, source, occurred_at
-      FROM event_participant_events
-      WHERE user_id = ?
-      ORDER BY occurred_at DESC
+      SELECT
+        epe.event_slug,
+        epe.event_instance_id,
+        epe.event_type,
+        epe.occurred_at,
+        e.title AS event_title,
+        e.status AS event_status,
+        e.starts_at AS event_starts_at,
+        e.ends_at AS event_ends_at,
+        e.venue_name AS event_venue_name,
+        e.venue_address AS event_venue_address,
+        ei.instance_key,
+        ei.title AS instance_title,
+        ei.status AS instance_status,
+        ei.starts_at AS instance_starts_at,
+        ei.ends_at AS instance_ends_at,
+        COALESCE(ei.venue_name, e.venue_name) AS venue_name,
+        COALESCE(ei.venue_address, e.venue_address) AS venue_address
+      FROM event_participant_events epe
+      LEFT JOIN events e ON e.slug = epe.event_slug
+      LEFT JOIN event_instances ei ON ei.id = epe.event_instance_id
+      WHERE epe.user_id = ?
+        AND epe.event_type = 'checked_in'
+      ORDER BY COALESCE(ei.starts_at, epe.occurred_at) DESC, epe.occurred_at DESC
       LIMIT 100
     `).bind(userId).all(),
     listPersonBadges(db, userId),
@@ -823,7 +866,23 @@ export async function getUserCommunityState(db, userId) {
       ORDER BY COALESCE(ei.starts_at, s.created_at) DESC, s.created_at DESC
     `).bind(userId).all()
   ]);
-  const attendanceRows = attendance.results || [];
+  const attendanceRows = (attendance.results || []).map((row) => ({
+    event_slug: row.event_slug,
+    event_title: row.event_title || null,
+    event_status: row.event_status || null,
+    event_starts_at: row.event_starts_at || null,
+    event_ends_at: row.event_ends_at || null,
+    event_instance_id: row.event_instance_id || null,
+    instance_key: row.instance_key || null,
+    instance_title: row.instance_title || null,
+    instance_status: row.instance_status || null,
+    instance_starts_at: row.instance_starts_at || null,
+    instance_ends_at: row.instance_ends_at || null,
+    venue_name: row.venue_name || row.event_venue_name || null,
+    venue_address: row.venue_address || row.event_venue_address || null,
+    event_type: row.event_type,
+    occurred_at: row.occurred_at
+  }));
   const projectRows = (projects.results || []).map(sanitizeProjectRow);
   const storedBadges = badges || [];
   const derivedBadges = deriveBadgesFromFacts({ attendance: attendanceRows, projects: projectRows, projectAwards: projectAwards.results || [] });

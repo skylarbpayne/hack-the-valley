@@ -1481,6 +1481,161 @@ test("Resend import script pre-populates the users table without email IDs", () 
   assert.match(script, /wrangler d1 execute HTV_DB --remote/);
 });
 
+function participantProfileDb() {
+  const currentUser = {
+    id: "usr_maya",
+    email: "maya@example.com",
+    name: "Maya Patel",
+    first_name: "Maya",
+    last_name: "Patel",
+    phone: "661-555-0199",
+    school: "CSUB",
+    metadata_json: null,
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-06-01T00:00:00.000Z",
+    session_id: "ses_maya",
+    session_expires_at: "2099-01-01T00:00:00.000Z"
+  };
+  const attendance = [
+    {
+      event_slug: "hack-hours",
+      event_instance_id: "inst_hack_hours_2026_07_22_1800",
+      event_type: "checked_in",
+      occurred_at: "2026-07-23T01:05:00.000Z",
+      event_title: "Hack Hours",
+      event_status: "open",
+      event_starts_at: "2026-07-23T01:00:00.000Z",
+      event_ends_at: "2026-07-23T03:00:00.000Z",
+      event_venue_name: "Panera Bread",
+      event_venue_address: "10900 Stockdale Hwy, Bakersfield, CA",
+      instance_key: "2026-07-22-1800",
+      instance_title: "July Hack Hours",
+      instance_status: "closed",
+      instance_starts_at: "2026-07-23T01:00:00.000Z",
+      instance_ends_at: "2026-07-23T03:00:00.000Z",
+      venue_name: "Panera Bread",
+      venue_address: "10900 Stockdale Hwy, Bakersfield, CA",
+      signup_id: "signup_private",
+      actor: "usr_admin",
+      source: "admin",
+      data_json: JSON.stringify({ admin_note: "private" })
+    },
+    {
+      event_slug: "hack-hours",
+      event_instance_id: "inst_hack_hours_2026_07_29_1800",
+      event_type: "signed_up",
+      occurred_at: "2026-07-25T01:05:00.000Z",
+      event_title: "Hack Hours"
+    },
+    {
+      event_slug: "hack-the-valley-2026",
+      event_instance_id: "inst_htv_private",
+      user_id: "usr_other",
+      event_type: "checked_in",
+      occurred_at: "2026-05-30T16:00:00.000Z",
+      event_title: "Hack the Valley 2026"
+    }
+  ];
+  const seenAttendanceSql = [];
+
+  return {
+    seenAttendanceSql,
+    prepare(sql) {
+      return {
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async first() {
+          if (/FROM user_sessions us/.test(sql)) return currentUser;
+          if (/SELECT \* FROM users WHERE id = \?/.test(sql)) return this.args[0] === currentUser.id ? currentUser : null;
+          throw new Error(`Unexpected first() query: ${sql}`);
+        },
+        async all() {
+          if (/FROM roles/.test(sql)) return { results: [] };
+          if (/FROM event_participant_events epe/.test(sql)) {
+            seenAttendanceSql.push(sql);
+            assert.equal(this.args[0], currentUser.id);
+            assert.match(sql, /epe\.user_id = \?/);
+            assert.match(sql, /epe\.event_type = 'checked_in'/);
+            assert.match(sql, /LEFT JOIN events e/);
+            assert.match(sql, /LEFT JOIN event_instances ei/);
+            return { results: attendance.filter((row) => row.event_type === "checked_in" && (row.user_id || currentUser.id) === currentUser.id) };
+          }
+          if (/FROM user_badges ub/.test(sql)) return { results: [] };
+          if (/JOIN event_project_awards/.test(sql)) return { results: [] };
+          if (/FROM project_members pm/.test(sql)) return { results: [] };
+          if (/FROM signups s\s+JOIN events e/.test(sql)) return { results: [] };
+          throw new Error(`Unexpected all() query: ${sql}`);
+        }
+      };
+    }
+  };
+}
+
+test("/api/me returns signed-in user's sanitized checked-in attendance history", async () => {
+  const db = participantProfileDb();
+  const response = await worker.fetch(
+    new Request("https://hackthevalley.org/api/me", { method: "GET", headers: { cookie: "htv_session=test-session" } }),
+    { HTV_DB: db },
+    {}
+  );
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.user.id, "usr_maya");
+  assert.equal(body.attendance.length, 1);
+  assert.equal(db.seenAttendanceSql.length, 1);
+  assert.deepEqual(Object.keys(body.attendance[0]).sort(), [
+    "event_ends_at",
+    "event_instance_id",
+    "event_slug",
+    "event_starts_at",
+    "event_status",
+    "event_title",
+    "event_type",
+    "instance_ends_at",
+    "instance_key",
+    "instance_starts_at",
+    "instance_status",
+    "instance_title",
+    "occurred_at",
+    "venue_address",
+    "venue_name"
+  ].sort());
+  assert.equal(body.attendance[0].event_title, "Hack Hours");
+  assert.equal(body.attendance[0].instance_title, "July Hack Hours");
+  assert.equal(body.attendance[0].venue_name, "Panera Bread");
+  assert.equal(body.attendance[0].instance_status, "closed");
+  assert.equal(body.attendance[0].occurred_at, "2026-07-23T01:05:00.000Z");
+  assert.equal(body.attendance.some((row) => row.event_type === "signed_up"), false);
+  const serializedAttendance = JSON.stringify(body.attendance);
+  assert.doesNotMatch(serializedAttendance, /maya@example\.com|661-555|usr_admin|signup_private|admin_note|source|actor|data_json|phone|email/i);
+});
+
+test("/api/me denies attendance history without a signed-in session", async () => {
+  const response = await worker.fetch(
+    new Request("https://hackthevalley.org/api/me", { method: "GET" }),
+    { HTV_DB: participantProfileDb() },
+    {}
+  );
+
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.ok, false);
+  assert.match(body.error, /not signed in/i);
+  assert.equal(body.attendance, undefined);
+});
+
+test("profile page renders enriched attendance-history fields from /api/me", () => {
+  const html = readFileSync(new URL("../public/me/index.html", import.meta.url), "utf8");
+  assert.match(html, /Event history/);
+  assert.match(html, /renderAttendance\(data\.attendance \|\| \[\]\)/);
+  assert.match(html, /event\.event_title/);
+  assert.match(html, /event\.instance_starts_at \|\| event\.event_starts_at/);
+  assert.match(html, /event\.venue_name, event\.venue_address/);
+  assert.match(html, /event\.instance_status \|\| event\.event_status/);
+});
+
 test("worker accepts admin event image uploads and serves uploaded event images publicly", async () => {
   const stored = new Map();
   const env = {

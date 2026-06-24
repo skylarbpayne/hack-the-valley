@@ -4,7 +4,7 @@ import {
   methodNotAllowed,
   readJson
 } from "../../../../_lib/event-platform.js";
-import { updateEventProjectSubmissionStatus } from "../../../../_lib/domain/submissions.js";
+import { updateEventProjectReviewSubmissionStatus } from "../../../../_lib/domain/submissions.js";
 import {
   isAuthorized,
   jsonResponse,
@@ -33,10 +33,11 @@ export async function onRequestPatch(context) {
     requireSubmissionAdmin(context.request, context.env);
     const db = getDb(context.env);
     const body = await readJson(context.request);
-    const project = await updateEventProjectSubmissionStatus(db, {
+    const project = await updateEventProjectReviewSubmissionStatus(db, {
       eventSlug: context.params.slug,
       projectId: context.params.projectId,
-      status: body.status || "hidden"
+      status: body.status || "hidden",
+      actor: "submission_admin"
     });
     return jsonResponse({ ok: true, project });
   }));
@@ -46,10 +47,11 @@ export async function onRequestDelete(context) {
   return withCors(handleErrors(async () => {
     requireSubmissionAdmin(context.request, context.env);
     const db = getDb(context.env);
-    const project = await updateEventProjectSubmissionStatus(db, {
+    const project = await updateEventProjectReviewSubmissionStatus(db, {
       eventSlug: context.params.slug,
       projectId: context.params.projectId,
-      status: "hidden"
+      status: "hidden",
+      actor: "submission_admin"
     });
     return jsonResponse({ ok: true, project, message: "Project submission hidden from event review/showcase." });
   }));

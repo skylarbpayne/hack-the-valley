@@ -107,6 +107,17 @@ test('public surfaces link to the canonical projects workspace instead of legacy
   assert.doesNotMatch(adminHtml, /href="\/submit\.html"/);
 });
 
+test('project/event-submission route strangler stays out of content and email lanes', () => {
+  const scopedRoutes = [
+    '../functions/api/events/[slug]/projects/index.js',
+    '../functions/api/events/[slug]/projects/[projectId].js',
+    '../functions/api/events/[slug]/instances/[instanceId]/projects/index.js',
+  ].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n');
+
+  assert.match(scopedRoutes, /domain\/submissions\.js/);
+  assert.doesNotMatch(scopedRoutes, /blog|campaign|broadcast|follow[-_]?up|email\s+blast|content\s+item/i);
+});
+
 test('custom-domain scripts send APIs to the Worker API origin', () => {
   const submitJs = readFileSync(new URL('../public/submissions.js', import.meta.url), 'utf8');
   const adminJs = readFileSync(new URL('../public/admin-submissions.js', import.meta.url), 'utf8');

@@ -188,6 +188,23 @@ test('project migration helper is dry-run first, backs up source rows, and write
   assert.doesNotMatch(script, /DELETE FROM|DROP TABLE|TRUNCATE/i);
 });
 
+test('HTV 2026 integrity hardening migration backfills instance links without destructive cleanup', () => {
+  const migration = readFileSync(new URL('../migrations/0022_backfill_htv_2026_instance_links.sql', import.meta.url), 'utf8');
+  const checkMigrations = readFileSync(new URL('../scripts/check-migrations.mjs', import.meta.url), 'utf8');
+
+  assert.match(migration, /INSERT OR IGNORE INTO event_instances/);
+  assert.match(migration, /inst_hack_the_valley_2026/);
+  assert.match(migration, /UPDATE event_project_submissions/);
+  assert.match(migration, /event_instance_id = 'inst_hack_the_valley_2026'/);
+  assert.match(migration, /UPDATE projects/);
+  assert.match(migration, /canonical_submission_id IS NULL/);
+  assert.doesNotMatch(migration, /DELETE FROM|DROP TABLE|TRUNCATE/i);
+
+  assert.match(checkMigrations, /verifyDataIntegrityFixtures/);
+  assert.match(checkMigrations, /HTV 2026 project links point at the archived instance/);
+  assert.match(checkMigrations, /linked legacy submissions have canonical projects when possible/);
+});
+
 test('jsonResponse returns JSON with no-store cache headers', async () => {
   const response = jsonResponse({ ok: true }, { status: 201 });
   assert.equal(response.status, 201);

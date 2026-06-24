@@ -4,10 +4,12 @@ import { readFileSync } from "node:fs";
 
 import {
   awardBadge,
+  awardPersonBadgeFromAdminRoute,
   deriveBadgesForPerson,
   listBadgeCatalog,
   listPersonBadges,
-  revokeBadgeAward
+  revokeBadgeAward,
+  revokePersonBadgeFromAdminRoute
 } from "../functions/_lib/domain/badges.js";
 
 const root = new URL("../", import.meta.url);
@@ -174,6 +176,56 @@ test("revokeBadgeAward marks awards revoked and writes audit provenance", async 
   assert.equal(db.state.audits.length, 1);
   assert.equal(db.state.audits[0].args[1], "badge.revoke");
   assert.equal(db.state.audits[0].metadata.reason, "mistaken award");
+});
+
+test("admin badge route boundary preserves response shape and ignores forged body provenance", async () => {
+  const db = createBadgeDb();
+
+  const awarded = await awardPersonBadgeFromAdminRoute(db, {
+    personId: "usr_maya",
+    access: { user: { id: "usr_admin" }, role: { role: "admin" }, bootstrap: false },
+    input: {
+      badge_slug: "shared-demo",
+      event_instance_id: "inst_route",
+      source: "derived",
+      awarded_by: "usr_forged",
+      actorUserId: "usr_forged"
+    }
+  });
+
+  assert.equal(awarded.badge.slug, "shared-demo");
+  assert.equal(awarded.award.source, "admin");
+  assert.equal(awarded.award.awarded_by, "usr_admin");
+  assert.equal(awarded.created, true);
+  assert.equal(awarded.duplicate, false);
+  assert.equal(awarded.reactivated, false);
+  assert.ok(Object.hasOwn(awarded, "auditEvent"));
+  assert.equal(db.state.audits[0].metadata.source, "admin");
+
+  const revoked = await revokePersonBadgeFromAdminRoute(db, {
+    access: { user: { id: "usr_admin" }, role: { role: "admin" }, bootstrap: false },
+    input: {
+      award_id: awarded.award.id,
+      reason: "route correction",
+      revoked_by: "usr_forged",
+      actorUserId: "usr_forged"
+    },
+    query: new URLSearchParams("award_id=ubg_other&reason=query-reason")
+  });
+
+  assert.equal(revoked.revoked, true);
+  assert.equal(revoked.alreadyRevoked, false);
+  assert.equal(revoked.award.revoked_by, "usr_admin");
+  assert.equal(revoked.award.revoke_reason, "route correction");
+  assert.ok(Object.hasOwn(revoked, "auditEvent"));
+  assert.equal(db.state.audits[1].metadata.reason, "route correction");
+});
+
+test("badge route strangler stays scoped to Badges domain without content or email lanes", () => {
+  const route = read("functions/api/users/[id]/badges.js");
+
+  assert.match(route, /domain\/badges\.js/);
+  assert.doesNotMatch(route, /blog|campaign|broadcast|follow[-_]?up|email\s+blast|content\s+item/i);
 });
 
 test("deriveBadgesForPerson defaults to dry-run and reports missing awards without writes", async () => {

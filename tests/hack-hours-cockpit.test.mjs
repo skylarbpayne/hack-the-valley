@@ -1499,10 +1499,28 @@ test("worker routes user state and badge award APIs behind admin auth", async ()
   assert.equal(badgeResponse.status, 200);
   const awarded = await badgeResponse.json();
   assert.equal(awarded.badge.slug, "shared-demo");
+  assert.ok(Object.hasOwn(awarded, "created"));
+  assert.ok(Object.hasOwn(awarded, "duplicate"));
+  assert.ok(Object.hasOwn(awarded, "auditEvent"));
   const badgeInsert = statements.find((statement) => /INSERT OR IGNORE INTO user_badges/.test(statement.sql));
   assert.ok(badgeInsert);
   assert.equal(badgeInsert.args[5], "admin");
   assert.equal(badgeInsert.args[6], "usr_admin");
+
+  const revokeResponse = await worker.fetch(new Request(`${badgeUrl}?award_id=ubg_1&reason=query-reason`, {
+    method: "DELETE",
+    headers: adminHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ award_id: "ubg_1", reason: "body correction", revoked_by: "usr_forged", actorUserId: "usr_forged" })
+  }), { HTV_DB: withAdminRoleDb(fakeDb), HTV_ADMIN_TOKEN: "secret" }, {});
+  assert.equal(revokeResponse.status, 200);
+  const revoked = await revokeResponse.json();
+  assert.equal(revoked.revoked, true);
+  assert.equal(revoked.alreadyRevoked, false);
+  assert.ok(Object.hasOwn(revoked, "auditEvent"));
+  const badgeRevoke = statements.find((statement) => /SET revoked_at = \?/.test(statement.sql));
+  assert.ok(badgeRevoke);
+  assert.equal(badgeRevoke.args[1], "usr_admin");
+  assert.equal(badgeRevoke.args[2], "body correction");
 });
 
 test("worker routes follow-up packet API and requires admin", async () => {

@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HTV 2027 Planning System — Issue #86 Domain Model</title>
+  <style>
+    :root {
+      --bg: #07111f;
+      --panel: #0f172a;
+      --panel-2: #111c31;
+      --line: #334155;
+      --text: #e5f2ff;
+      --muted: #94a3b8;
+      --cyan: #06b6d4;
+      --blue: #2563eb;
+      --orange: #f59e0b;
+      --green: #10b981;
+      --violet: #8b5cf6;
+      --rose: #fb7185;
+      --yellow: #facc15;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 20% 0%, rgba(6, 182, 212, 0.18), transparent 32rem), var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+    main { max-width: 1320px; margin: 0 auto; padding: 36px 24px 80px; }
+    .hero {
+      border: 1px solid rgba(6, 182, 212, 0.36);
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.9));
+      border-radius: 28px;
+      padding: 34px;
+      box-shadow: 0 22px 80px rgba(0,0,0,0.35);
+    }
+    .eyebrow { color: var(--cyan); font-size: 12px; font-weight: 900; letter-spacing: .22em; text-transform: uppercase; }
+    h1 { margin: 8px 0 12px; font-size: clamp(34px, 5vw, 68px); line-height: 0.95; letter-spacing: -0.055em; }
+    h2 { margin: 0 0 12px; font-size: 28px; letter-spacing: -0.03em; }
+    h3 { margin: 0 0 8px; font-size: 18px; }
+    p { margin: 0; }
+    .hero p { max-width: 880px; color: #cbd5e1; font-size: 18px; }
+    .grid { display: grid; gap: 18px; }
+    .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    section { margin-top: 26px; }
+    .card {
+      background: rgba(15, 23, 42, 0.86);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 22px;
+      padding: 22px;
+      box-shadow: 0 14px 45px rgba(0,0,0,0.22);
+    }
+    .stat { border-left: 4px solid var(--cyan); }
+    .stat strong { display: block; font-size: 28px; letter-spacing: -0.04em; }
+    .stat span, .muted { color: var(--muted); }
+    .tag { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 999px; background: rgba(6,182,212,.1); border: 1px solid rgba(6,182,212,.32); color: #a5f3fc; font-size: 12px; font-weight: 800; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .legend span { font-size: 12px; color: #cbd5e1; border: 1px solid rgba(148, 163, 184, .22); border-radius: 999px; padding: 5px 8px; }
+    .svg-wrap { overflow-x: auto; padding: 8px; border-radius: 18px; background: #081426; border: 1px solid rgba(148, 163, 184, .14); }
+    svg { display: block; min-width: 920px; width: 100%; height: auto; }
+    .box { fill: #111c31; stroke: #475569; stroke-width: 1.4; rx: 14; }
+    .core { fill: rgba(6,182,212,.14); stroke: var(--cyan); }
+    .domain { fill: rgba(37,99,235,.12); stroke: #60a5fa; }
+    .ops { fill: rgba(16,185,129,.12); stroke: #34d399; }
+    .gate { fill: rgba(251,113,133,.12); stroke: var(--rose); }
+    .template { fill: rgba(139,92,246,.13); stroke: #a78bfa; }
+    .artifact { fill: rgba(245,158,11,.13); stroke: var(--orange); }
+    .txt { fill: var(--text); font-size: 14px; font-weight: 800; }
+    .subtxt { fill: #b8c4d6; font-size: 11px; font-weight: 600; }
+    .arrow { stroke: #8bb6cb; stroke-width: 1.8; fill: none; marker-end: url(#arrow); }
+    .soft-arrow { stroke: #53647a; stroke-width: 1.4; fill: none; marker-end: url(#arrow-muted); stroke-dasharray: 5 5; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 14px; }
+    th, td { border-bottom: 1px solid rgba(148, 163, 184, .16); padding: 12px 10px; text-align: left; vertical-align: top; }
+    th { color: #a5f3fc; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; background: rgba(6,182,212,.08); }
+    td { color: #dbeafe; font-size: 14px; }
+    code { background: rgba(15, 23, 42, .9); border: 1px solid rgba(148, 163, 184, .22); border-radius: 6px; padding: 2px 5px; color: #fef3c7; }
+    ol { margin: 10px 0 0 20px; padding: 0; color: #dbeafe; }
+    li { margin: 7px 0; }
+    .lane { border-left: 3px solid var(--orange); padding-left: 14px; }
+    .callout { border: 1px solid rgba(245, 158, 11, .34); background: rgba(245, 158, 11, .08); border-radius: 18px; padding: 18px; color: #fde68a; }
+    @media (max-width: 900px) { .cols-3, .cols-2 { grid-template-columns: 1fr; } main { padding: 20px 14px 56px; } .hero { padding: 24px; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="hero">
+    <div class="eyebrow">Hack the Valley issue #86 · Planning / management system</div>
+    <h1>Make the timeline the spine, not another admin junk drawer.</h1>
+    <p>The flexible object is a typed <strong>PlanningItem</strong>: every milestone, checklist item, meeting, sponsor follow-up, print order, volunteer checkpoint, social post, and email blast becomes one item on the HTV 2027 planning timeline. New checks/items are added by creating templates or item types, not by adding one-off columns/routes forever.</p>
+    <div class="legend">
+      <span>Blue = existing HTV event/community model</span>
+      <span>Cyan = new planning spine</span>
+      <span>Violet = templates/check definitions</span>
+      <span>Green = operations</span>
+      <span>Rose = approval gates</span>
+      <span>Orange = artifacts/notes/files</span>
+    </div>
+  </div>
+
+  <section class="grid cols-3">
+    <div class="card stat"><strong>1 core spine</strong><span>PlanningCycle → TimelinePhase → PlanningItem</span></div>
+    <div class="card stat"><strong>many domains</strong><span>Sponsors, volunteers, inventory, print, social, email, meetings all attach to items.</span></div>
+    <div class="card stat"><strong>append-only facts</strong><span>Status/event history and audit keep the club handoff honest.</span></div>
+  </section>
+
+  <section class="card">
+    <h2>Domain model: one planning cycle, many typed items</h2>
+    <div class="svg-wrap">
+      <svg viewBox="0 0 1180 720" role="img" aria-label="HTV 2027 planning system domain model">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#8bb6cb"/></marker>
+          <marker id="arrow-muted" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#53647a"/></marker>
+        </defs>
+
+        <rect class="domain" x="40" y="42" width="170" height="80"/>
+        <text class="txt" x="62" y="76">EventSeries</text><text class="subtxt" x="62" y="98">Hack the Valley</text>
+        <rect class="domain" x="40" y="170" width="170" height="84"/>
+        <text class="txt" x="62" y="205">EventInstance</text><text class="subtxt" x="62" y="227">HTV 2027 event day</text>
+        <path class="arrow" d="M125 122 V170"/>
+
+        <rect class="core" x="305" y="70" width="210" height="96"/>
+        <text class="txt" x="332" y="106">PlanningCycle</text><text class="subtxt" x="332" y="128">HTV 2027 workspace</text><text class="subtxt" x="332" y="146">target date, owner org, status</text>
+        <path class="arrow" d="M210 212 C250 212 255 118 305 118"/>
+
+        <rect class="core" x="585" y="50" width="205" height="84"/>
+        <text class="txt" x="615" y="84">TimelinePhase</text><text class="subtxt" x="615" y="106">T-12mo, T-6mo, event week</text>
+        <path class="arrow" d="M515 112 H585"/>
+
+        <rect class="core" x="585" y="194" width="205" height="110"/>
+        <text class="txt" x="615" y="226">PlanningItem</text><text class="subtxt" x="615" y="248">milestone | task | check</text><text class="subtxt" x="615" y="266">meeting | follow-up | order</text><text class="subtxt" x="615" y="284">common status/due/owner</text>
+        <path class="arrow" d="M688 134 V194"/>
+        <path class="arrow" d="M515 134 C548 156 548 234 585 246"/>
+
+        <rect class="template" x="870" y="40" width="230" height="95"/>
+        <text class="txt" x="900" y="75">PlanningTemplate</text><text class="subtxt" x="900" y="97">Reusable HTV cycle blueprint</text><text class="subtxt" x="900" y="115">instantiates phases + items</text>
+        <rect class="template" x="870" y="180" width="230" height="102"/>
+        <text class="txt" x="900" y="214">CheckDefinition</text><text class="subtxt" x="900" y="236">“Sponsor logo received”</text><text class="subtxt" x="900" y="254">“Venue contract signed”</text>
+        <path class="soft-arrow" d="M870 92 H790"/>
+        <path class="arrow" d="M870 232 H790"/>
+
+        <rect class="box" x="305" y="238" width="210" height="88"/>
+        <text class="txt" x="332" y="272">Person / Team</text><text class="subtxt" x="332" y="294">CSUB club, owner, assignee</text>
+        <path class="arrow" d="M515 280 H585"/>
+
+        <rect class="ops" x="305" y="382" width="210" height="98"/>
+        <text class="txt" x="332" y="416">PlanningItemEvent</text><text class="subtxt" x="332" y="438">created, assigned, blocked,</text><text class="subtxt" x="332" y="456">completed, reopened, commented</text>
+        <path class="arrow" d="M585 282 C540 326 542 408 515 430"/>
+
+        <rect class="artifact" x="585" y="382" width="205" height="96"/>
+        <text class="txt" x="615" y="416">Artifact / Note</text><text class="subtxt" x="615" y="438">meeting notes, sponsor deck,</text><text class="subtxt" x="615" y="456">print proof, venue contract</text>
+        <path class="arrow" d="M688 304 V382"/>
+
+        <rect class="gate" x="870" y="350" width="230" height="112"/>
+        <text class="txt" x="900" y="384">ApprovalGate</text><text class="subtxt" x="900" y="406">external send, spend, publish,</text><text class="subtxt" x="900" y="424">contract, schedule change</text><text class="subtxt" x="900" y="442">blocks operation until approved</text>
+        <path class="arrow" d="M790 426 H870"/>
+
+        <rect class="domain" x="60" y="552" width="160" height="74"/>
+        <text class="txt" x="83" y="584">SponsorLead</text><text class="subtxt" x="83" y="606">tiers, commitments</text>
+        <rect class="domain" x="250" y="552" width="160" height="74"/>
+        <text class="txt" x="283" y="584">VolunteerRole</text><text class="subtxt" x="283" y="606">shifts, coverage</text>
+        <rect class="domain" x="440" y="552" width="160" height="74"/>
+        <text class="txt" x="470" y="584">PhysicalResource</text><text class="subtxt" x="470" y="606">inventory, checkout</text>
+        <rect class="domain" x="630" y="552" width="160" height="74"/>
+        <text class="txt" x="667" y="584">PrintOrder</text><text class="subtxt" x="667" y="606">shirts, signs, badges</text>
+        <rect class="domain" x="820" y="552" width="160" height="74"/>
+        <text class="txt" x="855" y="584">Campaign</text><text class="subtxt" x="855" y="606">email/social sends</text>
+        <rect class="domain" x="1010" y="552" width="130" height="74"/>
+        <text class="txt" x="1040" y="584">Meeting</text><text class="subtxt" x="1040" y="606">notes, agenda</text>
+
+        <path class="soft-arrow" d="M688 304 C660 520 140 520 140 552"/>
+        <path class="soft-arrow" d="M688 304 C660 520 330 520 330 552"/>
+        <path class="soft-arrow" d="M688 304 C660 520 520 520 520 552"/>
+        <path class="soft-arrow" d="M688 304 C700 520 710 520 710 552"/>
+        <path class="soft-arrow" d="M688 304 C760 520 900 520 900 552"/>
+        <path class="soft-arrow" d="M688 304 C800 520 1075 520 1075 552"/>
+      </svg>
+    </div>
+  </section>
+
+  <section class="grid cols-2">
+    <div class="card">
+      <h2>Flexible item shape</h2>
+      <table>
+        <thead><tr><th>Layer</th><th>What it stores</th><th>Why it matters</th></tr></thead>
+        <tbody>
+          <tr><td><code>PlanningItem</code></td><td>title, type, status, owner, due date, phase, priority, dependency state</td><td>Every timeline/checklist object behaves consistently.</td></tr>
+          <tr><td><code>metadata_json</code></td><td>domain-specific fields for sponsor tier, print vendor, social channel, etc.</td><td>Add small new checks/items without migrations.</td></tr>
+          <tr><td><code>CheckDefinition</code></td><td>reusable check text, default offset, blocking rules, required evidence</td><td>Add “collect sponsor logo” once; instantiate it for every sponsor.</td></tr>
+          <tr><td><code>PlanningItemEvent</code></td><td>append-only status/comment/evidence history</td><td>CSUB handoff gets accountability instead of a mystery spreadsheet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Operations surface</h2>
+      <table>
+        <thead><tr><th>Operation family</th><th>Examples</th></tr></thead>
+        <tbody>
+          <tr><td>Cycle setup</td><td>Create HTV 2027 cycle, instantiate template, shift all T-minus dates when target event date changes.</td></tr>
+          <tr><td>Timeline/checks</td><td>Add item, add check definition, assign owner, set blocker/dependency, attach evidence, complete/reopen.</td></tr>
+          <tr><td>Reminders</td><td>Create reminder, schedule cadence, list due reminders, snooze/dismiss with event history.</td></tr>
+          <tr><td>Meetings</td><td>Schedule check-in, generate agenda from blocked/due items, attach notes, create follow-ups.</td></tr>
+          <tr><td>Domain lanes</td><td>Sponsor pipeline, volunteer shifts, inventory/checkout, print orders, social posts, email drafts.</td></tr>
+          <tr><td>Approval gates</td><td>Require human approval before external email, social publish, purchases, contract changes, or public launch.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Sequence: instantiate the HTV 2027 planning timeline</h2>
+    <div class="svg-wrap">
+      <svg viewBox="0 0 1180 520" role="img" aria-label="Sequence diagram for creating a planning cycle from template">
+        <defs><marker id="seq-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#8bb6cb"/></marker></defs>
+        <style>.lifeline{stroke:#334155;stroke-width:1;stroke-dasharray:5 5}.msg{stroke:#8bb6cb;stroke-width:1.8;marker-end:url(#seq-arrow)}.return{stroke:#64748b;stroke-width:1.4;stroke-dasharray:5 5;marker-end:url(#seq-arrow)}.label{fill:#e5f2ff;font-size:13px;font-weight:800}.note{fill:#fde68a;font-size:12px;font-weight:700}</style>
+        <text class="label" x="88" y="38">Organizer</text><text class="label" x="320" y="38">Admin UI</text><text class="label" x="560" y="38">Planning API</text><text class="label" x="810" y="38">Template Engine</text><text class="label" x="1020" y="38">D1</text>
+        <line class="lifeline" x1="120" y1="56" x2="120" y2="470"/><line class="lifeline" x1="350" y1="56" x2="350" y2="470"/><line class="lifeline" x1="600" y1="56" x2="600" y2="470"/><line class="lifeline" x1="850" y1="56" x2="850" y2="470"/><line class="lifeline" x1="1040" y1="56" x2="1040" y2="470"/>
+        <line class="msg" x1="120" y1="92" x2="350" y2="92"/><text class="label" x="150" y="84">Create HTV 2027 cycle</text>
+        <line class="msg" x1="350" y1="142" x2="600" y2="142"/><text class="label" x="384" y="134">POST /api/admin/planning/cycles</text>
+        <line class="msg" x1="600" y1="192" x2="850" y2="192"/><text class="label" x="632" y="184">Load hackathon-template-v1</text>
+        <line class="return" x1="850" y1="242" x2="600" y2="242"/><text class="label" x="645" y="234">phases + check definitions</text>
+        <line class="msg" x1="600" y1="292" x2="1040" y2="292"/><text class="label" x="650" y="284">Insert cycle, phases, item instances</text>
+        <line class="return" x1="1040" y1="342" x2="600" y2="342"/><text class="label" x="705" y="334">ids + due dates</text>
+        <line class="return" x1="600" y1="392" x2="350" y2="392"/><text class="label" x="420" y="384">timeline preview</text>
+        <line class="return" x1="350" y1="442" x2="120" y2="442"/><text class="label" x="155" y="434">Review lanes, owners, next due items</text>
+        <text class="note" x="460" y="490">No external sends, spending, or public publishing happens in this setup flow.</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="grid cols-2">
+    <div class="card">
+      <h2>Sequence: weekly CSUB planning check-in</h2>
+      <div class="svg-wrap">
+        <svg viewBox="0 0 920 560" role="img" aria-label="Weekly check-in sequence diagram">
+          <defs><marker id="seq-arrow-2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#8bb6cb"/></marker></defs>
+          <style>.ll{stroke:#334155;stroke-width:1;stroke-dasharray:5 5}.m{stroke:#8bb6cb;stroke-width:1.8;marker-end:url(#seq-arrow-2)}.r{stroke:#64748b;stroke-width:1.4;stroke-dasharray:5 5;marker-end:url(#seq-arrow-2)}.l{fill:#e5f2ff;font-size:13px;font-weight:800}</style>
+          <text class="l" x="45" y="35">Meeting owner</text><text class="l" x="250" y="35">Dashboard</text><text class="l" x="470" y="35">Timeline API</text><text class="l" x="700" y="35">PlanningItemEvent</text>
+          <line class="ll" x1="90" y1="55" x2="90" y2="510"/><line class="ll" x1="290" y1="55" x2="290" y2="510"/><line class="ll" x1="520" y1="55" x2="520" y2="510"/><line class="ll" x1="760" y1="55" x2="760" y2="510"/>
+          <line class="m" x1="90" y1="95" x2="290" y2="95"/><text class="l" x="114" y="86">Open weekly check-in</text>
+          <line class="m" x1="290" y1="145" x2="520" y2="145"/><text class="l" x="318" y="136">GET due/blockers/changed</text>
+          <line class="r" x1="520" y1="195" x2="290" y2="195"/><text class="l" x="334" y="186">agenda candidates</text>
+          <line class="m" x1="90" y1="245" x2="290" y2="245"/><text class="l" x="112" y="236">Mark decisions/follow-ups</text>
+          <line class="m" x1="290" y1="295" x2="760" y2="295"/><text class="l" x="340" y="286">append note + item events</text>
+          <line class="m" x1="760" y1="345" x2="520" y2="345"/><text class="l" x="565" y="336">recompute status rollups</text>
+          <line class="r" x1="520" y1="395" x2="290" y2="395"/><text class="l" x="360" y="386">next actions</text>
+          <line class="r" x1="290" y1="445" x2="90" y2="445"/><text class="l" x="116" y="436">send summary internally</text>
+        </svg>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Sequence: add a new check/item without schema churn</h2>
+      <div class="svg-wrap">
+        <svg viewBox="0 0 920 560" role="img" aria-label="Add a new check sequence diagram">
+          <defs><marker id="seq-arrow-3" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#8bb6cb"/></marker></defs>
+          <style>.ll{stroke:#334155;stroke-width:1;stroke-dasharray:5 5}.m{stroke:#8bb6cb;stroke-width:1.8;marker-end:url(#seq-arrow-3)}.r{stroke:#64748b;stroke-width:1.4;stroke-dasharray:5 5;marker-end:url(#seq-arrow-3)}.l{fill:#e5f2ff;font-size:13px;font-weight:800}.warn{fill:#fecdd3;font-size:12px;font-weight:800}</style>
+          <text class="l" x="50" y="35">Organizer</text><text class="l" x="250" y="35">Admin UI</text><text class="l" x="485" y="35">CheckDefinition</text><text class="l" x="720" y="35">Timeline</text>
+          <line class="ll" x1="90" y1="55" x2="90" y2="510"/><line class="ll" x1="290" y1="55" x2="290" y2="510"/><line class="ll" x1="540" y1="55" x2="540" y2="510"/><line class="ll" x1="760" y1="55" x2="760" y2="510"/>
+          <line class="m" x1="90" y1="95" x2="290" y2="95"/><text class="l" x="112" y="86">Add “MLH form submitted”</text>
+          <line class="m" x1="290" y1="145" x2="540" y2="145"/><text class="l" x="318" y="136">Save check definition</text>
+          <line class="r" x1="540" y1="195" x2="290" y2="195"/><text class="l" x="330" y="186">definition id + default rules</text>
+          <line class="m" x1="290" y1="245" x2="760" y2="245"/><text class="l" x="350" y="236">Instantiate for HTV 2027 cycle</text>
+          <line class="r" x1="760" y1="295" x2="290" y2="295"/><text class="l" x="380" y="286">new PlanningItem appears</text>
+          <line class="m" x1="90" y1="345" x2="290" y2="345"/><text class="l" x="112" y="336">Assign owner + due date</text>
+          <line class="m" x1="290" y1="395" x2="760" y2="395"/><text class="l" x="340" y="386">append assignment event</text>
+          <text class="warn" x="190" y="470">No new DB column or route just because the checklist changed.</text>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Sequence: sponsor asset gates print order</h2>
+    <div class="svg-wrap">
+      <svg viewBox="0 0 1180 540" role="img" aria-label="Sponsor logo evidence blocks print order until approval">
+        <defs><marker id="seq-arrow-4" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#8bb6cb"/></marker></defs>
+        <style>.ll4{stroke:#334155;stroke-width:1;stroke-dasharray:5 5}.m4{stroke:#8bb6cb;stroke-width:1.8;marker-end:url(#seq-arrow-4)}.r4{stroke:#64748b;stroke-width:1.4;stroke-dasharray:5 5;marker-end:url(#seq-arrow-4)}.l4{fill:#e5f2ff;font-size:13px;font-weight:800}.gate4{fill:#fecdd3;font-size:12px;font-weight:800}.ok4{fill:#bbf7d0;font-size:12px;font-weight:800}</style>
+        <text class="l4" x="42" y="36">Sponsor owner</text><text class="l4" x="255" y="36">Planning UI</text><text class="l4" x="500" y="36">Planning API</text><text class="l4" x="740" y="36">D1 + events</text><text class="l4" x="970" y="36">Approval gate</text>
+        <line class="ll4" x1="95" y1="56" x2="95" y2="500"/><line class="ll4" x1="300" y1="56" x2="300" y2="500"/><line class="ll4" x1="540" y1="56" x2="540" y2="500"/><line class="ll4" x1="790" y1="56" x2="790" y2="500"/><line class="ll4" x1="1015" y1="56" x2="1015" y2="500"/>
+        <line class="m4" x1="95" y1="92" x2="300" y2="92"/><text class="l4" x="118" y="84">Sponsor commits</text>
+        <line class="m4" x1="300" y1="142" x2="540" y2="142"/><text class="l4" x="325" y="134">Create “collect logo” check</text>
+        <line class="m4" x1="540" y1="192" x2="790" y2="192"/><text class="l4" x="570" y="184">Insert sponsor-linked item</text>
+        <line class="m4" x1="300" y1="242" x2="540" y2="242"/><text class="l4" x="325" y="234">Create print order dependency</text>
+        <line class="m4" x1="540" y1="292" x2="790" y2="292"/><text class="l4" x="565" y="284">Mark print item blocked</text>
+        <text class="gate4" x="825" y="292">logo missing = no vendor order</text>
+        <line class="m4" x1="95" y1="342" x2="300" y2="342"/><text class="l4" x="118" y="334">Attach logo proof</text>
+        <line class="m4" x1="300" y1="392" x2="790" y2="392"/><text class="l4" x="355" y="384">Complete check + recompute ready state</text>
+        <text class="ok4" x="825" y="392">print item now ready for approval</text>
+        <line class="m4" x1="300" y1="442" x2="1015" y2="442"/><text class="l4" x="420" y="434">Request spend/vendor approval</text>
+        <line class="r4" x1="1015" y1="482" x2="300" y2="482"/><text class="l4" x="505" y="474">approved/rejected with provenance before ordering</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="callout">
+    <strong>Recommendation:</strong> after this planning artifact is approved, the first implementation PR should be the core spine only: planning vocabulary, migrations, read/write operations with tests, and a minimal admin timeline view. Do not build sponsorship, social, print, and volunteer “mini apps” first. That’s how this turns into mud with a login screen.
+  </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HTV Issue #86 — Vertical Slice Implementation Plan</title>
+  <style>
+    :root {
+      --bg:#06111f; --panel:#0f172a; --panel2:#111c31; --text:#e5f2ff; --muted:#94a3b8;
+      --cyan:#06b6d4; --blue:#2563eb; --orange:#f59e0b; --green:#10b981; --violet:#8b5cf6; --rose:#fb7185; --yellow:#facc15;
+    }
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 18% 0%,rgba(6,182,212,.18),transparent 32rem),linear-gradient(180deg,#06111f,#0a1220 48%,#050b14);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.45}
+    main{max-width:1380px;margin:0 auto;padding:34px 22px 84px}.hero{border:1px solid rgba(6,182,212,.34);background:linear-gradient(135deg,rgba(15,23,42,.96),rgba(17,24,39,.88));border-radius:30px;padding:34px;box-shadow:0 26px 90px rgba(0,0,0,.38)}
+    .eyebrow{color:#67e8f9;font-size:12px;font-weight:950;letter-spacing:.22em;text-transform:uppercase}h1{margin:8px 0 12px;font-size:clamp(38px,5.4vw,78px);line-height:.93;letter-spacing:-.06em}h2{margin:0 0 12px;font-size:28px;letter-spacing:-.035em}h3{margin:0 0 8px;font-size:18px}.hero p{max-width:930px;color:#cbd5e1;font-size:18px;margin:0}.grid{display:grid;gap:18px}.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}section{margin-top:26px}.card{background:rgba(15,23,42,.86);border:1px solid rgba(148,163,184,.22);border-radius:23px;padding:22px;box-shadow:0 14px 46px rgba(0,0,0,.22)}.bad{border-color:rgba(251,113,133,.45)}.good{border-color:rgba(16,185,129,.45)}
+    .stat{border-left:4px solid var(--cyan)}.stat strong{display:block;font-size:29px;letter-spacing:-.04em}.muted,.stat span{color:var(--muted)}.tag{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.32);color:#a5f3fc;font-size:12px;font-weight:850}.tag.green{background:rgba(16,185,129,.11);border-color:rgba(16,185,129,.36);color:#bbf7d0}.tag.rose{background:rgba(251,113,133,.11);border-color:rgba(251,113,133,.36);color:#fecdd3}.tag.orange{background:rgba(245,158,11,.11);border-color:rgba(245,158,11,.36);color:#fde68a}.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.legend span{font-size:12px;color:#cbd5e1;border:1px solid rgba(148,163,184,.22);border-radius:999px;padding:5px 8px}.svg-wrap{overflow-x:auto;padding:10px;border-radius:18px;background:#081426;border:1px solid rgba(148,163,184,.14)}svg{display:block;min-width:1040px;width:100%;height:auto}.box{fill:#111c31;stroke:#475569;stroke-width:1.4;rx:16}.slice{fill:rgba(6,182,212,.13);stroke:#06b6d4}.warn{fill:rgba(251,113,133,.13);stroke:#fb7185}.ok{fill:rgba(16,185,129,.12);stroke:#10b981}.wait{fill:rgba(245,158,11,.13);stroke:#f59e0b}.violet{fill:rgba(139,92,246,.14);stroke:#a78bfa}.txt{fill:#e5f2ff;font-size:14px;font-weight:850}.subtxt{fill:#b8c4d6;font-size:11px;font-weight:650}.arrow{stroke:#8bb6cb;stroke-width:1.8;fill:none;marker-end:url(#arrow)}.soft{stroke:#64748b;stroke-width:1.5;fill:none;marker-end:url(#arrow);stroke-dasharray:5 5}table{width:100%;border-collapse:collapse;overflow:hidden;border-radius:14px}th,td{border-bottom:1px solid rgba(148,163,184,.16);padding:12px 10px;text-align:left;vertical-align:top}th{color:#a5f3fc;font-size:12px;text-transform:uppercase;letter-spacing:.12em;background:rgba(6,182,212,.08)}td{color:#dbeafe;font-size:14px}code{background:rgba(15,23,42,.9);border:1px solid rgba(148,163,184,.22);border-radius:6px;padding:2px 5px;color:#fef3c7}ol,ul{margin:10px 0 0 20px;padding:0;color:#dbeafe}.slice-card{position:relative;overflow:hidden}.slice-card:before{content:"";position:absolute;inset:0 0 auto 0;height:5px;background:linear-gradient(90deg,var(--cyan),var(--green))}.slice-card small{display:block;color:#94a3b8;margin-bottom:8px;font-weight:800;text-transform:uppercase;letter-spacing:.12em}.callout{border:1px solid rgba(250,204,21,.36);background:rgba(250,204,21,.08);border-radius:22px;padding:20px;color:#fef3c7}.callout strong{color:#fde68a}@media(max-width:900px){.cols-3,.cols-2{grid-template-columns:1fr}main{padding:20px 14px 60px}.hero{padding:24px}h1{font-size:42px}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div class="eyebrow">Hack the Valley issue #86 · vertical implementation plan</div>
+    <h1>Stop building layers. Ship usable planning workflows.</h1>
+    <p>The planning timeline is still the domain spine, but implementation now moves in vertical slices: each phase includes the schema, domain command, admin API, admin UI, tests, screenshots, and acceptance path for one real organizer workflow.</p>
+    <div class="legend">
+      <span>Blue = end-to-end feature slice</span><span>Green = validated user workflow</span><span>Orange = approval gate</span><span>Rose = anti-pattern / stop sign</span><span>Violet = reusable mechanism proven by a slice</span>
+    </div>
+  </section>
+
+  <section class="grid cols-3">
+    <div class="card stat bad"><strong>Old plan</strong><span>Schema → API → UI → lanes. Clean-looking, slow feedback, easy to overbuild.</span></div>
+    <div class="card stat good"><strong>New plan</strong><span>Cycle MVP → checks/reminders → meetings → sponsor/print → readiness → campaign drafts → handoff.</span></div>
+    <div class="card stat"><strong>Quality bar</strong><span>Every slice must be usable in <code>/admin</code>, tested, screenshot, and safe from accidental external side effects.</span></div>
+  </section>
+
+  <section class="card">
+    <h2>Vertical slice roadmap</h2>
+    <div class="svg-wrap">
+      <svg viewBox="0 0 1320 650" role="img" aria-label="Vertical slice implementation roadmap">
+        <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#8bb6cb"/></marker></defs>
+        <rect class="warn" x="30" y="42" width="250" height="128" rx="18"/><text class="txt" x="54" y="78">Horizontal trap</text><text class="subtxt" x="54" y="105">all schema first</text><text class="subtxt" x="54" y="124">all API second</text><text class="subtxt" x="54" y="143">UI last = late learning</text>
+        <rect class="slice" x="345" y="42" width="250" height="128" rx="18"/><text class="txt" x="369" y="76">1 · Timeline MVP</text><text class="subtxt" x="369" y="104">create cycle, seed phases</text><text class="subtxt" x="369" y="123">add/assign/complete item</text><text class="subtxt" x="369" y="142">event history in /admin</text>
+        <rect class="violet" x="675" y="42" width="250" height="128" rx="18"/><text class="txt" x="699" y="76">2 · Checks + reminders</text><text class="subtxt" x="699" y="104">add “MLH form submitted”</text><text class="subtxt" x="699" y="123">instantiate without migration</text><text class="subtxt" x="699" y="142">snooze/dismiss reminders</text>
+        <rect class="slice" x="1010" y="42" width="250" height="128" rx="18"/><text class="txt" x="1034" y="76">3 · Meeting loop</text><text class="subtxt" x="1034" y="104">agenda from due/blocked</text><text class="subtxt" x="1034" y="123">notes become artifacts</text><text class="subtxt" x="1034" y="142">follow-ups become items</text>
+        <line class="arrow" x1="280" y1="106" x2="345" y2="106"/><line class="arrow" x1="595" y1="106" x2="675" y2="106"/><line class="arrow" x1="925" y1="106" x2="1010" y2="106"/>
+
+        <rect class="slice" x="155" y="270" width="285" height="142" rx="18"/><text class="txt" x="181" y="304">4 · Sponsor → print blocker</text><text class="subtxt" x="181" y="332">sponsor commitment</text><text class="subtxt" x="181" y="351">logo evidence check</text><text class="subtxt" x="181" y="370">print order dependency</text><text class="subtxt" x="181" y="389">approval before vendor order</text>
+        <rect class="slice" x="520" y="270" width="285" height="142" rx="18"/><text class="txt" x="546" y="304">5 · Volunteer + resource readiness</text><text class="subtxt" x="546" y="332">helper interest → volunteer</text><text class="subtxt" x="546" y="351">coverage gaps as blockers</text><text class="subtxt" x="546" y="370">physical assets linked</text><text class="subtxt" x="546" y="389">event-week readiness panel</text>
+        <rect class="wait" x="885" y="270" width="285" height="142" rx="18"/><text class="txt" x="911" y="304">6 · Campaign draft approval</text><text class="subtxt" x="911" y="332">draft social/email item</text><text class="subtxt" x="911" y="351">preview audience metadata</text><text class="subtxt" x="911" y="370">request approval</text><text class="subtxt" x="911" y="389">no send/publish button yet</text>
+        <line class="soft" x1="800" y1="170" x2="298" y2="270"/><line class="soft" x1="800" y1="170" x2="662" y2="270"/><line class="soft" x1="800" y1="170" x2="1028" y2="270"/>
+
+        <rect class="ok" x="370" y="506" width="600" height="108" rx="20"/><text class="txt" x="405" y="543">7 · Handoff dashboard</text><text class="subtxt" x="405" y="571">due this week · blocked · ownerless · needs approval · missing evidence · readiness gaps</text><text class="subtxt" x="405" y="592">built last because it summarizes real workflows, not imaginary dashboard state</text>
+        <line class="arrow" x1="298" y1="412" x2="520" y2="506"/><line class="arrow" x1="662" y1="412" x2="662" y2="506"/><line class="arrow" x1="1028" y1="412" x2="820" y2="506"/><line class="arrow" x1="1135" y1="170" x2="820" y2="506"/>
+      </svg>
+    </div>
+  </section>
+
+  <section class="grid cols-2">
+    <div class="card good">
+      <h2>Definition of done per slice</h2>
+      <ul>
+        <li>Real admin workflow available in <code>/admin</code>.</li>
+        <li>Minimum schema/domain/API/UI required for that workflow only.</li>
+        <li>Domain and route tests pass.</li>
+        <li>Browser screenshot evidence in PR body.</li>
+        <li>No external send, publish, purchase, or production migration without approval.</li>
+      </ul>
+    </div>
+    <div class="card bad">
+      <h2>Forbidden shortcut</h2>
+      <ul>
+        <li>“Let’s create all tables first.” No.</li>
+        <li>“The API works, UI later.” Also no.</li>
+        <li>“Metadata can hold everything forever.” That’s a junk drawer with JSON perfume.</li>
+        <li>“Tests pass, no screenshot needed.” UI work needs pixels.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="grid cols-3">
+    <div class="card slice-card"><small>Slice 1</small><h3>Timeline MVP</h3><p class="muted">Create HTV 2027 cycle, seed phases, add/assign/complete a planning item, view event history.</p><p><span class="tag green">validates spine</span></p></div>
+    <div class="card slice-card"><small>Slice 2</small><h3>Checks + reminders</h3><p class="muted">Add “MLH form submitted” as a reusable check and instantiate it without schema changes.</p><p><span class="tag green">validates flexibility</span></p></div>
+    <div class="card slice-card"><small>Slice 3</small><h3>Meeting loop</h3><p class="muted">Generate agenda from due/blocked/reminder items, save notes, create follow-up items.</p><p><span class="tag green">validates operating rhythm</span></p></div>
+    <div class="card slice-card"><small>Slice 4</small><h3>Sponsor → print blocker</h3><p class="muted">Sponsor logo evidence gates print order readiness and spend approval.</p><p><span class="tag orange">approval-sensitive</span></p></div>
+    <div class="card slice-card"><small>Slice 5</small><h3>Volunteer + resource readiness</h3><p class="muted">Helper interests, volunteer coverage gaps, and physical resource blockers in one readiness view.</p><p><span class="tag green">validates event-week ops</span></p></div>
+    <div class="card slice-card"><small>Slice 6</small><h3>Campaign draft approval</h3><p class="muted">Draft and approval state only. No send/publish controls until explicitly scoped.</p><p><span class="tag rose">no accidental sends</span></p></div>
+  </section>
+
+  <section class="card">
+    <h2>Sequence: each slice ships as a real workflow</h2>
+    <div class="svg-wrap">
+      <svg viewBox="0 0 1180 560" role="img" aria-label="Vertical slice implementation sequence">
+        <defs><marker id="seq" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#8bb6cb"/></marker></defs>
+        <style>.ll{stroke:#334155;stroke-width:1;stroke-dasharray:5 5}.m{stroke:#8bb6cb;stroke-width:1.8;marker-end:url(#seq)}.r{stroke:#64748b;stroke-width:1.4;stroke-dasharray:5 5;marker-end:url(#seq)}.l{fill:#e5f2ff;font-size:13px;font-weight:850}.n{fill:#fde68a;font-size:12px;font-weight:800}</style>
+        <text class="l" x="60" y="38">Implementer</text><text class="l" x="270" y="38">Tests</text><text class="l" x="465" y="38">Domain/API</text><text class="l" x="685" y="38">/admin UI</text><text class="l" x="920" y="38">Review evidence</text>
+        <line class="ll" x1="105" y1="58" x2="105" y2="500"/><line class="ll" x1="300" y1="58" x2="300" y2="500"/><line class="ll" x1="520" y1="58" x2="520" y2="500"/><line class="ll" x1="730" y1="58" x2="730" y2="500"/><line class="ll" x1="975" y1="58" x2="975" y2="500"/>
+        <line class="m" x1="105" y1="98" x2="300" y2="98"/><text class="l" x="132" y="90">write slice contract tests</text>
+        <line class="r" x1="300" y1="148" x2="105" y2="148"/><text class="l" x="135" y="140">observe expected red</text>
+        <line class="m" x1="105" y1="198" x2="520" y2="198"/><text class="l" x="175" y="190">add minimum schema + commands + routes</text>
+        <line class="m" x1="520" y1="248" x2="300" y2="248"/><text class="l" x="345" y="240">tests go green</text>
+        <line class="m" x1="105" y1="298" x2="730" y2="298"/><text class="l" x="220" y="290">wire real admin workflow</text>
+        <line class="m" x1="730" y1="348" x2="975" y2="348"/><text class="l" x="775" y="340">capture screenshots + console</text>
+        <line class="r" x1="975" y1="398" x2="105" y2="398"/><text class="l" x="330" y="390">PR body includes workflow, tests, screenshots, approval gates</text>
+        <text class="n" x="310" y="470">If the user cannot exercise the feature in /admin, the slice is not done.</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Slice table</h2>
+    <table>
+      <thead><tr><th>Slice</th><th>End-to-end workflow</th><th>Primary acceptance</th><th>Hard no</th></tr></thead>
+      <tbody>
+        <tr><td>1 · Timeline MVP</td><td>Create cycle → seed phases → add item → change status → view history.</td><td>One real timeline item can be managed in <code>/admin</code>.</td><td>No generic lane tables yet.</td></tr>
+        <tr><td>2 · Checks + reminders</td><td>Add check definition → instantiate → schedule reminder → snooze/dismiss.</td><td>New check appears without migration/code change.</td><td>No external reminders.</td></tr>
+        <tr><td>3 · Meeting loop</td><td>Generate agenda → save notes → create follow-ups.</td><td>Meeting creates durable timeline items.</td><td>No AI extraction or recap sends.</td></tr>
+        <tr><td>4 · Sponsor → print</td><td>Sponsor commitment → logo check → print order dependency → approval request.</td><td>Print order is blocked until evidence exists.</td><td>No vendor order/purchase button.</td></tr>
+        <tr><td>5 · Readiness</td><td>Volunteer coverage + physical resource readiness in one view.</td><td>Event-week blockers are visible and actionable.</td><td>No public volunteer portal.</td></tr>
+        <tr><td>6 · Campaign drafts</td><td>Create campaign draft → preview audience metadata → request approval.</td><td>Approval state is visible; nothing sends.</td><td>No email/social publish.</td></tr>
+        <tr><td>7 · Handoff dashboard</td><td>Summarize due/blocked/ownerless/approval/readiness state.</td><td>Leadership can answer “what needs attention?” in one screen.</td><td>No dashboard theater before data exists.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="callout">
+    <strong>Recommendation:</strong> if approved, start only with Slice 1. Do not fan out all seven slices immediately. Vertical slicing works because each slice teaches us something before we multiply the pattern.
+  </section>
+</main>
+</body>
+</html>

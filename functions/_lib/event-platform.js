@@ -772,10 +772,20 @@ export async function getUserCommunityState(db, userId) {
       ORDER BY role ASC
     `).bind(userId).all(),
     db.prepare(`
-      SELECT event_slug, event_instance_id, signup_id, event_type, actor, source, occurred_at
-      FROM event_participant_events
-      WHERE user_id = ?
-      ORDER BY occurred_at DESC
+      SELECT
+        epe.event_slug,
+        epe.event_instance_id,
+        epe.event_type,
+        epe.occurred_at,
+        e.title AS event_title,
+        ei.instance_key,
+        ei.title AS instance_title,
+        ei.starts_at AS instance_starts_at
+      FROM event_participant_events epe
+      LEFT JOIN events e ON e.slug = epe.event_slug
+      LEFT JOIN event_instances ei ON ei.id = epe.event_instance_id
+      WHERE epe.user_id = ?
+      ORDER BY epe.occurred_at DESC
       LIMIT 100
     `).bind(userId).all(),
     listPersonBadges(db, userId),
@@ -837,7 +847,7 @@ export async function getUserCommunityState(db, userId) {
     person_safety_profile: safetyProfile.profile,
     person_safety_readiness: safetyProfile.readiness,
     roles: roles.results || [],
-    attendance: attendanceRows,
+    attendance: sanitizeParticipantAttendanceHistory(attendanceRows),
     emergency_contacts: (emergencyContacts.results || []).map((row) => ({
       event_slug: row.event_slug,
       event_title: row.event_title,
@@ -856,6 +866,22 @@ export async function getUserCommunityState(db, userId) {
     badges: dedupeBadges([...storedBadges, ...derivedBadges]),
     projects: projectRows
   };
+}
+
+function sanitizeParticipantAttendanceHistory(rows = []) {
+  return (rows || [])
+    .filter((row) => row.event_type === "checked_in")
+    .map((row) => ({
+      event_slug: row.event_slug,
+      event_title: row.event_title || null,
+      event_instance_id: row.event_instance_id,
+      instance_key: row.instance_key || null,
+      instance_title: row.instance_title || null,
+      instance_starts_at: row.instance_starts_at || null,
+      event_type: "checked_in",
+      checked_in_at: row.occurred_at,
+      occurred_at: row.occurred_at
+    }));
 }
 
 async function sha256Hex(value) {

@@ -84,9 +84,10 @@
 
       <article class="rounded-3xl border border-slate-700 bg-bc-navy p-6">
         <div class="flex items-center justify-between gap-3">
-          <h2 class="text-2xl font-black">Event history</h2>
+          <h2 class="text-2xl font-black">Recorded attendance</h2>
           <span id="attendance-count" class="text-xs font-black uppercase tracking-[0.16em] text-bc-cyan">0 events</span>
         </div>
+        <p class="mt-2 text-sm text-slate-400">These are the events where Hack the Valley has a check-in recorded for you. If anything looks wrong, let an organizer know.</p>
         <ul id="attendance-list" class="mt-4 space-y-3 text-slate-300"></ul>
       </article>
     </section>
@@ -168,10 +169,11 @@
       $("attendance-count").textContent = `${events.length} event${events.length === 1 ? "" : "s"}`;
       $("attendance-list").innerHTML = events.length ? events.map((event) => `
         <li class="rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
-          <div class="font-bold text-white">${escapeHtml(eventLabel(event.event_slug))}</div>
-          <div class="text-sm text-slate-400">${escapeHtml(event.event_type === "checked_in" ? "Checked in" : event.event_type || "Participated")} · ${escapeHtml(prettyDate(event.occurred_at))}</div>
+          <div class="font-bold text-white">${escapeHtml(event.event_title || eventLabel(event.event_slug))}</div>
+          <div class="text-sm text-slate-400">${escapeHtml([event.instance_title || event.instance_key, event.instance_starts_at ? prettyDate(event.instance_starts_at) : ""].filter(Boolean).join(" · "))}</div>
+          <div class="mt-2 inline-flex rounded-full bg-green-400/10 px-2 py-1 text-xs font-bold text-green-300">Checked in ${escapeHtml(prettyDate(event.checked_in_at || event.occurred_at))}</div>
         </li>
-      `).join("") : emptyItem("No attendance yet. Sign up for Hack Hours to start your history.");
+      `).join("") : emptyItem("No recorded attendance yet. If you attended an event that is missing here, let an organizer know.");
     }
 
     function renderProjects(projects = []) {

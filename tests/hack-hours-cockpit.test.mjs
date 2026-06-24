@@ -108,6 +108,9 @@ test("participant profile shows editable profile info, badges, and project summa
   assert.match(html, /Manage your project workspace/);
   assert.match(html, /Emergency contact/);
   assert.match(html, /Private event-safety details/);
+  assert.match(html, /Recorded attendance/);
+  assert.match(html, /check-in recorded for you/);
+  assert.match(html, /event\.checked_in_at/);
   assert.match(html, /id="emergency-contact-fields"/);
   assert.match(html, /data-emergency-contact/);
   assert.match(html, /emergency_contacts/);
@@ -117,6 +120,81 @@ test("participant profile shows editable profile info, badges, and project summa
   assert.doesNotMatch(html, /id="project-create-form"/);
   assert.doesNotMatch(html, /Showcase event slug|name="event_slug"/);
   assert.doesNotMatch(html, /HTV_ADMIN_TOKEN|data-award-badge/i);
+});
+
+test("/api/me community state exposes participant-safe checked-in attendance history", async () => {
+  const statements = [];
+  const fakeDb = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async first() {
+          if (/SELECT \* FROM users WHERE id/.test(sql)) {
+            return { id: "usr_maya", email: "maya@example.com", name: "Maya Rivera" };
+          }
+          return null;
+        },
+        async all() {
+          if (/FROM event_participant_events epe/.test(sql)) {
+            return { results: [
+              {
+                event_slug: "hack-hours",
+                event_instance_id: "inst_hack_hours_20260722",
+                signup_id: "sgn_should_not_return",
+                event_type: "checked_in",
+                actor: "usr_admin_should_not_return",
+                source: "admin-checkin-should-not-return",
+                data_json: '{"manual":true}',
+                occurred_at: "2026-07-22T01:15:00.000Z",
+                event_title: "Hack Hours",
+                instance_key: "2026-07-22",
+                instance_title: "July Hack Hours",
+                instance_starts_at: "2026-07-22T01:00:00.000Z"
+              },
+              {
+                event_slug: "hack-hours",
+                event_instance_id: "inst_hack_hours_20260729",
+                event_type: "signed_up",
+                occurred_at: "2026-07-20T01:00:00.000Z",
+                event_title: "Hack Hours",
+                instance_key: "2026-07-29",
+                instance_title: "Late July Hack Hours",
+                instance_starts_at: "2026-07-29T01:00:00.000Z"
+              }
+            ] };
+          }
+          return { results: [] };
+        },
+        async run() { return { success: true }; }
+      };
+      return statement;
+    }
+  };
+
+  const state = await getUserCommunityState(fakeDb, "usr_maya");
+
+  assert.equal(state.attendance.length, 1);
+  assert.deepEqual(state.attendance[0], {
+    event_slug: "hack-hours",
+    event_title: "Hack Hours",
+    event_instance_id: "inst_hack_hours_20260722",
+    instance_key: "2026-07-22",
+    instance_title: "July Hack Hours",
+    instance_starts_at: "2026-07-22T01:00:00.000Z",
+    event_type: "checked_in",
+    checked_in_at: "2026-07-22T01:15:00.000Z",
+    occurred_at: "2026-07-22T01:15:00.000Z"
+  });
+  assert.equal(Object.hasOwn(state.attendance[0], "signup_id"), false);
+  assert.equal(Object.hasOwn(state.attendance[0], "actor"), false);
+  assert.equal(Object.hasOwn(state.attendance[0], "source"), false);
+  assert.equal(Object.hasOwn(state.attendance[0], "data_json"), false);
+  const attendanceSql = statements.find((statement) => /FROM event_participant_events epe/.test(statement.sql))?.sql || "";
+  assert.doesNotMatch(attendanceSql, /actor|source|data_json/);
+  assert.match(attendanceSql, /LEFT JOIN events e/);
+  assert.match(attendanceSql, /LEFT JOIN event_instances ei/);
 });
 
 test("participant projects workspace lets signed-in users create, edit, upload, and submit projects", () => {

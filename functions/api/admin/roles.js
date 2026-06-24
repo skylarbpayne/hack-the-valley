@@ -8,6 +8,7 @@ import {
   readJson,
   requireSuperAdminAccess
 } from "../../_lib/event-platform.js";
+import { appendAuditEvent, buildAuditEvent } from "../../_lib/domain/audit.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ADMIN_ROLE = "admin";
@@ -55,19 +56,19 @@ async function requireExistingUser(db, email) {
 }
 
 async function auditRoleChange(db, { action, targetUserId, targetEmail, role, actorUserId }) {
-  await db.prepare(`
-    INSERT INTO admin_audit_events (id, action, actor_user_id, target_user_id, target_email, role, scope_type, scope_id, metadata_json, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'global', '*', ?, ?)
-  `).bind(
-    generateId("audit"),
+  await appendAuditEvent(db, buildAuditEvent({
     action,
     actorUserId,
-    targetUserId,
-    targetEmail,
-    role,
-    JSON.stringify({ source: "admin-role-manager" }),
-    new Date().toISOString()
-  ).run();
+    targetType: "user",
+    targetId: targetUserId,
+    scopeType: "global",
+    scopeId: "*",
+    metadata: {
+      source: "admin-role-manager",
+      targetEmail,
+      role
+    }
+  }));
 }
 
 async function grantAdmin(db, email, access) {

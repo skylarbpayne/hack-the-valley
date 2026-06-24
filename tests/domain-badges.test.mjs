@@ -71,6 +71,8 @@ function createBadgeDb(seed = {}) {
             const [projectId, source, awardedBy, awardedAt, id] = this.args;
             const award = state.awards.find((row) => row.id === id);
             if (award) Object.assign(award, { project_id: projectId, source, awarded_by: awardedBy, awarded_at: awardedAt, revoked_at: null, revoked_by: null, revoke_reason: null });
+          } else if (/INSERT INTO audit_events/.test(sql)) {
+            state.audits.push({ args: this.args, metadata: JSON.parse(this.args[7]) });
           } else if (/INSERT INTO admin_audit_events/.test(sql)) {
             state.audits.push({ args: this.args, metadata: JSON.parse(this.args[8]) });
           }

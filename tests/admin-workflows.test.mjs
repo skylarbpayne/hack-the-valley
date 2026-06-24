@@ -6,7 +6,7 @@ import { adminWorkflowSurface, onRequestGet as getWorkflows } from "../functions
 import { onRequestGet as getAudit } from "../functions/api/admin/audit.js";
 import worker from "../worker.js";
 
-function adminDb({ role = "admin", auditRows = [], onAuditBinds = null } = {}) {
+function adminDb({ role = "admin", auditRows = [], onAuditBinds = null, auditEventsTableMissing = false } = {}) {
   return {
     prepare(sql) {
       return {
@@ -32,6 +32,7 @@ function adminDb({ role = "admin", auditRows = [], onAuditBinds = null } = {}) {
           throw new Error(`Unexpected first() query: ${sql}`);
         },
         async all() {
+          if (auditEventsTableMissing && /FROM audit_events/.test(sql)) throw new Error("no such table: audit_events");
           if (/FROM admin_audit_events/.test(sql)) {
             if (onAuditBinds) onAuditBinds(this.args, sql);
             return { results: auditRows };
@@ -173,6 +174,7 @@ test("admin audit endpoint is read-only, admin-gated, clamps limits, and maps ro
           created_at: "2026-06-23T12:00:00.000Z"
         }],
         onAuditBinds(args, sql) {
+          assert.match(sql, /FROM audit_events/);
           assert.match(sql, /FROM admin_audit_events/);
           observedBinds = args;
         }
@@ -188,7 +190,7 @@ test("admin audit endpoint is read-only, admin-gated, clamps limits, and maps ro
   assert.equal(body.filters.action, "badge.award");
   assert.equal(body.filters.scopeType, "badge_award");
   assert.equal(body.filters.targetUserId, "usr_1");
-  assert.deepEqual(observedBinds, ["badge.award", "badge.award", "badge_award", "badge_award", "usr_1", "usr_1", 100]);
+  assert.deepEqual(observedBinds, ["badge.award", "badge.award", "badge_award", "badge_award", "usr_1", "usr_1", "usr_1", 100]);
   assert.equal(body.events[0].targetType, "badge_award");
   assert.equal(body.events[0].metadata.badgeSlug, "shared-demo");
 
@@ -198,6 +200,37 @@ test("admin audit endpoint is read-only, admin-gated, clamps limits, and maps ro
     params: {}
   });
   assert.equal(unauthenticated.status, 401);
+});
+
+test("admin audit endpoint falls back to legacy rows while the generic audit migration rolls out", async () => {
+  const response = await getAudit({
+    request: adminRequest("/api/admin/audit?target_user_id=usr_legacy"),
+    env: {
+      HTV_DB: adminDb({
+        auditEventsTableMissing: true,
+        auditRows: [{
+          id: "audit_legacy",
+          action: "grant_admin",
+          actor_user_id: "usr_admin",
+          target_user_id: "usr_legacy",
+          target_email: "legacy@example.com",
+          role: "admin",
+          scope_type: "global",
+          scope_id: "*",
+          metadata_json: JSON.stringify({ source: "admin-role-manager" }),
+          created_at: "2026-06-23T12:00:00.000Z"
+        }]
+      })
+    },
+    params: {}
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.events.length, 1);
+  assert.equal(body.events[0].targetType, "user");
+  assert.equal(body.events[0].targetId, "usr_legacy");
+  assert.equal(body.events[0].targetEmail, "legacy@example.com");
 });
 
 test("admin workflow surface helper is deterministic and excludes delegated domains", () => {

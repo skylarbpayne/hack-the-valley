@@ -96,6 +96,10 @@ function createAdminEventDb({ currentUser = ADMIN_USER, role = "admin", events =
             state.instanceWrites.push({ sql, args: this.args, row });
             return { success: true };
           }
+          if (/INSERT INTO audit_events/.test(sql)) {
+            state.audits.push({ sql, args: this.args, metadata: JSON.parse(this.args[7] || "{}") });
+            return { success: true };
+          }
           if (/INSERT INTO admin_audit_events/.test(sql)) {
             state.audits.push({ sql, args: this.args, metadata: JSON.parse(this.args[8] || "{}") });
             return { success: true };
@@ -145,7 +149,8 @@ test("event admin create route writes through Events domain and preserves respon
   assert.equal(db.state.eventWrites[0].args.includes("forged-source"), false);
   assert.equal(db.state.audits.length, 1);
   assert.equal(db.state.audits[0].args[2], "usr_admin");
-  assert.equal(db.state.audits[0].args[3], null);
+  assert.equal(db.state.audits[0].args[3], "event");
+  assert.equal(db.state.audits[0].args[4], "milestone-demo-hours");
   assert.equal(db.state.audits[0].metadata.source, "admin");
   assert.equal(db.state.audits[0].metadata.route, "events.index.post");
   assert.equal(JSON.stringify(db.state.audits[0].metadata).includes("forged"), false);

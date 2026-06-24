@@ -29,22 +29,27 @@ export function buildAuditEvent({
   targetType = null,
   targetId = null,
   approvalId = null,
-  metadata = {}
+  scopeType = null,
+  scopeId = null,
+  metadata = {},
+  createdAt = null
 } = {}) {
   const normalizedAction = stringOrNull(action);
   if (!normalizedAction) {
     throw Object.assign(new Error("Audit action is required."), { status: 400, code: "validation_error" });
   }
 
-  const createdAt = new Date().toISOString();
+  const normalizedCreatedAt = stringOrNull(createdAt) || new Date().toISOString();
   const event = {
     action: normalizedAction,
     actorUserId: stringOrNull(actorUserId),
     targetType: stringOrNull(targetType),
     targetId: stringOrNull(targetId),
     approvalId: stringOrNull(approvalId),
+    scopeType: stringOrNull(scopeType),
+    scopeId: stringOrNull(scopeId),
     metadata: parseJsonObject(metadata, {}),
-    createdAt
+    createdAt: normalizedCreatedAt
   };
 
   return {
@@ -57,23 +62,13 @@ export async function appendAuditEvent(db, event) {
   if (!db?.prepare) throw Object.assign(new Error("A D1 database binding is required."), { status: 500 });
   const normalized = normalizeAuditEvent(event);
   const storageMetadata = metadataForStorage(normalized);
-  const metadataJson = JSON.stringify(storageMetadata);
 
-  await db.prepare(`
-    INSERT INTO admin_audit_events (id, action, actor_user_id, target_user_id, target_email, role, scope_type, scope_id, metadata_json, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    normalized.id,
-    normalized.action,
-    normalized.actorUserId,
-    targetUserId(normalized),
-    stringOrNull(normalized.metadata.targetEmail ?? normalized.metadata.target_email),
-    stringOrNull(normalized.metadata.role),
-    normalized.scopeType,
-    normalized.scopeId,
-    metadataJson,
-    normalized.createdAt
-  ).run();
+  try {
+    await insertGenericAuditEvent(db, normalized, storageMetadata);
+  } catch (error) {
+    if (!isMissingAuditEventsTableError(error)) throw error;
+    await insertLegacyAdminAuditEvent(db, normalized, storageMetadata);
+  }
 
   return { ...normalized, metadata: storageMetadata };
 }
@@ -111,6 +106,46 @@ function metadataForStorage(event) {
   };
 }
 
+async function insertGenericAuditEvent(db, event, metadata) {
+  await db.prepare(`
+    INSERT INTO audit_events (id, action, actor_user_id, target_type, target_id, scope_type, scope_id, metadata_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    event.id,
+    event.action,
+    event.actorUserId,
+    event.targetType,
+    event.targetId,
+    event.scopeType,
+    event.scopeId,
+    JSON.stringify(metadata),
+    event.createdAt
+  ).run();
+}
+
+async function insertLegacyAdminAuditEvent(db, event, metadata) {
+  await db.prepare(`
+    INSERT INTO admin_audit_events (id, action, actor_user_id, target_user_id, target_email, role, scope_type, scope_id, metadata_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    event.id,
+    event.action,
+    event.actorUserId,
+    targetUserId(event),
+    stringOrNull(metadata.targetEmail ?? metadata.target_email),
+    stringOrNull(metadata.role),
+    event.scopeType,
+    event.scopeId,
+    JSON.stringify(metadata),
+    event.createdAt
+  ).run();
+}
+
+function isMissingAuditEventsTableError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("no such table") && message.includes("audit_events");
+}
+
 function targetUserId(event) {
   return event.targetType === "user" ? event.targetId : null;
 }
@@ -133,6 +168,12 @@ function generateAuditEventId() {
 }
 
 function resolveRowTarget(row, metadata) {
+  const rowTargetType = stringOrNull(row.target_type);
+  const rowTargetId = stringOrNull(row.target_id);
+  if (rowTargetType && rowTargetId) {
+    return { targetType: rowTargetType, targetId: rowTargetId };
+  }
+
   const metadataTargetType = stringOrNull(metadata.targetType ?? metadata.target_type);
   const metadataTargetId = stringOrNull(metadata.targetId ?? metadata.target_id);
   if (metadataTargetType && metadataTargetId) {

@@ -43,7 +43,7 @@ Everything in the model should support that loop.
 | `AudienceSegment` | A computable audience definition for a `Campaign`. | Segment criteria derived from people, participation, project, badge, and opt-in facts. It should not duplicate core facts. | External Resend segment IDs/config plus derived filters from `users`, `signups`, `event_participant_events`, `project_members`, and `badges`. No dedicated segment table yet. |
 | `MessageDraft` | The editable message content prepared for a `Campaign` before sending. | Subject/body/content variant, target campaign, reviewer/approval state, and safe previews. It is not a delivery log. | Follow-up/cockpit-generated copy and organizer-held drafts; no dedicated D1 table yet. |
 | `MessageDelivery` | A delivery attempt/result for a message to a person/address. | Recipient, provider response/status, timestamps, and failure detail. Delivery logs must not mutate underlying event facts. | `signups.mailing_list_status` / `mailing_list_detail`, Resend API responses, legacy MailChannels registration email path; no general delivery table yet. |
-| `AuditEvent` | A durable record that an actor changed important platform state. | Actor, action, target, scope, metadata, and timestamp. Audit records are append-only operational facts. | `admin_audit_events` for role grant/revoke today; additional audited actions are not generalized yet. |
+| `AuditEvent` | A durable record that an actor changed important platform state. | Actor, action, target, scope, metadata, and timestamp. Audit records are append-only operational facts. | `audit_events` for generic command audit going forward, with legacy `admin_audit_events` still read during rollout. |
 
 ## Storage compatibility table
 
@@ -64,7 +64,7 @@ This table maps the domain language above to the current tables, files, and rout
 | `AudienceSegment` | Resend segment config plus filters over `users`, `signups`, `event_participant_events`, `project_members`, `badges` | External/derived today; do not duplicate facts into new segment storage in Milestone 0. |
 | `MessageDraft` | Organizer-held drafts, generated copy from `functions/api/events/[slug]/instances/[instanceId]/followup/index.js`, and static/reference launch packets under `references/` | Not first-class in current storage; drafts remain review artifacts until later milestones. |
 | `MessageDelivery` | `signups.mailing_list_status`, `signups.mailing_list_detail`, Resend contact/segment API results, legacy MailChannels path in `/api/register` | Partially represented for list sync only; no general delivery-log migration in Milestone 0. |
-| `AuditEvent` | `admin_audit_events`; `functions/api/admin/roles.js` | Represented for admin role changes only; later work may broaden audit coverage without changing this milestone. |
+| `AuditEvent` | `audit_events` for generic command writes; compatibility reads union legacy `admin_audit_events`; `functions/api/admin/roles.js` now writes through the audit domain helper. | Milestone 11 adds the current compatible append-only table without production backfill; legacy rows remain queryable until an approved backfill/cutover. |
 
 ## Approval gates and no-production-mutation rule
 

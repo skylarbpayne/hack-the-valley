@@ -7,30 +7,10 @@ import {
   jsonResponse,
   listEventPhotos,
   methodNotAllowed,
+  prepareEventPhotoUploadFromOrganizerRoute,
   requireOrganizerAccess
 } from "../../../../../../_lib/event-platform.js";
-import { maxUploadBytes, optionsResponse, randomId, sanitizeFilename } from "../../../../../../_shared/submissions.js";
-
-const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
-const VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
-
-function validateEventPhotoUpload({ filename, kind, contentType, contentLength, env }) {
-  const errors = [];
-  const normalizedKind = String(kind || "photo").toLowerCase();
-  const type = String(contentType || "").split(";")[0].trim().toLowerCase();
-  const safeFilename = sanitizeFilename(filename || "event-photo");
-  if (!["photo", "video"].includes(normalizedKind)) errors.push("kind must be photo or video");
-  if (normalizedKind === "photo" && !PHOTO_TYPES.has(type)) errors.push("photo uploads must be jpeg, png, webp, heic, or heif");
-  if (normalizedKind === "video" && !VIDEO_TYPES.has(type)) errors.push("video uploads must be mp4, mov, or webm");
-  const size = Number(contentLength || 0);
-  const limit = maxUploadBytes(env);
-  if (size && size > limit) errors.push(`File is too large. Limit is ${Math.round(limit / 1024 / 1024)}MB.`);
-  return { ok: errors.length === 0, errors, kind: normalizedKind, contentType: type, safeFilename, size };
-}
-
-function publicUrlFor(slug, instanceId, key) {
-  return `/api/events/${encodeURIComponent(slug)}/instances/${encodeURIComponent(instanceId)}/photos?key=${encodeURIComponent(key)}`;
-}
+import { maxUploadBytes, optionsResponse, randomId } from "../../../../../../_shared/submissions.js";
 
 export function onRequestOptions() {
   return optionsResponse();
@@ -61,19 +41,20 @@ export async function onRequestPost(context) {
     if (!instance) return jsonResponse({ error: "Event instance not found" }, { status: 404 });
 
     const url = new URL(context.request.url);
-    const validation = validateEventPhotoUpload({
+    const upload = prepareEventPhotoUploadFromOrganizerRoute({
+      slug: context.params.slug,
+      eventInstanceId: context.params.instanceId,
       filename: url.searchParams.get("filename") || context.request.headers.get("x-filename") || "event-photo",
       kind: url.searchParams.get("kind") || context.request.headers.get("x-upload-kind") || "photo",
       contentType: context.request.headers.get("content-type") || "",
       contentLength: context.request.headers.get("content-length") || "0",
-      env: context.env
+      maxBytes: maxUploadBytes(context.env),
+      id: randomId("pho")
     });
-    if (!validation.ok) {
-      return jsonResponse({ error: "Upload rejected.", errors: validation.errors }, { status: 400 });
+    if (!upload.ok) {
+      return jsonResponse({ error: upload.error, errors: upload.errors }, { status: 400 });
     }
 
-    const id = randomId("pho");
-    const key = `event-photos/${context.params.instanceId}/${id}-${validation.safeFilename}`;
     const body = await context.request.arrayBuffer();
     const actualSize = body.byteLength;
     const limit = maxUploadBytes(context.env);
@@ -83,25 +64,19 @@ export async function onRequestPost(context) {
         errors: [`File is too large. Limit is ${Math.round(limit / 1024 / 1024)}MB.`]
       }, { status: 400 });
     }
-    await context.env.SUBMISSIONS_MEDIA.put(key, body, {
-      httpMetadata: { contentType: validation.contentType },
-      customMetadata: {
-        originalFilename: validation.safeFilename,
-        kind: validation.kind,
-        eventSlug: context.params.slug,
-        eventInstanceId: context.params.instanceId,
-        uploadedAt: new Date().toISOString()
-      }
+    await context.env.SUBMISSIONS_MEDIA.put(upload.key, body, {
+      httpMetadata: { contentType: upload.contentType },
+      customMetadata: upload.metadata
     });
     const photo = await createEventPhotoRecord(db, {
-      id,
+      id: upload.id,
       eventSlug: context.params.slug,
       eventInstanceId: context.params.instanceId,
-      kind: validation.kind,
-      storageKey: key,
-      publicUrl: publicUrlFor(context.params.slug, context.params.instanceId, key),
-      originalFilename: validation.safeFilename,
-      contentType: validation.contentType,
+      kind: upload.kind,
+      storageKey: upload.key,
+      publicUrl: upload.publicUrl,
+      originalFilename: upload.safeFilename,
+      contentType: upload.contentType,
       bytes: actualSize
     });
     return jsonResponse({ ok: true, photo }, { status: 201 });

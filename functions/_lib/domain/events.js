@@ -9,6 +9,8 @@ import { generateEventInstanceCandidates } from "../recurrence.js";
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const OPEN_STATUSES = new Set(["draft", "open", "closed", "archived"]);
 const INSTANCE_STATUSES = new Set(["draft", "open", "closed", "archived"]);
+const EVENT_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
+const EVENT_VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
 const EVENT_ADMIN_WRITABLE_FIELDS = [
   "slug",
   "title",
@@ -463,6 +465,61 @@ export function assertEventImageKeyForRoute(slug, key) {
   }
 }
 
+export function prepareEventPhotoUploadFromOrganizerRoute({
+  slug,
+  eventInstanceId,
+  filename = "event-photo",
+  kind = "photo",
+  contentType,
+  contentLength = 0,
+  maxBytes,
+  id,
+  now = new Date()
+} = {}) {
+  const eventSlug = stringOrNull(slug);
+  const instanceId = stringOrNull(eventInstanceId);
+  const normalizedKind = String(kind || "photo").toLowerCase();
+  const type = String(contentType || "").split(";")[0].trim().toLowerCase();
+  const safeFilename = sanitizeEventUploadFilename(filename || "event-photo");
+  const size = Number(contentLength || 0);
+  const limit = Number(maxBytes || 0);
+  const errors = [];
+
+  if (!eventSlug || !SLUG_RE.test(eventSlug)) errors.push("Valid event slug required.");
+  if (!instanceId) errors.push("event instance id is required");
+  if (!["photo", "video"].includes(normalizedKind)) errors.push("kind must be photo or video");
+  if (normalizedKind === "photo" && !EVENT_PHOTO_TYPES.has(type)) errors.push("photo uploads must be jpeg, png, webp, heic, or heif");
+  if (normalizedKind === "video" && !EVENT_VIDEO_TYPES.has(type)) errors.push("video uploads must be mp4, mov, or webm");
+  if (size && limit && size > limit) errors.push(`File is too large. Limit is ${Math.round(limit / 1024 / 1024)}MB.`);
+
+  if (errors.length) {
+    return { ok: false, error: "Upload rejected.", errors, kind: normalizedKind, contentType: type, safeFilename, size };
+  }
+
+  const uploadedAt = now instanceof Date ? now.toISOString() : new Date(now).toISOString();
+  const photoId = stringOrNull(id) || `pho_${uploadedAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
+  const key = `event-photos/${instanceId}/${photoId}-${safeFilename}`;
+  return {
+    ok: true,
+    id: photoId,
+    slug: eventSlug,
+    eventInstanceId: instanceId,
+    kind: normalizedKind,
+    contentType: type,
+    safeFilename,
+    size,
+    key,
+    publicUrl: `/api/events/${encodeURIComponent(eventSlug)}/instances/${encodeURIComponent(instanceId)}/photos?key=${encodeURIComponent(key)}`,
+    metadata: {
+      originalFilename: safeFilename,
+      kind: normalizedKind,
+      eventSlug,
+      eventInstanceId: instanceId,
+      uploadedAt
+    }
+  };
+}
+
 export async function listEventInstances(db, eventSlug, _options = {}) {
   const result = await db.prepare(`
     SELECT *
@@ -644,6 +701,20 @@ function stringifyJson(value) {
     }
   }
   return JSON.stringify(value);
+}
+
+function sanitizeEventUploadFilename(value) {
+  const raw = String(value || "").split(/[\\/]/).pop() || "";
+  const normalized = raw.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+  const match = normalized.match(/^(.*?)(\.[a-zA-Z0-9]{1,12})?$/);
+  const base = (match?.[1] || "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "")
+    .slice(0, 100);
+  const ext = match?.[2] || "";
+  const cleaned = `${base || "event-photo"}${ext}`.slice(0, 120);
+  return cleaned || "event-photo";
 }
 
 function slugify(value) {

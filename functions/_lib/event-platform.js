@@ -62,6 +62,7 @@ export {
   normalizeEventSeriesInput,
   parseSignupFieldConfig,
   prepareEventImageUploadFromAdminRoute,
+  prepareEventPhotoUploadFromOrganizerRoute,
   previewGeneratedInstances,
   resolveOpenEventInstance,
   toEventInstance,

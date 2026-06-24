@@ -6,6 +6,7 @@ import { onRequestPost as createEventRoute } from "../functions/api/events/index
 import { onRequestPatch as updateEventRoute } from "../functions/api/events/[slug].js";
 import {
   prepareEventImageUploadFromAdminRoute,
+  prepareEventPhotoUploadFromOrganizerRoute,
   trustedEventAdminProvenance
 } from "../functions/_lib/domain/events.js";
 
@@ -255,6 +256,50 @@ test("event image upload intent validation/key construction lives in Events doma
   assert.match(imageRouteSource, /prepareEventImageUploadFromAdminRoute/);
   assert.match(imageRouteSource, /assertEventImageKeyForRoute/);
   assert.doesNotMatch(imageRouteSource, /function assertImageUpload/);
+});
+
+test("event photo upload intent validation/key construction lives in Events domain", () => {
+  const upload = prepareEventPhotoUploadFromOrganizerRoute({
+    slug: "demo-hours",
+    eventInstanceId: "inst_demo_hours_2026_07_22",
+    filename: "../photos/demo photo.jpg",
+    kind: "photo",
+    contentType: "Image/JPEG; charset=binary",
+    contentLength: 512,
+    maxBytes: 1024,
+    id: "pho_test",
+    now: "2026-06-23T12:00:00.000Z"
+  });
+
+  assert.equal(upload.ok, true);
+  assert.equal(upload.contentType, "image/jpeg");
+  assert.equal(upload.safeFilename, "demo-photo.jpg");
+  assert.equal(upload.key, "event-photos/inst_demo_hours_2026_07_22/pho_test-demo-photo.jpg");
+  assert.equal(upload.publicUrl, "/api/events/demo-hours/instances/inst_demo_hours_2026_07_22/photos?key=event-photos%2Finst_demo_hours_2026_07_22%2Fpho_test-demo-photo.jpg");
+  assert.deepEqual(upload.metadata, {
+    originalFilename: "demo-photo.jpg",
+    kind: "photo",
+    eventSlug: "demo-hours",
+    eventInstanceId: "inst_demo_hours_2026_07_22",
+    uploadedAt: "2026-06-23T12:00:00.000Z"
+  });
+
+  assert.deepEqual(
+    prepareEventPhotoUploadFromOrganizerRoute({ slug: "demo-hours", eventInstanceId: "inst_1", kind: "other", contentType: "image/jpeg" }).errors,
+    ["kind must be photo or video"]
+  );
+  assert.match(
+    prepareEventPhotoUploadFromOrganizerRoute({ slug: "demo-hours", eventInstanceId: "inst_1", kind: "video", contentType: "image/jpeg" }).errors.join("; "),
+    /video uploads must be mp4/
+  );
+  assert.match(
+    prepareEventPhotoUploadFromOrganizerRoute({ slug: "demo-hours", eventInstanceId: "inst_1", kind: "photo", contentType: "image/jpeg", contentLength: 2, maxBytes: 1 }).errors.join("; "),
+    /too large/
+  );
+
+  const photoRouteSource = readFileSync(new URL("../functions/api/events/[slug]/instances/[instanceId]/photos/index.js", import.meta.url), "utf8");
+  assert.match(photoRouteSource, /prepareEventPhotoUploadFromOrganizerRoute/);
+  assert.doesNotMatch(photoRouteSource, /function validateEventPhotoUpload/);
 });
 
 test("public event reads and Demo Hours address stay stable while admin writes move behind boundary", async () => {

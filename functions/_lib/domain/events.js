@@ -3,11 +3,29 @@ import {
   schema,
   stringOrNull
 } from "./shared.js";
+import { appendAuditEvent, buildAuditEvent } from "./audit.js";
 import { generateEventInstanceCandidates } from "../recurrence.js";
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const OPEN_STATUSES = new Set(["draft", "open", "closed", "archived"]);
 const INSTANCE_STATUSES = new Set(["draft", "open", "closed", "archived"]);
+const EVENT_ADMIN_WRITABLE_FIELDS = [
+  "slug",
+  "title",
+  "description",
+  "starts_at",
+  "ends_at",
+  "venue_name",
+  "venue_address",
+  "capacity",
+  "status",
+  "image_url",
+  "page_content",
+  "signup_fields",
+  "signup_fields_json",
+  "recurrence_rule",
+  "recurrence_rule_json"
+];
 
 const NullableString = schema.nullish(schema.string());
 const NullableNumber = schema.nullish(schema.number());
@@ -274,6 +292,177 @@ export async function getEventSeries(db, slug) {
   return row ? toEventSeries(row) : null;
 }
 
+export async function createEventSeriesFromAdminRoute(db, { input = {}, access = {}, now = new Date().toISOString() } = {}) {
+  return await upsertEventSeries(db, eventAdminWritableInput(input), {}, {
+    now,
+    provenance: trustedEventAdminProvenance(access),
+    route: "events.index.post"
+  });
+}
+
+export async function updateEventSeriesFromAdminRoute(db, { slug, input = {}, access = {}, now = new Date().toISOString() } = {}) {
+  const existing = await getEventSeries(db, slug);
+  if (!existing) throw Object.assign(new Error("Event not found"), { status: 404 });
+  return await upsertEventSeries(db, { ...eventAdminWritableInput(input), slug: existing.slug }, existing, {
+    now,
+    provenance: trustedEventAdminProvenance(access),
+    route: "events.slug.patch"
+  });
+}
+
+export async function upsertEventSeries(db, input, existing = {}, { now = new Date().toISOString(), provenance = null, route = null } = {}) {
+  const { event, errors } = normalizeEventSeriesInput(input, existing);
+  if (errors.length) {
+    throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
+  }
+
+  await db.prepare(`
+    INSERT INTO events (
+      slug, title, description, starts_at, ends_at, venue_name, venue_address, capacity, status,
+      image_url, page_content, signup_fields_json, recurrence_rule_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(slug) DO UPDATE SET
+      title = excluded.title,
+      description = excluded.description,
+      starts_at = excluded.starts_at,
+      ends_at = excluded.ends_at,
+      venue_name = excluded.venue_name,
+      venue_address = excluded.venue_address,
+      capacity = excluded.capacity,
+      status = excluded.status,
+      image_url = excluded.image_url,
+      page_content = excluded.page_content,
+      signup_fields_json = excluded.signup_fields_json,
+      recurrence_rule_json = excluded.recurrence_rule_json,
+      updated_at = excluded.updated_at
+  `).bind(
+    event.slug,
+    event.title,
+    event.description,
+    event.starts_at,
+    event.ends_at,
+    event.venue_name,
+    event.venue_address,
+    event.capacity,
+    event.status,
+    event.image_url,
+    event.page_content,
+    event.signup_fields_json,
+    event.recurrence_rule_json,
+    now,
+    now
+  ).run();
+
+  const savedEvent = await getEventSeries(db, event.slug);
+  await upsertEventInstance(db, savedEvent, { now });
+  await appendEventAdminAudit(db, {
+    action: existing?.slug ? "event.update" : "event.create",
+    event: savedEvent,
+    provenance,
+    route,
+    now
+  });
+  return savedEvent;
+}
+
+export async function upsertEventInstance(db, event, { now = new Date().toISOString() } = {}) {
+  const instanceKey = instanceKeyFromStartsAt(event.starts_at);
+  const instanceId = instanceIdFor(event.slug, instanceKey);
+  await db.prepare(`
+    INSERT INTO event_instances (
+      id, event_slug, instance_key, title, starts_at, ends_at, venue_name, venue_address, capacity, status,
+      metadata_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(event_slug, instance_key) DO UPDATE SET
+      title = excluded.title,
+      starts_at = excluded.starts_at,
+      ends_at = excluded.ends_at,
+      venue_name = excluded.venue_name,
+      venue_address = excluded.venue_address,
+      capacity = excluded.capacity,
+      status = excluded.status,
+      updated_at = excluded.updated_at
+  `).bind(
+    instanceId,
+    event.slug,
+    instanceKey,
+    event.title,
+    event.starts_at,
+    event.ends_at,
+    event.venue_name,
+    event.venue_address,
+    event.capacity,
+    event.status,
+    null,
+    event.created_at || now,
+    now
+  ).run();
+  return await db.prepare("SELECT * FROM event_instances WHERE id = ?").bind(instanceId).first();
+}
+
+export function trustedEventAdminProvenance(access = {}) {
+  return {
+    source: access.bootstrap ? "bootstrap_admin" : "admin",
+    actorUserId: stringOrNull(access.user?.id ?? access.actorUserId ?? access.actor_user_id),
+    role: stringOrNull(access.role?.role ?? access.role),
+    scopeType: stringOrNull(access.role?.scope_type ?? access.scopeType ?? access.scope_type),
+    scopeId: stringOrNull(access.role?.scope_id ?? access.scopeId ?? access.scope_id),
+    bootstrap: Boolean(access.bootstrap)
+  };
+}
+
+export function prepareEventImageUploadFromAdminRoute({
+  slug,
+  filename = "event-image",
+  contentType,
+  contentLength = 0,
+  maxBytes,
+  id,
+  now = new Date()
+} = {}) {
+  const eventSlug = stringOrNull(slug);
+  if (!eventSlug || !SLUG_RE.test(eventSlug)) {
+    throw Object.assign(new Error("Valid event slug required."), { status: 400 });
+  }
+  const type = String(contentType || "").toLowerCase();
+  if (!type.startsWith("image/")) {
+    throw Object.assign(new Error("Event image must be an image file."), { status: 400 });
+  }
+  const size = Number(contentLength || 0);
+  const limit = Number(maxBytes || 0);
+  if (size && limit && size > limit) {
+    throw Object.assign(new Error(`Event image is too large. Limit is ${Math.round(limit / 1024 / 1024)}MB.`), { status: 400 });
+  }
+
+  const uploadedAt = now instanceof Date ? now.toISOString() : new Date(now).toISOString();
+  const safeFilename = stringOrNull(filename) || "event-image";
+  const randomPart = stringOrNull(id) || `img_${uploadedAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
+  const key = `event-images/${eventSlug}/${uploadedAt.replace(/[:.]/g, "-")}-${randomPart}-${safeFilename}`;
+  return {
+    slug: eventSlug,
+    contentType: type,
+    key,
+    imageUrl: `/api/events/${encodeURIComponent(eventSlug)}/image?key=${encodeURIComponent(key)}`,
+    metadata: {
+      originalFilename: safeFilename,
+      kind: "event-image",
+      eventSlug,
+      uploadedAt
+    }
+  };
+}
+
+export function assertEventImageKeyForRoute(slug, key) {
+  const eventSlug = stringOrNull(slug);
+  if (!eventSlug || !SLUG_RE.test(eventSlug)) {
+    throw Object.assign(new Error("Valid event slug required."), { status: 400 });
+  }
+  const prefix = `event-images/${eventSlug}/`;
+  if (!key || !String(key).startsWith(prefix)) {
+    throw Object.assign(new Error("Valid event image key required."), { status: 400 });
+  }
+}
+
 export async function listEventInstances(db, eventSlug, _options = {}) {
   const result = await db.prepare(`
     SELECT *
@@ -305,6 +494,35 @@ export function previewGeneratedInstances(eventSeries, options = {}) {
     candidates: instances,
     instances
   };
+}
+
+function eventAdminWritableInput(input = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  const safe = {};
+  for (const field of EVENT_ADMIN_WRITABLE_FIELDS) {
+    if (Object.hasOwn(source, field)) safe[field] = source[field];
+  }
+  return safe;
+}
+
+async function appendEventAdminAudit(db, { action, event, provenance, route, now } = {}) {
+  if (!provenance) return null;
+  return await appendAuditEvent(db, buildAuditEvent({
+    action,
+    actorUserId: provenance.actorUserId,
+    targetType: "event",
+    targetId: event?.slug,
+    metadata: {
+      source: provenance.source,
+      role: provenance.role,
+      scopeType: provenance.scopeType,
+      scopeId: provenance.scopeId,
+      bootstrap: provenance.bootstrap,
+      route,
+      title: event?.title || null
+    },
+    createdAt: now
+  }));
 }
 
 function parseOptionalJsonObject(value, fieldName, fallback) {

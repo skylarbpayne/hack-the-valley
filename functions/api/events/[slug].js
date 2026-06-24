@@ -5,9 +5,9 @@ import {
   jsonResponse,
   methodNotAllowed,
   readJson,
-  requireAdmin,
-  upsertEvent
+  requireAdmin
 } from "../../_lib/event-platform.js";
+import { updateEventSeriesFromAdminRoute } from "../../_lib/domain/events.js";
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
@@ -22,12 +22,14 @@ export async function onRequestGet(context) {
 
 export async function onRequestPatch(context) {
   return handleErrors(async () => {
-    await requireAdmin(context.request, context.env);
+    const access = await requireAdmin(context.request, context.env);
     const db = getDb(context.env);
-    const existing = await getEventSeries(db, context.params.slug);
-    if (!existing) return jsonResponse({ error: "Event not found" }, { status: 404 });
     const input = await readJson(context.request);
-    const event = await upsertEvent(db, { ...input, slug: existing.slug }, existing);
+    const event = await updateEventSeriesFromAdminRoute(db, {
+      slug: context.params.slug,
+      input,
+      access
+    });
     return jsonResponse({ success: true, event });
   });
 }

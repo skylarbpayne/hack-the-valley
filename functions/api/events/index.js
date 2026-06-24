@@ -5,9 +5,9 @@ import {
   listEventSeries,
   methodNotAllowed,
   readJson,
-  requireAdmin,
-  upsertEvent
+  requireAdmin
 } from "../../_lib/event-platform.js";
+import { createEventSeriesFromAdminRoute } from "../../_lib/domain/events.js";
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
@@ -21,10 +21,10 @@ export async function onRequestGet(context) {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    await requireAdmin(context.request, context.env);
+    const access = await requireAdmin(context.request, context.env);
     const db = getDb(context.env);
     const input = await readJson(context.request);
-    const event = await upsertEvent(db, input);
+    const event = await createEventSeriesFromAdminRoute(db, { input, access });
     return jsonResponse({ success: true, event }, { status: 201 });
   });
 }

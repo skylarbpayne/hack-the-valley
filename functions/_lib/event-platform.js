@@ -7,7 +7,9 @@ import {
   previewGeneratedInstances,
   resolveOpenEventInstance,
   toEventInstance,
-  toEventSeries
+  toEventSeries,
+  upsertEventInstance as domainUpsertEventInstance,
+  upsertEventSeries as domainUpsertEventSeries
 } from "./domain/events.js";
 import {
   cancelParticipation,
@@ -52,15 +54,21 @@ export {
   EventSeriesSchema,
   RecurrenceRuleSchema,
   SignupFieldConfigSchema,
+  assertEventImageKeyForRoute,
+  createEventSeriesFromAdminRoute,
   getEventSeries,
   listEventSeries,
   normalizeEventInstanceInput,
   normalizeEventSeriesInput,
   parseSignupFieldConfig,
+  prepareEventImageUploadFromAdminRoute,
   previewGeneratedInstances,
   resolveOpenEventInstance,
   toEventInstance,
-  toEventSeries
+  toEventSeries,
+  trustedEventAdminProvenance,
+  updateEventSeriesFromAdminRoute,
+  upsertEventSeries
 } from "./domain/events.js";
 
 export {
@@ -1147,39 +1155,7 @@ function instanceIdFor(eventSlug, instanceKey) {
 }
 
 export async function upsertEventInstance(db, event) {
-  const instanceKey = instanceKeyFromStartsAt(event.starts_at);
-  const instanceId = instanceIdFor(event.slug, instanceKey);
-  const now = new Date().toISOString();
-  await db.prepare(`
-    INSERT INTO event_instances (
-      id, event_slug, instance_key, title, starts_at, ends_at, venue_name, venue_address, capacity, status,
-      metadata_json, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(event_slug, instance_key) DO UPDATE SET
-      title = excluded.title,
-      starts_at = excluded.starts_at,
-      ends_at = excluded.ends_at,
-      venue_name = excluded.venue_name,
-      venue_address = excluded.venue_address,
-      capacity = excluded.capacity,
-      status = excluded.status,
-      updated_at = excluded.updated_at
-  `).bind(
-    instanceId,
-    event.slug,
-    instanceKey,
-    event.title,
-    event.starts_at,
-    event.ends_at,
-    event.venue_name,
-    event.venue_address,
-    event.capacity,
-    event.status,
-    null,
-    event.created_at || now,
-    now
-  ).run();
-  return await db.prepare("SELECT * FROM event_instances WHERE id = ?").bind(instanceId).first();
+  return await domainUpsertEventInstance(db, event);
 }
 
 export async function resolveSignupEventInstance(db, eventSlug) {
@@ -1191,52 +1167,7 @@ export async function listEventInstances(db, eventSlug) {
 }
 
 export async function upsertEvent(db, input, existing = {}) {
-  const { event, errors } = normalizeEventInput(input, existing);
-  if (errors.length) {
-    throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
-  }
-
-  const now = new Date().toISOString();
-  await db.prepare(`
-    INSERT INTO events (
-      slug, title, description, starts_at, ends_at, venue_name, venue_address, capacity, status,
-      image_url, page_content, signup_fields_json, recurrence_rule_json, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(slug) DO UPDATE SET
-      title = excluded.title,
-      description = excluded.description,
-      starts_at = excluded.starts_at,
-      ends_at = excluded.ends_at,
-      venue_name = excluded.venue_name,
-      venue_address = excluded.venue_address,
-      capacity = excluded.capacity,
-      status = excluded.status,
-      image_url = excluded.image_url,
-      page_content = excluded.page_content,
-      signup_fields_json = excluded.signup_fields_json,
-      recurrence_rule_json = excluded.recurrence_rule_json,
-      updated_at = excluded.updated_at
-  `).bind(
-    event.slug,
-    event.title,
-    event.description,
-    event.starts_at,
-    event.ends_at,
-    event.venue_name,
-    event.venue_address,
-    event.capacity,
-    event.status,
-    event.image_url,
-    event.page_content,
-    event.signup_fields_json,
-    event.recurrence_rule_json,
-    now,
-    now
-  ).run();
-
-  const savedEvent = await getEvent(db, event.slug);
-  await upsertEventInstance(db, savedEvent);
-  return savedEvent;
+  return await domainUpsertEventSeries(db, input, existing);
 }
 
 export async function listUsers(db, { limit = 500 } = {}) {

@@ -85,8 +85,8 @@ test("participant login page requests a code, verifies it, and reads /api/me", (
 
 test("homepage exposes clear participant account CTAs", () => {
   const html = read("public/index.html");
-  assert.match(html, /data-nav-link="profile" href="\/login\/\?next=\/me\/"[^>]*>Profile</);
-  assert.match(html, /href="\/login\/\?next=\/me\/projects\//);
+  assert.match(html, /data-nav-link="profile" href="\/me\/"[^>]*>Profile</);
+  assert.match(html, /href="\/me\/projects\//);
   assert.match(html, /Open your profile and projects/);
 });
 
@@ -105,6 +105,8 @@ test("participant profile shows editable profile info, badges, and project summa
   assert.match(html, /id="badge-list"/);
   assert.match(html, /\/me\/projects\//);
   assert.match(html, /\/login\//);
+  assert.match(html, /id="logout-button"/);
+  assert.match(html, /\/api\/auth\/logout/);
   assert.match(html, /Manage your project workspace/);
   assert.match(html, /Emergency contact/);
   assert.match(html, /Private event-safety details/);
@@ -868,10 +870,17 @@ test("worker magic login endpoint sets a session cookie and redirects to a safe 
     }
   };
 
-  const response = await worker.fetch(new Request("https://hackthevalley.org/api/auth/magic-login?token=htvl_test_magic_token_123456789&next=%2Fprojects%2F"), { HTV_DB: fakeDb }, {});
-  assert.equal(response.status, 302);
-  assert.equal(response.headers.get("location"), "https://hackthevalley.org/projects/");
-  assert.match(response.headers.get("set-cookie") || "", /htv_session=/);
+  for (const [next, expected] of [
+    ["%2Fprojects%2F", "https://hackthevalley.org/projects/"],
+    ["%2F%5Cevil.com", "https://hackthevalley.org/me/"],
+    ["%2F%255Cevil.com", "https://hackthevalley.org/me/"],
+    ["%2F%2Fevil.com", "https://hackthevalley.org/me/"]
+  ]) {
+    const response = await worker.fetch(new Request(`https://hackthevalley.org/api/auth/magic-login?token=htvl_test_magic_token_123456789&next=${next}`), { HTV_DB: fakeDb }, {});
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), expected);
+    assert.match(response.headers.get("set-cookie") || "", /htv_session=/);
+  }
 });
 
 test("/api/me returns participant community state for the signed-in user", async () => {
@@ -1402,7 +1411,7 @@ test("participant projects workspace lives under /me/projects while /projects is
   assert.doesNotMatch(publicProjects, /prize_amount_cents|function money\(|\$\{Math\.round/);
   assert.doesNotMatch(publicProjects, /id="project-create-form"/);
   assert.match(manageProjects, /id="project-create-form"/);
-  assert.match(homepage, /\/login\/\?next=\/me\/projects\//);
+  assert.match(homepage, /\/me\/projects\//);
   assert.match(recap, /\/me\/projects\/\?event=hack-the-valley-2026/);
 });
 

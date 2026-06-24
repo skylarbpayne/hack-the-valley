@@ -6,6 +6,7 @@ import * as adminAudit from './functions/api/admin/audit.js';
 import * as authRequestCode from './functions/api/auth/request-code.js';
 import * as authVerifyCode from './functions/api/auth/verify-code.js';
 import * as authMagicLogin from './functions/api/auth/magic-login.js';
+import * as authLogout from './functions/api/auth/logout.js';
 import * as me from './functions/api/me.js';
 import * as meProjects from './functions/api/me/projects.js';
 import * as eventCheckins from './functions/api/events/[slug]/checkins/index.js';
@@ -115,6 +116,10 @@ function matchApiRoute(pathname) {
 
   if (pathname === '/api/auth/magic-login') {
     return { routeModule: authMagicLogin, params: {} };
+  }
+
+  if (pathname === '/api/auth/logout') {
+    return { routeModule: authLogout, params: {} };
   }
 
   if (pathname === '/api/projects/media') {

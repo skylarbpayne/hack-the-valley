@@ -56,12 +56,7 @@ test("participant nav uses participant-safe destinations and does not leak admin
     assert.ok(["/projects/", "/me/projects/"].includes(links.find((link) => link.key === "projects")?.href), `${page.name} projects href`);
     assert.equal(links.find((link) => link.key === "leaderboard")?.href, "/leaderboard/", `${page.name} leaderboard href`);
 
-    const profileHref = links.find((link) => link.key === "profile")?.href;
-    if (page.private) {
-      assert.equal(profileHref, "/me/", `${page.name} private profile href`);
-    } else {
-      assert.equal(profileHref, "/login/?next=/me/", `${page.name} public profile href preserves auth gate`);
-    }
+    assert.equal(links.find((link) => link.key === "profile")?.href, "/me/", `${page.name} profile href opens the signed-in profile directly`);
 
     assert.doesNotMatch(nav, /admin|organizer|submissions/i, `${page.name} nav should not expose admin-only links`);
   }
@@ -73,6 +68,32 @@ test("current participant section is visually identifiable when a page maps to a
     assert.equal(currentLinks.length, 1, `${page.name} should have exactly one current nav item`);
     assert.equal(currentLinks[0].key, page.active, `${page.name} current nav item`);
   }
+});
+
+test("profile link avoids the login/account chooser interstitial while /me remains the auth gate", () => {
+  for (const page of pages) {
+    const nav = participantNav(pageHtml(page.path));
+    assert.doesNotMatch(nav, /\/login\/\?next=\/me\//, `${page.name} profile nav should not point to login chooser`);
+  }
+
+  const profileHtml = pageHtml("../public/me/index.html");
+  assert.match(profileHtml, /fetch\("\/api\/me"/);
+  assert.match(profileHtml, /window\.location\.href = `\/login\/\?next=/);
+  assert.match(profileHtml, /id="logout-button"/);
+  assert.match(profileHtml, /\/api\/auth\/logout/);
+});
+
+test("signed-in login page redirects to the profile, while unauthenticated users can still request and verify login", () => {
+  const loginHtml = pageHtml("../public/login/index.html");
+  assert.match(loginHtml, /window\.location\.replace\(signedInProfilePath\(\)\)/);
+  assert.match(loginHtml, /function safeNextPath\(value\)/);
+  assert.match(loginHtml, /decodeURIComponent\(path\)/);
+  assert.match(loginHtml, /\[\\\\\\u0000-\\u001f\\u007f\]/);
+  assert.match(loginHtml, /return nextPath && !nextPath\.startsWith\("\/login"\) \? nextPath : "\/me\/"/);
+  assert.match(loginHtml, /id="login-request-form"/);
+  assert.match(loginHtml, /id="login-verify-form"/);
+  assert.match(loginHtml, /\/api\/auth\/request-code/);
+  assert.match(loginHtml, /\/api\/auth\/verify-code/);
 });
 
 test("generated event detail pages use the same participant nav contract", () => {

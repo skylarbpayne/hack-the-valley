@@ -953,8 +953,19 @@ function addDays(date, days) {
 }
 
 function safeReturnPath(value, fallback = "/me/") {
-  const path = String(value || "").trim();
+  let path = String(value || "").trim();
   if (!path || !path.startsWith("/") || path.startsWith("//")) return fallback;
+  for (let i = 0; i < 2; i += 1) {
+    if (/[\\\u0000-\u001f\u007f]/.test(path) || path.startsWith("//")) return fallback;
+    try {
+      const decoded = decodeURIComponent(path);
+      if (decoded === path) break;
+      path = decoded;
+    } catch {
+      break;
+    }
+  }
+  if (!path.startsWith("/") || path.startsWith("//") || /[\\\u0000-\u001f\u007f]/.test(path)) return fallback;
   return path;
 }
 
@@ -1180,9 +1191,22 @@ export async function getCurrentUserFromSession(db, token) {
   `).bind(tokenHash, nowIso).first();
 }
 
+export async function revokeSessionByToken(db, token) {
+  const sessionToken = String(token || "").trim();
+  if (!sessionToken) return { revoked: false };
+  const tokenHash = await sha256Hex(sessionToken);
+  const revokedAt = new Date().toISOString();
+  await db.prepare("UPDATE user_sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL").bind(revokedAt, tokenHash).run();
+  return { revoked: true, revoked_at: revokedAt };
+}
+
 export function sessionCookie(token, expiresAt) {
   const maxAge = Math.max(60, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
   return `htv_session=${encodeURIComponent(token)}; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax; Path=/`;
+}
+
+export function clearSessionCookie() {
+  return "htv_session=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Lax; Path=/";
 }
 
 export async function listEvents(db, { includeArchived = false } = {}) {
@@ -2308,7 +2332,7 @@ export function renderEventPageHtml(event) {
 </head>
 <body data-event-detail-page="${slug}">
   <main class="wrap">
-    <nav class="nav" aria-label="Participant"><a class="brand" href="/">Hack the Valley</a><div data-participant-nav class="participant-nav"><a data-nav-link="events" href="/events" aria-current="page">Events</a><a data-nav-link="projects" href="/projects/">Projects</a><a data-nav-link="profile" href="/login/?next=/me/">Profile</a><a data-nav-link="leaderboard" href="/leaderboard/">Leaderboard</a></div></nav>
+    <nav class="nav" aria-label="Participant"><a class="brand" href="/">Hack the Valley</a><div data-participant-nav class="participant-nav"><a data-nav-link="events" href="/events" aria-current="page">Events</a><a data-nav-link="projects" href="/projects/">Projects</a><a data-nav-link="profile" href="/me/">Profile</a><a data-nav-link="leaderboard" href="/leaderboard/">Leaderboard</a></div></nav>
     <section class="hero">
       <div><p class="kicker">Event page</p><h1>${title}</h1><p class="lede">${description}</p></div>
       ${image}

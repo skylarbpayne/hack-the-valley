@@ -315,6 +315,7 @@ export async function listPublicProjects(db, { eventSlug = null, includeHidden =
         JOIN submissions s2 ON s2.id = eps2.submission_id
         WHERE eps2.event_slug = eps.event_slug
           AND eps2.project_id = p.id
+          AND eps2.status NOT IN ('hidden', 'rejected')
           AND s2.uploads_json IS NOT NULL
           AND s2.uploads_json != '[]'
         ORDER BY s2.created_at ASC
@@ -341,10 +342,69 @@ export async function listPublicProjects(db, { eventSlug = null, includeHidden =
   return (result.results || []).map(sanitizePublicProjectRow);
 }
 
+export async function getPublicProject(db, { eventSlug, projectSlug } = {}) {
+  if (!eventSlug) throw Object.assign(new Error("event is required"), { status: 400 });
+  if (!projectSlug) throw Object.assign(new Error("project is required"), { status: 400 });
+  const result = await db.prepare(`
+    SELECT
+      eps.event_slug,
+      CASE
+        WHEN SUM(CASE WHEN eps.status = 'winner' THEN 1 ELSE 0 END) > 0 THEN 'winner'
+        WHEN SUM(CASE WHEN eps.status = 'showcased' THEN 1 ELSE 0 END) > 0 THEN 'showcased'
+        WHEN SUM(CASE WHEN eps.status = 'accepted' THEN 1 ELSE 0 END) > 0 THEN 'accepted'
+        ELSE 'submitted'
+      END AS status,
+      MAX(eps.updated_at) AS updated_at,
+      p.id AS project_id,
+      p.slug,
+      p.title,
+      p.team_name,
+      p.description,
+      p.repo_url,
+      p.demo_url,
+      p.tracks_json,
+      MIN(s.created_at) AS submission_created_at,
+      (
+        SELECT s2.uploads_json
+        FROM event_project_submissions eps2
+        JOIN submissions s2 ON s2.id = eps2.submission_id
+        WHERE eps2.event_slug = eps.event_slug
+          AND eps2.project_id = p.id
+          AND eps2.status NOT IN ('hidden', 'rejected')
+          AND s2.uploads_json IS NOT NULL
+          AND s2.uploads_json != '[]'
+        ORDER BY s2.created_at ASC
+        LIMIT 1
+      ) AS hero_uploads_json,
+      COALESCE(
+        json_group_array(
+          CASE WHEN epa.id IS NOT NULL THEN json_object(
+            'award_slug', epa.award_slug,
+            'award_title', epa.award_title,
+            'award_rank', epa.award_rank
+          ) END
+        ) FILTER (WHERE epa.id IS NOT NULL),
+        '[]'
+      ) AS awards_json
+    FROM event_project_submissions eps
+    JOIN projects p ON p.id = eps.project_id
+    LEFT JOIN submissions s ON s.id = eps.submission_id
+    LEFT JOIN event_project_awards epa ON epa.event_slug = eps.event_slug AND epa.project_id = p.id
+    WHERE eps.event_slug = ?
+      AND p.slug = ?
+      AND eps.status NOT IN ('hidden', 'rejected')
+    GROUP BY eps.event_slug, p.id, p.slug, p.title, p.team_name, p.description, p.repo_url, p.demo_url, p.tracks_json
+    LIMIT 1
+  `).bind(eventSlug, projectSlug).first();
+  if (!result) return null;
+  return sanitizePublicProjectRow(result);
+}
+
 export function sanitizePublicProjectRow(row = {}) {
   return {
     id: row.project_id || row.id,
     slug: row.slug,
+    public_url: row.event_slug && row.slug ? `/projects/${encodeURIComponent(row.event_slug)}/${encodeURIComponent(row.slug)}/` : null,
     title: row.title,
     team_name: row.team_name,
     description: publicTextOrNull(row.description),
@@ -399,7 +459,12 @@ function publicUrlOrNull(value) {
   const url = String(value || "").trim();
   if (!url || url === ".") return null;
   if (/^https?:\/\/nothing\/?$/i.test(url) || /^nothing$/i.test(url)) return null;
-  return url;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeTracks(value) {

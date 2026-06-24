@@ -102,5 +102,18 @@ test("generated event detail pages use the same participant nav contract", () =>
   const links = navLinks(nav);
   assert.deepEqual(links.map((link) => link.key), expectedOrder);
   assert.deepEqual(links.map((link) => link.label), expectedLabels);
+  assert.equal(links.find((link) => link.key === "profile")?.href, "/me/");
+  assert.doesNotMatch(nav, /\/login\/\?next=\/me\//);
+  assert.doesNotMatch(nav, /admin|organizer|submissions/i);
+});
+
+test("generated public project detail pages use the same participant nav contract", () => {
+  const source = readFileSync(new URL("../worker.js", import.meta.url), "utf8");
+  const nav = participantNav(source);
+  const links = navLinks(nav);
+  assert.deepEqual(links.map((link) => link.key), expectedOrder);
+  assert.deepEqual(links.map((link) => link.label), expectedLabels);
+  assert.equal(links.find((link) => link.key === "profile")?.href, "/me/");
+  assert.doesNotMatch(nav, /\/login\/\?next=\/me\//);
   assert.doesNotMatch(nav, /admin|organizer|submissions/i);
 });

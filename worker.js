@@ -126,6 +126,11 @@ function matchApiRoute(pathname) {
     return { routeModule: projectsMedia, params: {} };
   }
 
+  const publicProjectApiMatch = pathname.match(/^\/api\/projects\/([^/]+)\/([^/]+)\/?$/);
+  if (publicProjectApiMatch) {
+    return { routeModule: projectsPublic, params: { eventSlug: decodeURIComponent(publicProjectApiMatch[1]), projectSlug: decodeURIComponent(publicProjectApiMatch[2]) } };
+  }
+
   const meProjectMaterialsMatch = pathname.match(/^\/api\/me\/projects\/([^/]+)\/materials\/?$/);
   if (meProjectMaterialsMatch) {
     return { routeModule: meProjects, params: { projectId: decodeURIComponent(meProjectMaterialsMatch[1]), action: 'materials' } };
@@ -229,6 +234,124 @@ async function renderEventPage(request, env) {
   });
 }
 
+function isPublicProjectPagePath(pathname) {
+  return /^\/projects\/[^/.][^/]*\/[^/.][^/]*\/?$/.test(pathname);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+}
+
+function renderPublicProjectPageHtml({ eventSlug, projectSlug, origin }) {
+  const apiPath = `/api/projects/${encodeURIComponent(eventSlug)}/${encodeURIComponent(projectSlug)}`;
+  const canonicalPath = `/projects/${encodeURIComponent(eventSlug)}/${encodeURIComponent(projectSlug)}/`;
+  const canonicalUrl = `${origin}${canonicalPath}`;
+  return `<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Project | Hack the Valley</title>
+  <meta name="description" content="Public Hack the Valley project details with demo, repository, tracks, awards, and team context.">
+  <link rel="canonical" href="${escapeHtml(canonicalUrl)}">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <script>tailwind.config = { theme: { extend: { colors: { 'bc-dark': '#0f172a', 'bc-navy': '#1e293b', 'bc-cyan': '#22d3ee', 'bc-orange': '#f59e0b' }, fontFamily: { sans: ['Inter', 'sans-serif'] } } } }</script>
+</head>
+<body class="bg-bc-dark text-white font-sans">
+  <header class="sticky top-0 z-50 bg-bc-dark/90 backdrop-blur-md border-b border-slate-700">
+    <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3" aria-label="Participant">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <a href="/" class="flex items-center gap-3 min-w-0"><img src="/images/HackTheValleyLogo.PNG" alt="Hack the Valley" class="h-10 w-auto"><span class="font-black text-xl truncate">Hack the Valley</span></a>
+        <div data-participant-nav class="flex flex-wrap items-center gap-2 text-sm font-bold">
+          <a data-nav-link="events" href="/events" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Events</a>
+          <a data-nav-link="projects" href="/projects/" aria-current="page" class="rounded-full bg-bc-cyan/15 px-3 py-2 text-bc-cyan ring-1 ring-bc-cyan/40">Projects</a>
+          <a data-nav-link="profile" href="/me/" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Profile</a>
+          <a data-nav-link="leaderboard" href="/leaderboard/" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Leaderboard</a>
+        </div>
+      </div>
+    </nav>
+  </header>
+  <main class="min-h-screen">
+    <section class="py-12 sm:py-16">
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <a href="/projects/" class="text-sm font-bold text-bc-cyan hover:text-cyan-200">← Back to projects</a>
+        <div id="project-error" class="hidden mt-8 rounded-2xl border border-red-500/40 bg-red-950/40 p-5 text-red-100"></div>
+        <article id="project-detail" class="mt-8 rounded-3xl border border-slate-700 bg-bc-navy/70 p-6 sm:p-8 shadow-2xl shadow-black/20">
+          <p class="text-slate-400">Loading public project…</p>
+        </article>
+      </div>
+    </section>
+  </main>
+  <footer class="border-t border-slate-800 py-8 text-center text-sm text-slate-500"><p>Public project pages omit private contacts, admin notes, hidden submissions, emergency contacts, and non-public media.</p></footer>
+  <script>
+    const apiPath = ${JSON.stringify(apiPath)};
+    const detail = document.querySelector('#project-detail');
+    const errorBox = document.querySelector('#project-error');
+    function escapeHtml(value) { return String(value ?? '').replace(/[&<>'\"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '\"': '&quot;' }[char])); }
+    function eventDisplayName(eventSlug) {
+      const slug = String(eventSlug || '').trim();
+      if (!slug) return '';
+      const lowerCaseWords = new Set(['a', 'an', 'and', 'at', 'for', 'in', 'of', 'on', 'or', 'the', 'to']);
+      return slug.split(/[-_]+/).filter(Boolean).map((part, index) => /^\\d+$/.test(part) ? part : (index > 0 && lowerCaseWords.has(part.toLowerCase()) ? part.toLowerCase() : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())).join(' ');
+    }
+    function awardLabel(award, project) {
+      const event = award.event || eventDisplayName(award.event_slug || project.event_slug);
+      return award.display_text || (event ? (award.title || 'Award') + ' - ' + event : (award.title || 'Award'));
+    }
+    function heroMarkup(project) {
+      const media = project.hero_media;
+      if (!media?.url) return '';
+      const fallbackAlt = (project.title || 'Project') + (media.kind === 'video' ? ' video' : ' image');
+      if (media.kind === 'video') return '<div class="mb-8 overflow-hidden rounded-3xl border border-slate-700 bg-slate-950"><video class="max-h-[32rem] w-full object-contain" src="' + escapeHtml(media.url) + '" controls preload="metadata" aria-label="' + escapeHtml(media.alt || fallbackAlt) + '"></video></div>';
+      return '<div class="mb-8 overflow-hidden rounded-3xl border border-slate-700 bg-slate-950"><img class="max-h-[32rem] w-full object-contain" src="' + escapeHtml(media.url) + '" alt="' + escapeHtml(media.alt || fallbackAlt) + '"></div>';
+    }
+    function linkMarkup(project) {
+      const links = [];
+      if (project.demo_url) links.push('<a href="' + escapeHtml(project.demo_url) + '" target="_blank" rel="noopener noreferrer" class="rounded-lg bg-bc-cyan px-4 py-2 font-black text-bc-dark hover:bg-cyan-300">Open demo</a>');
+      if (project.repo_url) links.push('<a href="' + escapeHtml(project.repo_url) + '" target="_blank" rel="noopener noreferrer" class="rounded-lg border border-bc-cyan px-4 py-2 font-black text-bc-cyan hover:bg-bc-cyan/10">Repository</a>');
+      return links.length ? '<div class="mt-8 flex flex-wrap gap-3">' + links.join('') + '</div>' : '';
+    }
+    function renderProject(project) {
+      document.title = (project.title || 'Project') + ' | Hack the Valley';
+      const tracks = Array.isArray(project.tracks) ? project.tracks : [];
+      const awards = Array.isArray(project.awards) ? project.awards : [];
+      const team = project.team_name ? '<p class="mt-3 text-sm uppercase tracking-[0.14em] text-slate-400 font-bold">' + escapeHtml(project.team_name) + '</p>' : '';
+      const trackMarkup = tracks.map((track) => '<span class="rounded-full bg-bc-cyan/10 px-3 py-1 text-xs font-bold text-bc-cyan">' + escapeHtml(track) + '</span>').join('');
+      const awardMarkup = awards.length ? '<div class="mt-5 flex flex-wrap gap-2">' + awards.map((award) => '<span class="inline-flex items-center rounded-full bg-bc-orange/15 border border-bc-orange/40 px-3 py-1 text-xs font-black text-bc-orange">' + escapeHtml(awardLabel(award, project)) + '</span>').join('') + '</div>' : '';
+      detail.innerHTML = heroMarkup(project) + '<p class="text-bc-orange uppercase tracking-[0.2em] text-xs font-black mb-3">' + escapeHtml(eventDisplayName(project.event_slug)) + '</p><h1 class="text-4xl sm:text-5xl font-black leading-tight">' + escapeHtml(project.title || 'Untitled project') + '</h1>' + team + '<div class="mt-5 flex flex-wrap gap-2">' + trackMarkup + '</div>' + awardMarkup + '<p class="mt-8 text-lg leading-relaxed text-slate-200">' + escapeHtml(project.description || 'Project details coming soon.') + '</p>' + linkMarkup(project) + '<p class="mt-8 text-xs text-slate-500">Public showcase record. Contact details and organizer-only submission metadata are intentionally omitted.</p>';
+    }
+    async function loadProject() {
+      try {
+        const response = await fetch(apiPath, { headers: { Accept: 'application/json' } });
+        const data = await response.json();
+        if (!response.ok || data.ok === false) throw new Error(data.error || 'Could not load project.');
+        renderProject(data.project || {});
+      } catch (error) {
+        detail.classList.add('hidden');
+        errorBox.classList.remove('hidden');
+        errorBox.textContent = error.message || 'Could not load public project.';
+      }
+    }
+    loadProject();
+  </script>
+</body>
+</html>`;
+}
+
+function renderPublicProjectPage(request) {
+  const url = new URL(request.url);
+  const match = url.pathname.match(/^\/projects\/([^/]+)\/([^/]+)\/?$/);
+  const eventSlug = decodeURIComponent(match?.[1] || '');
+  const projectSlug = decodeURIComponent(match?.[2] || '');
+  return new Response(renderPublicProjectPageHtml({ eventSlug, projectSlug, origin: url.origin }), {
+    status: 200,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }
+  });
+}
+
 export default {
   async fetch(request, env = {}, ctx = {}) {
     const url = new URL(request.url);
@@ -248,6 +371,10 @@ export default {
 
     if (isEventPagePath(url.pathname)) {
       return renderEventPage(request, env);
+    }
+
+    if (isPublicProjectPagePath(url.pathname)) {
+      return renderPublicProjectPage(request);
     }
 
     if (env.ASSETS?.fetch) {

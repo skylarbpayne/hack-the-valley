@@ -41,6 +41,7 @@ import {
   upsertProject as domainUpsertProject
 } from "./domain/projects.js";
 import {
+  getPublicProject as domainGetPublicProject,
   linkProjectSubmission as domainLinkProjectSubmission,
   listEventProjectSubmissions as domainListEventProjectSubmissions,
   listPublicProjects as domainListPublicProjects,
@@ -626,6 +627,10 @@ export async function upsertProjectFromSubmission(db, submissionId, { eventSlug 
 
 export async function listEventProjectSubmissions(db, eventSlug, eventInstanceId = null, { includeHidden = false } = {}) {
   return await domainListEventProjectSubmissions(db, eventSlug, eventInstanceId, { includeHidden });
+}
+
+export async function getPublicProject(db, { eventSlug, projectSlug } = {}) {
+  return await domainGetPublicProject(db, { eventSlug, projectSlug });
 }
 
 export async function listPublicProjects(db, { eventSlug = null, includeHidden = false } = {}) {

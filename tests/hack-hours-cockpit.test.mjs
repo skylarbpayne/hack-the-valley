@@ -1402,7 +1402,14 @@ test("participant projects workspace lives under /me/projects while /projects is
   const recap = read("public/events/hack-the-valley-2026/index.html");
 
   assert.match(publicProjects, /Student project showcase/);
-  assert.match(publicProjects, /\/api\/projects\?event=hack-the-valley-2026/);
+  assert.match(publicProjects, /id="project-search"/);
+  assert.match(publicProjects, /id="project-event-filter"/);
+  assert.match(publicProjects, /function filteredProjects\(\)/);
+  assert.match(publicProjects, /fetch\('\/api\/projects'/);
+  assert.doesNotMatch(publicProjects, /\/api\/projects\?event=hack-the-valley-2026/);
+  assert.match(publicProjects, /id="project-event-filter"/);
+  assert.match(publicProjects, /data-project-card/);
+  assert.match(publicProjects, /View project →/);
   assert.match(publicProjects, /Contact details and private submission metadata stay out of this view/);
   assert.match(publicProjects, /function heroMarkup\(project\)/);
   assert.match(publicProjects, /<img class="h-48 w-full object-cover"/);
@@ -1448,6 +1455,7 @@ test("public project listing returns safe public fields and awards", async () =>
   const projects = await listPublicProjects(db, { eventSlug: "hack-the-valley-2026" });
   assert.equal(projects.length, 1);
   assert.equal(projects[0].title, "TechPath Kern");
+  assert.equal(projects[0].public_url, "/projects/hack-the-valley-2026/techpath-kern/");
   assert.deepEqual(projects[0].tracks, ["Education", "Social Impact", "AI"]);
   assert.equal(projects[0].awards[0].title, "Best Social Impact");
   assert.equal(projects[0].awards[0].event_slug, "hack-the-valley-2026");
@@ -1468,10 +1476,11 @@ test("public project listing returns safe public fields and awards", async () =>
 });
 
 test("worker exposes public projects API without admin auth", async () => {
+  const boundArgs = [];
   const fakeDb = {
     prepare(sql) {
       return {
-        bind(...args) { this.args = args; return this; },
+        bind(...args) { this.args = args; boundArgs.push(args); return this; },
         async all() {
           return { results: [{
             event_slug: this.args?.[0] || "hack-the-valley-2026",
@@ -1490,15 +1499,62 @@ test("worker exposes public projects API without admin auth", async () => {
       };
     }
   };
-  const response = await worker.fetch(new Request("https://hackthevalley.org/api/projects?event=hack-the-valley-2026"), { HTV_DB: fakeDb }, {});
+  const response = await worker.fetch(new Request("https://hackthevalley.org/api/projects"), { HTV_DB: fakeDb }, {});
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.ok, true);
   assert.equal(body.count, 1);
+  assert.deepEqual(boundArgs, [[]]);
   assert.equal(body.projects[0].title, "decode it");
   assert.equal(body.projects[0].awards[0].display_text, "Best Social Impact - Hack the Valley 2026");
   assert.equal(body.projects[0].awards[0].prize_amount_cents, undefined);
   assert.doesNotMatch(JSON.stringify(body), /20000|prize_amount_cents/);
+});
+
+test("worker exposes canonical public project detail API and page shell", async () => {
+  const fakeDb = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async first() {
+          assert.deepEqual(this.args, ["hack-the-valley-2026", "decode-it"]);
+          assert.match(sql, /p\.slug = \?/);
+          assert.match(sql, /eps\.status NOT IN \('hidden', 'rejected'\)/);
+          assert.doesNotMatch(sql, /contact_email|prize_amount_cents|emergency/i);
+          return {
+            event_slug: "hack-the-valley-2026",
+            status: "showcased",
+            project_id: "prj_decode_it",
+            slug: "decode-it",
+            title: "decode it",
+            team_name: "aiden michael sawyer preston",
+            description: "Guided document walkthrough platform.",
+            repo_url: "https://github.com/prest2323/decode-this.git",
+            demo_url: null,
+            tracks_json: JSON.stringify(["Education", "Social Impact", "AI"]),
+            awards_json: JSON.stringify([{ award_slug: "social-impact", award_title: "Best Social Impact", award_rank: 1, prize_amount_cents: 20000 }]),
+            contact_email: "private@example.com",
+            payload_json: JSON.stringify({ admin_notes: "private" })
+          };
+        }
+      };
+    }
+  };
+
+  const api = await worker.fetch(new Request("https://hackthevalley.org/api/projects/hack-the-valley-2026/decode-it"), { HTV_DB: fakeDb }, {});
+  assert.equal(api.status, 200);
+  const body = await api.json();
+  assert.equal(body.project.public_url, "/projects/hack-the-valley-2026/decode-it/");
+  assert.equal(body.project.awards[0].prize_amount_cents, undefined);
+  assert.doesNotMatch(JSON.stringify(body), /private@example\.com|admin_notes|20000|prize_amount_cents|emergency/i);
+
+  const page = await worker.fetch(new Request("https://hackthevalley.org/projects/hack-the-valley-2026/decode-it/"), {}, {});
+  const html = await page.text();
+  assert.equal(page.status, 200);
+  assert.match(html, /<link rel="canonical" href="https:\/\/hackthevalley\.org\/projects\/hack-the-valley-2026\/decode-it\/">/);
+  assert.match(html, /\/api\/projects\/hack-the-valley-2026\/decode-it/);
+  assert.match(html, /Public project pages omit private contacts/);
+  assert.doesNotMatch(html, /admin-submissions|x-admin-token/i);
 });
 
 test("public project media endpoint serves only media attached to a public project", async () => {

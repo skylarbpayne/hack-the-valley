@@ -57,6 +57,18 @@
           </div>
           <div id="project-count" class="text-sm text-slate-400">Loading projects…</div>
         </div>
+        <div class="mb-8 grid gap-4 rounded-3xl border border-slate-700 bg-bc-navy/60 p-5 md:grid-cols-[minmax(0,1fr)_16rem]" aria-label="Project search and filters">
+          <label class="block">
+            <span class="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Search projects</span>
+            <input id="project-search" type="search" autocomplete="off" placeholder="Search title, description, team, event, or tag" class="mt-2 w-full rounded-xl border border-slate-600 bg-slate-950/80 px-4 py-3 text-white placeholder:text-slate-500 focus:border-bc-cyan focus:outline-none focus:ring-2 focus:ring-bc-cyan/30">
+          </label>
+          <label class="block">
+            <span class="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Event</span>
+            <select id="project-event-filter" class="mt-2 w-full rounded-xl border border-slate-600 bg-slate-950/80 px-4 py-3 text-white focus:border-bc-cyan focus:outline-none focus:ring-2 focus:ring-bc-cyan/30">
+              <option value="">All events</option>
+            </select>
+          </label>
+        </div>
         <div id="projects-error" class="hidden rounded-2xl border border-red-500/40 bg-red-950/40 p-5 text-red-100"></div>
         <div id="projects-grid" class="grid gap-5 md:grid-cols-2 xl:grid-cols-3"></div>
       </div>
@@ -73,6 +85,9 @@
     const grid = document.querySelector('#projects-grid');
     const count = document.querySelector('#project-count');
     const errorBox = document.querySelector('#projects-error');
+    const searchInput = document.querySelector('#project-search');
+    const eventFilter = document.querySelector('#project-event-filter');
+    let allProjects = [];
 
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
@@ -130,29 +145,90 @@
       `;
     }
 
+    function projectUrl(project) {
+      if (project.public_url) return project.public_url;
+      return `/projects/${encodeURIComponent(project.event_slug || 'hack-the-valley-2026')}/${encodeURIComponent(project.slug || project.id || '')}/`;
+    }
+
     function projectCard(project) {
       const tracks = Array.isArray(project.tracks) ? project.tracks : [];
+      const url = projectUrl(project);
       return `
-        <article class="overflow-hidden rounded-3xl border border-slate-700 bg-bc-navy/70 p-6 shadow-2xl shadow-black/20 hover:border-bc-cyan/60 transition">
+        <article data-project-card data-project-url="${escapeHtml(url)}" tabindex="0" role="link" aria-label="Open ${escapeHtml(project.title || 'project')} project page" class="cursor-pointer overflow-hidden rounded-3xl border border-slate-700 bg-bc-navy/70 p-6 shadow-2xl shadow-black/20 hover:border-bc-cyan/60 transition focus:outline-none focus:ring-2 focus:ring-bc-cyan/60">
           ${heroMarkup(project)}
           ${awardMarkup(project)}
           <div class="flex flex-wrap gap-2 mb-4">${tracks.map((track) => `<span class="rounded-full bg-bc-cyan/10 px-3 py-1 text-xs font-bold text-bc-cyan">${escapeHtml(track)}</span>`).join('')}</div>
-          <h3 class="text-2xl font-black leading-tight">${escapeHtml(project.title)}</h3>
+          <h3 class="text-2xl font-black leading-tight"><a href="${escapeHtml(url)}" class="hover:text-bc-cyan">${escapeHtml(project.title)}</a></h3>
           ${project.team_name ? `<p class="mt-2 text-sm uppercase tracking-[0.14em] text-slate-400 font-bold">${escapeHtml(project.team_name)}</p>` : ''}
           <p class="mt-4 text-slate-300 leading-relaxed">${escapeHtml(project.description || 'Project details coming soon.')}</p>
           ${linkMarkup(project)}
+          <a href="${escapeHtml(url)}" class="mt-5 inline-flex text-sm font-black text-bc-orange hover:text-orange-300">View project →</a>
         </article>
       `;
     }
 
+    function searchableText(project) {
+      return [
+        project.title,
+        project.description,
+        project.team_name,
+        project.event_slug,
+        eventDisplayName(project.event_slug),
+        ...(Array.isArray(project.tracks) ? project.tracks : []),
+        ...(Array.isArray(project.awards) ? project.awards.flatMap((award) => [award.title, award.display_text, award.event]) : [])
+      ].filter(Boolean).join(' ').toLowerCase();
+    }
+
+    function updateEventFilter(projects) {
+      const current = eventFilter.value;
+      const events = [...new Set(projects.map((project) => project.event_slug).filter(Boolean))].sort();
+      eventFilter.innerHTML = '<option value="">All events</option>' + events.map((eventSlug) => `<option value="${escapeHtml(eventSlug)}">${escapeHtml(eventDisplayName(eventSlug) || eventSlug)}</option>`).join('');
+      if (events.includes(current)) eventFilter.value = current;
+    }
+
+    function filteredProjects() {
+      const query = searchInput.value.trim().toLowerCase();
+      const eventSlug = eventFilter.value;
+      return allProjects.filter((project) => {
+        if (eventSlug && project.event_slug !== eventSlug) return false;
+        return !query || searchableText(project).includes(query);
+      });
+    }
+
+    function renderProjects() {
+      const projects = filteredProjects();
+      const hasFilters = Boolean(searchInput.value.trim() || eventFilter.value);
+      count.textContent = hasFilters
+        ? `${projects.length} of ${allProjects.length} public project${allProjects.length === 1 ? '' : 's'}`
+        : `${allProjects.length} public project${allProjects.length === 1 ? '' : 's'}`;
+      grid.innerHTML = projects.length
+        ? projects.map(projectCard).join('')
+        : `<p class="text-slate-400">${hasFilters ? 'No public projects match those filters.' : 'No public projects yet.'}</p>`;
+    }
+
+    function wireProjectCardClicks() {
+      grid.addEventListener('click', (event) => {
+        if (event.target.closest('a, button, input, select, textarea')) return;
+        const card = event.target.closest('[data-project-card]');
+        if (card?.dataset.projectUrl) window.location.href = card.dataset.projectUrl;
+      });
+      grid.addEventListener('keydown', (event) => {
+        if (!['Enter', ' '].includes(event.key)) return;
+        const card = event.target.closest('[data-project-card]');
+        if (!card?.dataset.projectUrl) return;
+        event.preventDefault();
+        window.location.href = card.dataset.projectUrl;
+      });
+    }
+
     async function loadProjects() {
       try {
-        const response = await fetch('/api/projects?event=hack-the-valley-2026', { headers: { Accept: 'application/json' } });
+        const response = await fetch('/api/projects', { headers: { Accept: 'application/json' } });
         const data = await response.json();
         if (!response.ok || data.ok === false) throw new Error(data.error || 'Could not load projects.');
-        const projects = data.projects || [];
-        count.textContent = `${projects.length} public project${projects.length === 1 ? '' : 's'}`;
-        grid.innerHTML = projects.length ? projects.map(projectCard).join('') : '<p class="text-slate-400">No public projects yet.</p>';
+        allProjects = data.projects || [];
+        updateEventFilter(allProjects);
+        renderProjects();
       } catch (error) {
         console.error(error);
         count.textContent = 'Projects unavailable';
@@ -161,6 +237,9 @@
       }
     }
 
+    searchInput.addEventListener('input', renderProjects);
+    eventFilter.addEventListener('change', renderProjects);
+    wireProjectCardClicks();
     loadProjects();
   </script>
 </body>

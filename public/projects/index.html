@@ -78,17 +78,12 @@
       return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
     }
 
-    function money(cents) {
-      if (!Number.isFinite(Number(cents))) return '';
-      return `$${Math.round(Number(cents) / 100).toLocaleString()}`;
-    }
-
     function awardMarkup(project) {
       const awards = Array.isArray(project.awards) ? project.awards : [];
       if (!awards.length) return '';
       return `<div class="flex flex-wrap gap-2 mb-4">${awards.map((award) => `
         <span class="inline-flex items-center rounded-full bg-bc-orange/15 border border-bc-orange/40 px-3 py-1 text-xs font-black text-bc-orange">
-          ${escapeHtml(award.title)}${award.prize_amount_cents ? ` · ${escapeHtml(money(award.prize_amount_cents))}` : ''}
+          ${escapeHtml(award.display_title || `${award.title || 'Award'} - ${award.event_name || 'Hack the Valley 2026'}`)}
         </span>
       `).join('')}</div>`;
     }

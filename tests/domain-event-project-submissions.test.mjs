@@ -21,7 +21,7 @@ function createSubmissionDomainDb() {
   ]);
   const members = [{ project_id: "prj_show", user_id: "usr_maya", email: "maya@example.com", role: "owner" }];
   const publicRows = [
-    { event_slug: "hack-the-valley-2026", status: "showcased", project_id: "prj_show", slug: "show", title: "Show Project", team_name: "Show Team", description: "Public", tracks_json: "[]" },
+    { event_slug: "hack-the-valley-2026", status: "showcased", project_id: "prj_show", slug: "show", title: "Show Project", team_name: "Show Team", description: "Public", tracks_json: "[]", awards_json: JSON.stringify([{ event_slug: "hack-the-valley-2026", award_slug: "social-impact", award_title: "Best Social Impact", award_rank: 1, prize_amount_cents: 20000 }]) },
     { event_slug: "hack-the-valley-2026", status: "hidden", project_id: "prj_hidden", slug: "hidden", title: "Hidden Project", team_name: "Hidden Team", description: "Hidden", tracks_json: "[]" },
     { event_slug: "hack-the-valley-2026", status: "rejected", project_id: "prj_rejected", slug: "rejected", title: "Rejected Project", team_name: "Rejected Team", description: "Rejected", tracks_json: "[]" }
   ];
@@ -260,6 +260,15 @@ test("listPublicProjects hides rejected or hidden event submissions but not the 
   const rows = await listPublicProjects(db, { eventSlug: "hack-the-valley-2026" });
 
   assert.deepEqual(rows.map((row) => row.title), ["Show Project"]);
+  assert.deepEqual(rows[0].awards, [{
+    slug: "social-impact",
+    title: "Best Social Impact",
+    event_slug: "hack-the-valley-2026",
+    event_name: "Hack the Valley 2026",
+    display_title: "Best Social Impact - Hack the Valley 2026",
+    rank: 1
+  }]);
+  assert.equal(Object.hasOwn(rows[0].awards[0], "prize_amount_cents"), false);
   assert.match(db.statements.at(-1).sql, /eps.status NOT IN \('hidden', 'rejected'\)/);
   const withHidden = await listPublicProjects(db, { eventSlug: "hack-the-valley-2026", includeHidden: true });
   assert.deepEqual(withHidden.map((row) => row.title), ["Show Project", "Hidden Project", "Rejected Project"]);

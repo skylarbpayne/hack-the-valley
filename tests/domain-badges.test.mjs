@@ -237,7 +237,10 @@ test("deriveBadgesForPerson defaults to dry-run and reports missing awards witho
       { event_slug: "hack-hours", event_instance_id: "inst_hh", event_type: "checked_in", occurred_at: "2026-06-20T16:00:00.000Z" }
     ],
     projects: [{ project_id: "prj_1", slug: "demo", title: "Demo", submission_created_at: "2026-05-31T00:00:00.000Z" }],
-    projectAwards: [{ event_slug: "hack-the-valley-2026", project_id: "prj_1", award_slug: "overall", award_title: "Overall Winner", awarded_at: "2026-05-31T01:00:00.000Z" }]
+    projectAwards: [
+      { event_slug: "hack-the-valley-2026", project_id: "prj_1", award_slug: "social-impact", award_title: "Best Social Impact", prize_amount_cents: 20000, awarded_at: "2026-05-31T01:00:00.000Z" },
+      { event_slug: "hack-the-valley-2026", project_id: "prj_1", award_slug: "overall", award_title: "Overall Winner", prize_amount_cents: 60000, awarded_at: "2026-05-31T01:00:00.000Z" }
+    ]
   });
 
   const plan = await deriveBadgesForPerson(db, "usr_maya");
@@ -247,9 +250,15 @@ test("deriveBadgesForPerson defaults to dry-run and reports missing awards witho
     "attended-htv-2026",
     "attended-hack-hours",
     "submitted-project",
-    "won-prize-htv-2026",
-    "won-overall-htv-2026"
+    "won-hack-the-valley-2026-social-impact-prj-1",
+    "won-hack-the-valley-2026-overall-prj-1"
   ]);
+  const awardBadges = plan.derived.filter((badge) => badge.badge_type === "award");
+  assert.deepEqual(awardBadges.map((badge) => badge.name), [
+    "Best Social Impact - Hack the Valley 2026",
+    "Overall Winner - Hack the Valley 2026"
+  ]);
+  assert.doesNotMatch(JSON.stringify(awardBadges), /\$|20000|60000|prize_amount_cents/);
   assert.equal(db.state.awards.length, 0);
   assert.equal(db.state.calls.some((call) => call.method === "run" && /INSERT OR IGNORE INTO user_badges/.test(call.sql)), false);
 });

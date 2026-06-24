@@ -941,9 +941,10 @@ test("community state derives requested profile badges from attendance, projects
     "attended-htv-2026",
     "attended-hack-hours",
     "submitted-project",
-    "won-prize-htv-2026",
-    "won-overall-htv-2026"
+    "won-hack-the-valley-2026-overall-prj-decode-it"
   ]);
+  assert.equal(state.badges.at(-1).name, "Overall Winner - Hack the Valley 2026");
+  assert.doesNotMatch(JSON.stringify(state.badges), /\$|prize_amount_cents/);
   assert.ok(state.badges.every((badge) => /\/images\/badges\/.+\.svg$/.test(badge.icon_url)));
 });
 
@@ -1426,7 +1427,7 @@ test("public project listing returns safe public fields and awards", async () =>
             tracks_json: JSON.stringify(["Education", "Social Impact", "AI"]),
             submission_created_at: "2026-05-30T23:44:23.846Z",
             hero_uploads_json: JSON.stringify([{ key: "submissions/kern-coders/screenshot.png", kind: "image", filename: "screenshot.png", contentType: "image/png", size: 1234 }]),
-            awards_json: JSON.stringify([{ award_slug: "social-impact", award_title: "Best Social Impact", award_rank: 1, prize_amount_cents: 20000 }]),
+            awards_json: JSON.stringify([{ event_slug: "hack-the-valley-2026", award_slug: "social-impact", award_title: "Best Social Impact", award_rank: 1, prize_amount_cents: 20000 }]),
             contact_email: "must-not-leak@example.com",
             uploads_json: JSON.stringify([{ key: "private-r2-key" }])
           }] };
@@ -1439,7 +1440,8 @@ test("public project listing returns safe public fields and awards", async () =>
   assert.equal(projects[0].title, "TechPath Kern");
   assert.deepEqual(projects[0].tracks, ["Education", "Social Impact", "AI"]);
   assert.equal(projects[0].awards[0].title, "Best Social Impact");
-  assert.equal(projects[0].awards[0].prize_amount_cents, 20000);
+  assert.equal(projects[0].awards[0].display_title, "Best Social Impact - Hack the Valley 2026");
+  assert.equal(Object.hasOwn(projects[0].awards[0], "prize_amount_cents"), false);
   assert.equal(projects[0].contact_email, undefined);
   assert.equal(projects[0].uploads_json, undefined);
   assert.equal(projects[0].hero_media.url, "/api/projects/media?event=hack-the-valley-2026&project=techpath-kern");

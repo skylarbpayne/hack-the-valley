@@ -8,8 +8,8 @@ export const DEFAULT_BADGES = Object.freeze({
   "shared-demo": { id: "bdg_shared_demo", name: "Shared a Demo", description: "Shared a project or demo with the community.", badge_type: "demo" },
   "helped-mentor": { id: "bdg_helped_mentor", name: "Helped or Mentored", description: "Helped another builder, mentored, or organized.", badge_type: "contribution" },
   "attended-htv-2026": { id: "bdg_attended_htv_2026", name: "HTV 2026 Attendee", description: "Checked in at Hack the Valley 2026.", badge_type: "attendance" },
-  "won-prize-htv-2026": { id: "bdg_won_prize_htv_2026", name: "HTV 2026 Prize Winner", description: "Won a prize at Hack the Valley 2026.", badge_type: "award" },
-  "won-overall-htv-2026": { id: "bdg_won_overall_htv_2026", name: "HTV 2026 Overall Winner", description: "Won the Overall Prize at Hack the Valley 2026.", badge_type: "award" },
+  "won-prize-htv-2026": { id: "bdg_won_prize_htv_2026", name: "Prize Winner - Hack the Valley 2026", description: "Awarded at Hack the Valley 2026.", badge_type: "award" },
+  "won-overall-htv-2026": { id: "bdg_won_overall_htv_2026", name: "Overall Winner - Hack the Valley 2026", description: "Awarded at Hack the Valley 2026.", badge_type: "award" },
   "submitted-project": { id: "bdg_submitted_project", name: "Project Shipper", description: "Submitted a project to the Hack the Valley community.", badge_type: "project" },
   "attended-hack-hours": { id: "bdg_attended_hack_hours", name: "Hack Hours Regular", description: "Checked in at a Hack Hours event.", badge_type: "attendance" }
 });
@@ -332,9 +332,10 @@ export async function deriveBadgesForPerson(db, personId, options = {}) {
     derived,
     existing,
     missing,
-    wouldAward: missing.map(({ slug, event_instance_id, project_id, source, awarded_at }) => ({
+    wouldAward: missing.map(({ slug, name, description, badge_type, event_instance_id, project_id, source, awarded_at }) => ({
       personId: safePersonId,
       badgeSlug: slug,
+      badge: { slug, name, description, badge_type },
       eventInstanceId: event_instance_id,
       projectId: project_id,
       source,
@@ -348,6 +349,12 @@ export async function deriveBadgesForPerson(db, personId, options = {}) {
     plan.awards.push(await awardBadge(db, {
       personId: safePersonId,
       badgeSlug: badge.slug,
+      badge: {
+        slug: badge.slug,
+        name: badge.name,
+        description: badge.description,
+        badge_type: badge.badge_type
+      },
       eventInstanceId: badge.event_instance_id,
       projectId: badge.project_id,
       source: badge.source || "derived"
@@ -369,13 +376,48 @@ export function deriveBadgesFromFacts({ attendance = [], projects = [], projectA
     derived.push(decorateBadge({ slug: "attended-hack-hours", event_instance_id: event?.event_instance_id, awarded_at: event?.occurred_at, source: "derived" }));
   }
   if (projects.length > 0) derived.push(decorateBadge({ slug: "submitted-project", project_id: projects[0]?.project_id, awarded_at: projects[0]?.submission_created_at || projects[0]?.created_at, source: "derived" }));
-  if (projectAwards.length > 0) {
-    const firstAward = projectAwards[0];
-    derived.push(decorateBadge({ slug: "won-prize-htv-2026", project_id: firstAward.project_id, awarded_at: firstAward.awarded_at || firstAward.created_at, source: "derived" }));
+  for (const award of projectAwards) {
+    const eventName = eventDisplayName(award.event_title || award.event_slug);
+    const title = publicAwardTitle(award.award_title || award.title || award.award_slug || "Prize Winner");
+    const isOverall = award.award_slug === "overall" || /overall/i.test(title);
+    derived.push(decorateBadge({
+      slug: awardBadgeSlug(award),
+      name: `${title} - ${eventName}`,
+      description: `Awarded at ${eventName}.`,
+      badge_type: "award",
+      project_id: award.project_id,
+      awarded_at: award.awarded_at || award.created_at,
+      source: "derived",
+      icon_url: badgeIconUrl(isOverall ? "won-overall-htv-2026" : "won-prize-htv-2026")
+    }));
   }
-  const overall = projectAwards.find((award) => award.award_slug === "overall" || /overall/i.test(award.award_title || ""));
-  if (overall) derived.push(decorateBadge({ slug: "won-overall-htv-2026", project_id: overall.project_id, awarded_at: overall.awarded_at || overall.created_at, source: "derived" }));
   return derived;
+}
+
+function awardBadgeSlug(award = {}) {
+  return slugifyBadge([
+    "won",
+    award.event_slug || "hack-the-valley-2026",
+    award.award_slug || award.award_title || award.title || "prize",
+    award.project_id || "project"
+  ].filter(Boolean).join("-"));
+}
+
+function publicAwardTitle(value) {
+  const title = String(value || "Prize Winner").trim().replace(/\s+/g, " ");
+  return title || "Prize Winner";
+}
+
+function eventDisplayName(value) {
+  const raw = String(value || "Hack the Valley 2026").trim();
+  if (!raw) return "Hack the Valley 2026";
+  if (!raw.includes("-") && /\s/.test(raw)) return raw.replace(/\s+/g, " ");
+  return raw
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => /^htv$/i.test(part) ? "HTV" : part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+    .replace(/^Hack The Valley\b/, "Hack the Valley");
 }
 
 function toBadgeCatalogItem(row = {}) {

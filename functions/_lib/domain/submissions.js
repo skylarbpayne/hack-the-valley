@@ -323,10 +323,10 @@ export async function listPublicProjects(db, { eventSlug = null, includeHidden =
       COALESCE(
         json_group_array(
           CASE WHEN epa.id IS NOT NULL THEN json_object(
+            'event_slug', epa.event_slug,
             'award_slug', epa.award_slug,
             'award_title', epa.award_title,
-            'award_rank', epa.award_rank,
-            'prize_amount_cents', epa.prize_amount_cents
+            'award_rank', epa.award_rank
           ) END
         ) FILTER (WHERE epa.id IS NOT NULL),
         '[]'
@@ -410,12 +410,36 @@ function normalizeTracks(value) {
 }
 
 function normalizeAwards(value) {
-  return parseJsonArray(value).map((award) => ({
-    slug: award.award_slug || award.slug || slugify(award.award_title || award.title || "award"),
-    title: award.award_title || award.title || "Award",
-    rank: Number(award.award_rank || award.rank || 1),
-    prize_amount_cents: award.prize_amount_cents ?? null
-  })).filter((award) => award.title);
+  return parseJsonArray(value).map((award) => {
+    const eventSlug = award.event_slug || award.eventSlug || null;
+    const eventName = eventDisplayName(award.event_title || award.eventName || eventSlug);
+    const title = publicAwardTitle(award.award_title || award.title || "Award");
+    return {
+      slug: award.award_slug || award.slug || slugify(title),
+      title,
+      event_slug: eventSlug,
+      event_name: eventName,
+      display_title: `${title} - ${eventName}`,
+      rank: Number(award.award_rank || award.rank || 1)
+    };
+  }).filter((award) => award.title);
+}
+
+function publicAwardTitle(value) {
+  const title = String(value || "Award").trim().replace(/\s+/g, " ");
+  return title || "Award";
+}
+
+function eventDisplayName(value) {
+  const raw = String(value || "Hack the Valley 2026").trim();
+  if (!raw) return "Hack the Valley 2026";
+  if (!raw.includes("-") && /\s/.test(raw)) return raw.replace(/\s+/g, " ");
+  return raw
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => /^htv$/i.test(part) ? "HTV" : part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+    .replace(/^Hack The Valley\b/, "Hack the Valley");
 }
 
 function isPublicProjectMedia(upload = {}) {

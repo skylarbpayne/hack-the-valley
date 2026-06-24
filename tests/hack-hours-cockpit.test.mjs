@@ -1398,6 +1398,8 @@ test("participant projects workspace lives under /me/projects while /projects is
   assert.match(publicProjects, /function heroMarkup\(project\)/);
   assert.match(publicProjects, /<img class="h-48 w-full object-cover"/);
   assert.match(publicProjects, /<video class="h-48 w-full object-cover"/);
+  assert.match(publicProjects, /awardLabel\(award, project\)/);
+  assert.doesNotMatch(publicProjects, /prize_amount_cents|function money\(|\$\{Math\.round/);
   assert.doesNotMatch(publicProjects, /id="project-create-form"/);
   assert.match(manageProjects, /id="project-create-form"/);
   assert.match(homepage, /\/login\/\?next=\/me\/projects\//);
@@ -1439,13 +1441,17 @@ test("public project listing returns safe public fields and awards", async () =>
   assert.equal(projects[0].title, "TechPath Kern");
   assert.deepEqual(projects[0].tracks, ["Education", "Social Impact", "AI"]);
   assert.equal(projects[0].awards[0].title, "Best Social Impact");
-  assert.equal(projects[0].awards[0].prize_amount_cents, 20000);
+  assert.equal(projects[0].awards[0].event_slug, "hack-the-valley-2026");
+  assert.equal(projects[0].awards[0].display_text, "Best Social Impact - Hack the Valley 2026");
+  assert.equal(projects[0].awards[0].prize_amount_cents, undefined);
+  assert.doesNotMatch(JSON.stringify(projects), /20000|prize_amount_cents/);
   assert.equal(projects[0].contact_email, undefined);
   assert.equal(projects[0].uploads_json, undefined);
   assert.equal(projects[0].hero_media.url, "/api/projects/media?event=hack-the-valley-2026&project=techpath-kern");
   assert.equal(projects[0].hero_media.kind, "image");
   assert.equal(projects[0].hero_media.key, undefined);
   assert.match(statements.join("\n"), /event_project_awards/);
+  assert.doesNotMatch(statements.join("\n"), /prize_amount_cents/);
   assert.match(statements.join("\n"), /MIN\(s\.created_at\) AS submission_created_at/);
   assert.match(statements.join("\n"), /MAX\(eps\.updated_at\) AS updated_at/);
   assert.doesNotMatch(statements.join("\n"), /GROUP BY[\s\S]*s\.created_at/);
@@ -1469,7 +1475,7 @@ test("worker exposes public projects API without admin auth", async () => {
             repo_url: "https://github.com/prest2323/decode-this.git",
             demo_url: null,
             tracks_json: JSON.stringify(["Education", "Social Impact", "AI"]),
-            awards_json: "[]"
+            awards_json: JSON.stringify([{ award_slug: "social-impact", award_title: "Best Social Impact", award_rank: 1, prize_amount_cents: 20000 }])
           }] };
         }
       };
@@ -1481,6 +1487,9 @@ test("worker exposes public projects API without admin auth", async () => {
   assert.equal(body.ok, true);
   assert.equal(body.count, 1);
   assert.equal(body.projects[0].title, "decode it");
+  assert.equal(body.projects[0].awards[0].display_text, "Best Social Impact - Hack the Valley 2026");
+  assert.equal(body.projects[0].awards[0].prize_amount_cents, undefined);
+  assert.doesNotMatch(JSON.stringify(body), /20000|prize_amount_cents/);
 });
 
 test("public project media endpoint serves only media attached to a public project", async () => {

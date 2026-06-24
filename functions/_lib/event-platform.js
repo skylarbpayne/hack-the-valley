@@ -520,13 +520,36 @@ function sanitizeProjectRow(row = {}) {
   return safe;
 }
 
-function normalizeAwards(value) {
-  return parseJsonArray(value).map((award) => ({
-    slug: award.award_slug || award.slug || slugify(award.award_title || award.title || "award"),
-    title: award.award_title || award.title || "Award",
-    rank: Number(award.award_rank || award.rank || 1),
-    prize_amount_cents: award.prize_amount_cents ?? null
-  })).filter((award) => award.title);
+function normalizeAwards(value, eventSlug = null) {
+  return parseJsonArray(value).map((award) => {
+    const title = award.award_title || award.title || "Award";
+    const event = eventDisplayName(award.event_slug || eventSlug);
+    return {
+      slug: award.award_slug || award.slug || slugify(title),
+      title,
+      rank: Number(award.award_rank || award.rank || 1),
+      event_slug: award.event_slug || eventSlug || null,
+      event,
+      display_text: event ? `${title} - ${event}` : title
+    };
+  }).filter((award) => award.title);
+}
+
+function eventDisplayName(eventSlug) {
+  const slug = String(eventSlug || "").trim();
+  if (!slug) return null;
+  return slug
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part, index) => formatEventNamePart(part, index))
+    .join(" ");
+}
+
+function formatEventNamePart(part, index) {
+  if (/^\d+$/.test(part)) return part;
+  const lower = part.toLowerCase();
+  if (index > 0 && new Set(["a", "an", "and", "at", "for", "in", "of", "on", "or", "the", "to"]).has(lower)) return lower;
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
 function isPublicProjectMedia(upload = {}) {
@@ -566,7 +589,7 @@ function sanitizePublicProjectRow(row = {}) {
     tracks: parseJsonArray(row.tracks_json, normalizeTracks(row.tracks_json)),
     event_slug: row.event_slug || null,
     status: row.status || "showcased",
-    awards: normalizeAwards(row.awards_json),
+    awards: normalizeAwards(row.awards_json, row.event_slug),
     hero_media: publicProjectHeroMedia(row),
     submitted_at: row.submission_created_at || row.created_at || null,
     updated_at: row.updated_at || null

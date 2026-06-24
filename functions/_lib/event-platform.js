@@ -1436,10 +1436,27 @@ export async function registerEventSignup(db, env, eventSlug, input = {}, { curr
   }
 
   const roleInput = applySignupRole(input, event);
+  if (!currentUser) {
+    const email = normalizeEmail(roleInput.input?.email);
+    if (EMAIL_RE.test(email)) {
+      const existingUser = await db.prepare("SELECT * FROM users WHERE lower(email) = ?").bind(email).first();
+      if (existingUser) {
+        throw existingAccountSignupError(email, eventSlug);
+      }
+    }
+  }
+
   const participation = normalizeParticipationInput(roleInput.input, event, currentUser);
   const allErrors = [...roleInput.errors, ...participation.errors];
   if (allErrors.length) {
     throw Object.assign(new Error(allErrors.join("; ")), { status: 400, errors: allErrors });
+  }
+
+  if (!currentUser) {
+    const existingUser = await db.prepare("SELECT * FROM users WHERE lower(email) = ?").bind(participation.person.email).first();
+    if (existingUser) {
+      throw existingAccountSignupError(participation.person.email, eventSlug);
+    }
   }
 
   const mailingListResult = syncEmailList
@@ -1467,6 +1484,21 @@ export async function registerEventSignup(db, env, eventSlug, input = {}, { curr
     signedIn: Boolean(currentUser),
     mailingListResult
   };
+}
+
+function existingAccountSignupError(email, eventSlug) {
+  const next = `/events/${encodeURIComponent(eventSlug)}#signup`;
+  const loginUrl = `/login/?next=${encodeURIComponent(next)}`;
+  const error = new Error("An account already exists for this email. Sign in with a magic link to finish this event signup without re-entering profile details.");
+  return Object.assign(error, {
+    status: 409,
+    code: "existing_account",
+    existing_account: true,
+    email,
+    login_url: loginUrl,
+    request_code_url: "/api/auth/request-code",
+    next
+  });
 }
 
 export async function upsertEmergencyContact(db, { eventInstanceId, userId, signupId = null, contact, source = "signup" }) {
@@ -2128,10 +2160,10 @@ export function renderEventPageHtml(event) {
       <p class="signup-help">Emergency contact is for event safety only — not profile enrichment.</p>
       <p id="signed-in-signup-note" class="signed-in-signup-note" hidden></p>
       ${roleField}
-      <label data-profile-signup-field>Name <input name="name" required autocomplete="name"></label>
+      <label data-profile-signup-field>Name <input name="name" autocomplete="name"></label>
       <label data-profile-signup-field>Email <input name="email" type="email" required autocomplete="email"></label>
-      <label data-profile-signup-field>Emergency contact name <input name="emergency_contact_name" required autocomplete="off"></label>
-      <label data-profile-signup-field>Emergency contact phone <input name="emergency_contact_phone" required autocomplete="tel"></label>
+      <label data-profile-signup-field>Emergency contact name <input name="emergency_contact_name" autocomplete="off"></label>
+      <label data-profile-signup-field>Emergency contact phone <input name="emergency_contact_phone" autocomplete="tel"></label>
       <label class="checkbox" data-email-list-field><input name="email_list_opt_in" type="checkbox" checked> Send me Hack the Valley updates</label>
       <button type="submit">Save my spot</button>
       <p id="form-message" role="status"></p>
@@ -2178,7 +2210,22 @@ export function renderEventPageHtml(event) {
             body: JSON.stringify(body)
           });
           const data = await response.json();
-          if (!response.ok) throw new Error(data.error || "Signup failed");
+          if (!response.ok) {
+            if (data.code === "existing_account") {
+              const loginUrl = data.login_url || "/login/?next=" + encodeURIComponent(window.location.pathname + "#signup");
+              const link = document.createElement("a");
+              link.href = loginUrl;
+              link.dataset.existingAccountLogin = "true";
+              link.textContent = "Sign in with a magic link";
+              message.replaceChildren(
+                document.createTextNode("That email already has a Hack the Valley profile. "),
+                link,
+                document.createTextNode(" to finish this signup without re-entering your profile details.")
+              );
+              return;
+            }
+            throw new Error(data.error || "Signup failed");
+          }
           form.reset();
           button.textContent = "You're signed up";
           message.textContent = "You're on the list. Emergency contact saved. Check-in QR/token support is coming; organizers can check you in by search today.";
@@ -2221,6 +2268,10 @@ export async function handleErrors(fn) {
   } catch (error) {
     const status = error.status || 500;
     if (status >= 500) console.error(error);
-    return jsonResponse({ error: error.message || "Internal server error", errors: error.errors, code: error.code }, { status });
+    const body = { error: error.message || "Internal server error", errors: error.errors, code: error.code };
+    for (const key of ["existing_account", "email", "login_url", "request_code_url", "next", "action"]) {
+      if (error[key] !== undefined) body[key] = error[key];
+    }
+    return jsonResponse(body, { status });
   }
 }

@@ -87,7 +87,7 @@
             <div id="signup-role-field" class="hidden sm:col-span-2"></div>
             <label class="block sm:col-span-2" data-profile-signup-field>
               <span class="text-sm font-semibold text-slate-200">Full name *</span>
-              <input name="name" required class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
+              <input name="name" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
             </label>
             <label class="block sm:col-span-2" data-profile-signup-field>
               <span class="text-sm font-semibold text-slate-200">Email *</span>
@@ -95,11 +95,11 @@
             </label>
             <label class="block sm:col-span-2" data-profile-signup-field>
               <span class="text-sm font-semibold text-slate-200">Emergency contact name *</span>
-              <input name="emergency_contact_name" required class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
+              <input name="emergency_contact_name" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
             </label>
             <label class="block sm:col-span-2" data-profile-signup-field>
               <span class="text-sm font-semibold text-slate-200">Emergency contact phone *</span>
-              <input name="emergency_contact_phone" required autocomplete="tel" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
+              <input name="emergency_contact_phone" autocomplete="tel" class="mt-2 w-full rounded-lg bg-bc-dark border border-slate-700 px-4 py-3 text-white focus:outline-none focus:border-bc-cyan">
               <span class="block text-xs text-slate-500 mt-1">Used only if organizers need a safety contact during the event.</span>
             </label>
             <label class="sm:col-span-2 flex gap-3 items-start text-sm text-slate-300" data-email-list-field>
@@ -420,7 +420,16 @@
           body: JSON.stringify(payload)
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Signup failed");
+        if (!response.ok) {
+          if (data.code === "existing_account") {
+            const loginUrl = data.login_url || `/login/?next=${encodeURIComponent(window.location.pathname + "#signup")}`;
+            button.disabled = false;
+            button.textContent = "Sign up";
+            message.innerHTML = `That email already has a Hack the Valley profile. <a data-existing-account-login href="${escapeHtml(loginUrl)}" class="text-bc-cyan font-bold underline">Sign in with a magic link</a> to finish this signup without re-entering your profile details.`;
+            return;
+          }
+          throw new Error(data.error || "Signup failed");
+        }
         formElement.reset();
         state.completedSignups.add(state.selected.slug);
         button.textContent = "You're signed up";

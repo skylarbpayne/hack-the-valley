@@ -134,6 +134,11 @@
           <h2 class="text-xl font-black mt-2">Review helpers</h2>
           <p class="text-slate-400 text-sm mt-2">Volunteer, mentor, judge, sponsor, and organizer leads separate from participant signups.</p>
         </a>
+        <a href="#physical-resources-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
+          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Inventory</div>
+          <h2 class="text-xl font-black mt-2">Physical resources</h2>
+          <p class="text-slate-400 text-sm mt-2">Track equipment, supplies, checkouts, returns, and assignment history for admins only.</p>
+        </a>
         <a href="/projects/" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Public tools</div>
           <h2 class="text-xl font-black mt-2">Project workspace</h2>
@@ -222,6 +227,50 @@
         <div id="helper-interest-list" class="overflow-x-auto text-sm text-slate-300"></div>
       </section>
 
+      <section id="physical-resources-admin" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
+        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-5">
+          <div>
+            <p class="text-bc-cyan uppercase tracking-[0.22em] text-xs font-black">Admin-only inventory</p>
+            <h2 class="text-2xl font-black mt-1">Physical resources</h2>
+            <p id="physical-resources-status" class="text-sm text-slate-400 mt-1">Track assets, photos, ID numbers, who has what, and checkout/return history. No public inventory endpoint is exposed.</p>
+          </div>
+          <button id="load-physical-resources" class="border border-slate-600 px-4 py-2 rounded-lg text-sm hover:border-bc-cyan">Load inventory</button>
+        </div>
+        <div class="grid lg:grid-cols-[0.8fr_1.2fr] gap-5">
+          <form id="physical-resource-form" class="bg-bc-dark border border-slate-700 rounded-2xl p-4 space-y-3">
+            <h3 class="font-black text-lg">Create / update resource</h3>
+            <input name="id" type="hidden">
+            <label class="block"><span class="text-sm font-semibold">Name *</span><input name="name" required class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="Projector, laptop, badge printer…"></label>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <label class="block"><span class="text-sm font-semibold">Category</span><input name="category" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="AV, laptop, supplies"></label>
+              <label class="block"><span class="text-sm font-semibold">Inventory ID</span><input name="inventory_code" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="Auto if blank, e.g. HTV-AV-001"><span class="text-xs text-slate-500">Human-readable number printed on the physical item.</span></label>
+            </div>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <label class="block"><span class="text-sm font-semibold">Asset tag / sticker</span><input name="asset_tag" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="QR sticker, barcode, label"></label>
+              <label class="block"><span class="text-sm font-semibold">Serial number</span><input name="serial_number" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"></label>
+            </div>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <label class="block"><span class="text-sm font-semibold">Location</span><input name="location" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="Storage closet, Mesh…"></label>
+              <label class="block"><span class="text-sm font-semibold">Resource photo</span><input name="photo_file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><span class="text-xs text-slate-500">Uploads after save; admin-only.</span></label>
+            </div>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <label class="block"><span class="text-sm font-semibold">Condition</span><select name="condition" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><option>new</option><option selected>good</option><option>fair</option><option>needs_repair</option><option>unknown</option><option>lost</option><option>retired</option></select></label>
+              <label class="block"><span class="text-sm font-semibold">Status</span><select name="status" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><option selected>available</option><option>checked_out</option><option>maintenance</option><option>lost</option><option>retired</option></select></label>
+            </div>
+            <label class="block"><span class="text-sm font-semibold">Description</span><textarea name="description" rows="2" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"></textarea></label>
+            <label class="block"><span class="text-sm font-semibold">Admin notes</span><textarea name="notes" rows="2" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"></textarea></label>
+            <div class="flex flex-wrap gap-3">
+              <button class="bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-black hover:bg-cyan-400">Save resource</button>
+              <button id="new-physical-resource" type="button" class="border border-slate-600 px-5 py-3 rounded-lg font-bold hover:border-bc-cyan">New blank</button>
+            </div>
+          </form>
+          <div>
+            <div id="physical-resource-list" class="space-y-3 text-sm text-slate-300"></div>
+            <div id="physical-resource-history" class="mt-4 rounded-2xl border border-slate-700 bg-bc-dark p-4 text-sm text-slate-300">Select a resource to inspect checkout history.</div>
+          </div>
+        </div>
+      </section>
+
       <section id="event-checkin" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
@@ -293,6 +342,7 @@
     let currentAdminUser = null;
     let workflowSections = [];
     let selectedWorkflowId = null;
+    let currentPhysicalResources = [];
     let checkinSearchTimer = null;
     $("login-link").href = `/login/?next=${encodeURIComponent("/admin")}`;
 
@@ -354,6 +404,7 @@
         await loadEvents();
         await loadUsers();
         await loadHelperInterests();
+        await loadPhysicalResources();
         if (hasSuperAdminRole(me.roles || [])) await loadAdminRoles();
       }
       return me;
@@ -924,6 +975,179 @@
         </table>`;
     }
 
+    function setPhysicalResourcesStatus(message, error = false) {
+      $("physical-resources-status").className = `text-sm ${error ? "text-red-300" : "text-slate-400"} mt-1`;
+      $("physical-resources-status").textContent = message;
+    }
+
+    async function loadPhysicalResources() {
+      try {
+        setPhysicalResourcesStatus("Loading physical resources…");
+        const data = await api("/api/admin/physical-resources?include_retired=1");
+        currentPhysicalResources = data.resources || [];
+        renderPhysicalResources(currentPhysicalResources);
+        setPhysicalResourcesStatus(`Loaded ${data.count ?? currentPhysicalResources.length} physical resource(s).`);
+        return currentPhysicalResources;
+      } catch (error) {
+        setPhysicalResourcesStatus(error.message, true);
+        return [];
+      }
+    }
+
+    function resourceStatusClass(status) {
+      if (status === "available") return "text-green-300 border-green-500/40 bg-green-500/10";
+      if (status === "checked_out") return "text-amber-200 border-amber-500/40 bg-amber-500/10";
+      if (["lost", "retired"].includes(status)) return "text-red-300 border-red-500/40 bg-red-500/10";
+      return "text-slate-300 border-slate-600 bg-slate-800";
+    }
+
+    function renderPhysicalResources(resources) {
+      const container = $("physical-resource-list");
+      if (!resources.length) {
+        container.innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">No physical resources recorded yet.</div>`;
+        return;
+      }
+      container.innerHTML = resources.map((resource) => {
+        const checkout = resource.currentCheckout;
+        const photoUrl = resource.photoUrl ? `${resource.photoUrl}?v=${encodeURIComponent(resource.photoUploadedAt || resource.updatedAt || "")}` : "";
+        return `
+          <article class="rounded-2xl border border-slate-700 bg-bc-dark p-4 shadow-xl shadow-slate-950/20">
+            <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+              <div class="flex flex-col sm:flex-row gap-4 min-w-0">
+                <div class="w-full sm:w-28 h-28 rounded-2xl border border-slate-700 bg-slate-950 overflow-hidden flex items-center justify-center text-slate-500 shrink-0">
+                  ${photoUrl ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(resource.name || "Physical resource")} photo" class="w-full h-full object-cover">` : `<span class="text-xs uppercase tracking-[0.18em]">No photo</span>`}
+                </div>
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h3 class="text-lg font-black text-white">${escapeHtml(resource.name || "Untitled resource")}</h3>
+                    <span class="rounded-full border px-2 py-0.5 text-xs font-black ${resourceStatusClass(resource.status)}">${escapeHtml(resource.status || "available")}</span>
+                  </div>
+                  <p class="text-bc-cyan font-black mt-1">ID ${escapeHtml(resource.inventoryCode || resource.assetTag || resource.id || "unassigned")}</p>
+                  <p class="text-slate-400 mt-1">${escapeHtml(resource.category || "Uncategorized")}${resource.assetTag ? ` • tag ${escapeHtml(resource.assetTag)}` : ""}${resource.location ? ` • ${escapeHtml(resource.location)}` : ""}</p>
+                  <p class="text-xs text-slate-500 mt-1">Condition: ${escapeHtml(resource.condition || "unknown")}${resource.serialNumber ? ` • Serial ${escapeHtml(resource.serialNumber)}` : ""}</p>
+                  ${checkout ? `<p class="mt-2 text-amber-200">Checked out to ${escapeHtml(checkout.holderDisplayName || checkout.holderName || checkout.holderDisplayEmail || checkout.holderEmail || checkout.holderUserId || "holder")} since ${escapeHtml(checkout.checkedOutAt || "")}${checkout.dueAt ? ` • due ${escapeHtml(checkout.dueAt)}` : ""}</p>` : ""}
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button data-resource-edit="${escapeHtml(resource.id)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">Edit</button>
+                <button data-resource-history="${escapeHtml(resource.id)}" class="border border-slate-600 px-3 py-2 rounded-lg text-sm hover:border-bc-cyan">History</button>
+                ${checkout ? `<button data-resource-return="${escapeHtml(resource.id)}" class="border border-green-500/60 text-green-200 px-3 py-2 rounded-lg text-sm hover:bg-green-500 hover:text-bc-dark">Return</button>` : `<button data-resource-checkout="${escapeHtml(resource.id)}" class="border border-bc-cyan text-bc-cyan px-3 py-2 rounded-lg text-sm hover:bg-bc-cyan hover:text-bc-dark">Check out</button>`}
+                ${resource.status !== "retired" ? `<button data-resource-retire="${escapeHtml(resource.id)}" class="border border-red-500/50 text-red-300 px-3 py-2 rounded-lg text-sm hover:bg-red-500 hover:text-white">Retire</button>` : ""}
+              </div>
+            </div>
+          </article>`;
+      }).join("");
+      container.querySelectorAll("[data-resource-edit]").forEach((button) => button.addEventListener("click", () => fillPhysicalResourceForm(button.dataset.resourceEdit)));
+      container.querySelectorAll("[data-resource-history]").forEach((button) => button.addEventListener("click", () => loadPhysicalResourceHistory(button.dataset.resourceHistory).catch(() => {})));
+      container.querySelectorAll("[data-resource-checkout]").forEach((button) => button.addEventListener("click", () => quickCheckoutResource(button.dataset.resourceCheckout).catch((error) => setPhysicalResourcesStatus(error.message, true))));
+      container.querySelectorAll("[data-resource-return]").forEach((button) => button.addEventListener("click", () => returnResource(button.dataset.resourceReturn).catch((error) => setPhysicalResourcesStatus(error.message, true))));
+      container.querySelectorAll("[data-resource-retire]").forEach((button) => button.addEventListener("click", () => retireResource(button.dataset.resourceRetire).catch((error) => setPhysicalResourcesStatus(error.message, true))));
+    }
+
+    function physicalResourceFormPayload(form) {
+      const data = Object.fromEntries(new FormData(form).entries());
+      delete data.photo_file;
+      for (const key of Object.keys(data)) if (data[key] === "") data[key] = null;
+      return data;
+    }
+
+    function fillPhysicalResourceForm(resourceId) {
+      const resource = currentPhysicalResources.find((item) => item.id === resourceId);
+      if (!resource) return;
+      const form = $("physical-resource-form");
+      form.elements.id.value = resource.id || "";
+      form.elements.name.value = resource.name || "";
+      form.elements.category.value = resource.category || "";
+      form.elements.inventory_code.value = resource.inventoryCode || "";
+      form.elements.asset_tag.value = resource.assetTag || "";
+      form.elements.serial_number.value = resource.serialNumber || "";
+      form.elements.location.value = resource.location || "";
+      form.elements.condition.value = resource.condition || "good";
+      form.elements.status.value = resource.status || "available";
+      form.elements.description.value = resource.description || "";
+      form.elements.notes.value = resource.notes || "";
+      form.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function resetPhysicalResourceForm() {
+      const form = $("physical-resource-form");
+      form.reset();
+      form.elements.id.value = "";
+    }
+
+    async function savePhysicalResource(event) {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const payload = physicalResourceFormPayload(form);
+      const id = payload.id;
+      delete payload.id;
+      try {
+        setPhysicalResourcesStatus(id ? "Updating physical resource…" : "Creating physical resource…");
+        const saved = await api(id ? `/api/admin/physical-resources/${encodeURIComponent(id)}` : "/api/admin/physical-resources", {
+          method: id ? "PATCH" : "POST",
+          body: JSON.stringify(payload)
+        });
+        const savedId = saved.resource?.id || id;
+        const file = form.elements.photo_file?.files?.[0];
+        if (file && savedId) {
+          setPhysicalResourcesStatus("Uploading resource photo…");
+          await uploadPhysicalResourcePhoto(savedId, file);
+        }
+        resetPhysicalResourceForm();
+        await loadPhysicalResources();
+      } catch (error) {
+        setPhysicalResourcesStatus(error.message, true);
+      }
+    }
+
+    async function uploadPhysicalResourcePhoto(resourceId, file) {
+      const url = `/api/admin/physical-resources/${encodeURIComponent(resourceId)}/photo?filename=${encodeURIComponent(file.name || "resource-photo")}`;
+      return await api(url, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream", "x-filename": file.name || "resource-photo" },
+        body: file
+      });
+    }
+
+    async function loadPhysicalResourceHistory(resourceId) {
+      const resource = currentPhysicalResources.find((item) => item.id === resourceId) || {};
+      const data = await api(`/api/admin/physical-resources/${encodeURIComponent(resourceId)}/checkouts`);
+      const checkouts = data.checkouts || [];
+      $("physical-resource-history").innerHTML = `
+        <h3 class="font-black text-lg text-white">${escapeHtml(resource.name || "Resource")} checkout history</h3>
+        ${checkouts.length ? `<div class="mt-3 space-y-2">${checkouts.map((checkout) => `
+          <div class="rounded-xl border border-slate-700 p-3">
+            <div class="font-bold">${escapeHtml(checkout.holderDisplayName || checkout.holderName || checkout.holderDisplayEmail || checkout.holderEmail || checkout.holderUserId || "Unknown holder")}</div>
+            <div class="text-slate-400">Out: ${escapeHtml(checkout.checkedOutAt || "")} ${checkout.returnedAt ? `• Returned: ${escapeHtml(checkout.returnedAt)}` : "• Active"}</div>
+            ${checkout.notes || checkout.returnNotes ? `<div class="text-slate-500 mt-1">${escapeHtml(checkout.notes || "")}${checkout.returnNotes ? ` / ${escapeHtml(checkout.returnNotes)}` : ""}</div>` : ""}
+          </div>`).join("")}</div>` : `<p class="mt-3 text-slate-400">No checkout history yet.</p>`}`;
+      return checkouts;
+    }
+
+    async function quickCheckoutResource(resourceId) {
+      const holder = window.prompt("Who is receiving this resource? Enter a name or email.");
+      if (!holder) return;
+      const payload = holder.includes("@") ? { holder_email: holder } : { holder_name: holder };
+      setPhysicalResourcesStatus("Checking out resource…");
+      await api(`/api/admin/physical-resources/${encodeURIComponent(resourceId)}/checkouts`, { method: "POST", body: JSON.stringify(payload) });
+      await loadPhysicalResources();
+      await loadPhysicalResourceHistory(resourceId).catch(() => {});
+    }
+
+    async function returnResource(resourceId) {
+      setPhysicalResourcesStatus("Returning resource…");
+      await api(`/api/admin/physical-resources/${encodeURIComponent(resourceId)}/checkouts`, { method: "POST", body: JSON.stringify({ action: "return" }) });
+      await loadPhysicalResources();
+      await loadPhysicalResourceHistory(resourceId).catch(() => {});
+    }
+
+    async function retireResource(resourceId) {
+      if (!window.confirm("Retire this resource? Active checkouts must be returned first.")) return;
+      setPhysicalResourcesStatus("Retiring resource…");
+      await api(`/api/admin/physical-resources/${encodeURIComponent(resourceId)}`, { method: "DELETE" });
+      await loadPhysicalResources();
+    }
+
     async function loadAdminRoles() {
       const status = $("role-admin-status");
       try {
@@ -1326,6 +1550,9 @@
     $("load-users").addEventListener("click", () => loadUsers().catch(() => {}));
     $("load-workflows").addEventListener("click", () => loadWorkflows().catch(() => {}));
     $("load-helper-interests").addEventListener("click", () => loadHelperInterests().catch(() => {}));
+    $("load-physical-resources").addEventListener("click", () => loadPhysicalResources().catch(() => {}));
+    $("physical-resource-form").addEventListener("submit", savePhysicalResource);
+    $("new-physical-resource").addEventListener("click", resetPhysicalResourceForm);
     $("load-admin-roles").addEventListener("click", () => loadAdminRoles().catch(() => {}));
     $("admin-role-form").addEventListener("submit", applyAdminRoleChange);
     $("load-events").addEventListener("click", () => loadEvents().catch(() => {}));

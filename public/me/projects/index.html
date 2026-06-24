@@ -59,8 +59,13 @@
           <label class="block"><span class="text-xs font-bold text-slate-300">Description <span class="text-slate-500">optional</span></span><textarea name="description" rows="3" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="What did you build?"></textarea></label>
           <label class="block"><span class="text-xs font-bold text-slate-300">Repository URL <span class="text-slate-500">optional</span></span><input name="repo_url" type="url" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="https://github.com/..."></label>
           <label class="block"><span class="text-xs font-bold text-slate-300">Demo URL <span class="text-slate-500">optional</span></span><input name="demo_url" type="url" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="https://..."></label>
+          <label class="block"><span class="text-xs font-bold text-slate-300">Media link fallback <span class="text-slate-500">optional</span></span><input name="media_link" type="url" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white" placeholder="YouTube, Loom, Drive, Canva, or deployed demo link"></label>
+          <div class="rounded-xl border border-slate-700 bg-bc-dark p-3">
+            <label class="block"><span class="text-xs font-bold text-slate-300">Upload project materials <span class="text-slate-500">optional</span></span><input name="project_uploads" type="file" multiple accept="image/*,video/*,.pdf,.zip" class="mt-2 w-full rounded-lg bg-slate-950 border border-slate-600 px-3 py-2 text-white"></label>
+            <p class="mt-2 text-xs text-slate-500">Add screenshots, demo videos, PDFs, or ZIPs now; they attach after the project is created.</p>
+          </div>
           <button class="w-full bg-bc-cyan text-bc-dark px-4 py-2 rounded-lg font-black hover:bg-cyan-400">Add project</button>
-          <p id="project-create-status" role="status" aria-live="polite" class="text-xs text-slate-400">Creates a project and marks you as owner.</p>
+          <p id="project-create-status" role="status" aria-live="polite" class="text-xs text-slate-400">Creates a project, marks you as owner, and attaches any selected media.</p>
         </form>
       </article>
 
@@ -140,7 +145,7 @@
                 <span class="rounded-full ${project.has_uploads ? "bg-green-400/10 text-green-300" : "bg-slate-700 text-slate-300"} px-2 py-1">${project.has_uploads ? `${project.upload_count} saved upload${project.upload_count === 1 ? "" : "s"}` : "No saved uploads"}</span>
               </div>
             </div>
-            <button type="button" data-toggle-project="${escapeHtml(id)}" class="rounded-lg border border-slate-600 px-3 py-2 text-sm font-bold text-white hover:border-bc-cyan">Edit / upload</button>
+            <button type="button" data-toggle-project="${escapeHtml(id)}" class="rounded-lg border border-slate-600 px-3 py-2 text-sm font-bold text-white hover:border-bc-cyan">Edit</button>
           </div>
           <div id="project-panel-${escapeHtml(id)}" class="hidden border-t border-slate-700 pt-4">
             <form data-project-edit-form data-project-id="${escapeHtml(id)}" class="space-y-3">
@@ -214,7 +219,7 @@
         description: form.elements.description.value.trim(),
         repo_url: form.elements.repo_url.value.trim(),
         demo_url: form.elements.demo_url.value.trim(),
-        mediaLink: form.elements.media_link.value.trim()
+        mediaLink: form.elements.media_link?.value.trim() || ""
       };
     }
 
@@ -225,14 +230,22 @@
     }
 
     async function uploadFile(projectId, file) {
-      const form = document.querySelector(`[data-project-edit-form][data-project-id="${CSS.escape(projectId)}"]`);
-      const title = form?.elements.title.value || "project";
-      const teamName = form?.elements.team_name.value || title;
-      const url = `/api/upload?filename=${encodeURIComponent(file.name)}&kind=${encodeURIComponent(uploadKind(file))}&teamName=${encodeURIComponent(teamName)}&projectTitle=${encodeURIComponent(title)}`;
+      const url = `/api/me/projects/${encodeURIComponent(projectId)}/media?filename=${encodeURIComponent(file.name)}&kind=${encodeURIComponent(uploadKind(file))}&event=${encodeURIComponent(submitEventFor({}))}`;
       const response = await fetch(url, { method: "POST", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Upload failed");
       return data.upload;
+    }
+
+    function createdProjectId(data) {
+      return data.project?.id || data.project?.project_id || data.claimed?.project?.id || data.state?.projects?.[0]?.project_id || data.state?.projects?.[0]?.id || "";
+    }
+
+    async function saveProjectMaterials(projectId, payload, uploads) {
+      return await jsonFetch(`/api/me/projects/${encodeURIComponent(projectId)}/materials`, {
+        method: "POST",
+        body: JSON.stringify({ ...payload, uploads })
+      });
     }
 
     $("project-create-form").addEventListener("submit", async (event) => {
@@ -244,16 +257,28 @@
         team_name: form.elements.team_name.value.trim(),
         description: form.elements.description.value.trim(),
         repo_url: form.elements.repo_url.value.trim(),
-        demo_url: form.elements.demo_url.value.trim()
+        demo_url: form.elements.demo_url.value.trim(),
+        mediaLink: form.elements.media_link.value.trim()
       };
+      const files = [...(form.elements.project_uploads?.files || [])];
       if (eventContext) payload.event_slug = eventContext.slug;
       try {
         status.className = "text-xs text-slate-400";
-        status.textContent = "Saving project…";
+        status.textContent = files.length ? `Saving project and uploading ${files.length} file${files.length === 1 ? "" : "s"}…` : "Saving project…";
         const data = await jsonFetch("/api/me/projects", { method: "POST", body: JSON.stringify(payload) });
-        renderProjects(data.state?.projects || []);
+        let finalData = data;
+        const projectIdValue = createdProjectId(data);
+        if (files.length) {
+          if (!projectIdValue) throw new Error("Project was created, but the upload target was missing. Open the project card and add media there.");
+          const uploaded = [];
+          for (const file of files) uploaded.push(await uploadFile(projectIdValue, file));
+          finalData = await saveProjectMaterials(projectIdValue, payload, uploaded);
+        }
+        renderProjects(finalData.state?.projects || data.state?.projects || []);
         status.className = "text-xs text-green-300";
-        status.textContent = eventContext ? `Added and submitted ${data.project?.title || "project"} to ${eventContext.name}.` : `Added ${data.project?.title || "project"}.`;
+        status.textContent = eventContext
+          ? `Added${files.length ? " with media" : ""} and submitted ${data.project?.title || "project"} to ${eventContext.name}.`
+          : `Added ${data.project?.title || "project"}${files.length ? " with media" : ""}.`;
         form.reset();
       } catch (error) {
         status.className = "text-xs text-red-300";
@@ -277,10 +302,7 @@
         try {
           materialButton.disabled = true;
           setProjectStatus(projectIdValue, "text-xs text-slate-400", "Saving materials…");
-          const data = await jsonFetch(`/api/me/projects/${encodeURIComponent(projectIdValue)}/materials`, {
-            method: "POST",
-            body: JSON.stringify({ ...payloadFromForm(form), uploads })
-          });
+          const data = await saveProjectMaterials(projectIdValue, payloadFromForm(form), uploads);
           pendingUploads.delete(projectIdValue);
           renderProjects(data.state?.projects || []);
         } catch (error) {

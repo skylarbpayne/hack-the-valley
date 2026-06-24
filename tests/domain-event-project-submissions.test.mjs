@@ -284,7 +284,7 @@ test("listPublicProjects hides rejected or hidden event submissions but not the 
   assert.equal(allPublic[1].demo_url, null);
   const publicListSql = db.statements.at(-2).sql;
   assert.match(publicListSql, /eps.status NOT IN \('hidden', 'rejected'\)/);
-  assert.match(publicListSql, /eps2.status NOT IN \('hidden', 'rejected'\)/);
+  assert.match(publicListSql, /eps2.status IN \('showcased', 'winner'\)/);
   assert.doesNotMatch(db.statements.at(-1).sql, /eps\.event_slug = \?/);
   const withHidden = await listPublicProjects(db, { eventSlug: "hack-the-valley-2026", includeHidden: true });
   assert.deepEqual(withHidden.map((row) => row.title), ["Show Project", "Hidden Project", "Rejected Project"]);

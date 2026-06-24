@@ -136,6 +136,11 @@ function matchApiRoute(pathname) {
     return { routeModule: meProjects, params: { projectId: decodeURIComponent(meProjectMaterialsMatch[1]), action: 'materials' } };
   }
 
+  const meProjectMediaMatch = pathname.match(/^\/api\/me\/projects\/([^/]+)\/media\/?$/);
+  if (meProjectMediaMatch) {
+    return { routeModule: meProjects, params: { projectId: decodeURIComponent(meProjectMediaMatch[1]), action: 'media' } };
+  }
+
   const meProjectSubmissionMatch = pathname.match(/^\/api\/me\/projects\/([^/]+)\/submissions\/?$/);
   if (meProjectSubmissionMatch) {
     return { routeModule: meProjects, params: { projectId: decodeURIComponent(meProjectSubmissionMatch[1]), action: 'submissions' } };

@@ -93,6 +93,8 @@ function runMigrations(options) {
       }
     }
 
+    verifyDataIntegrityFixtures(wranglerBin, options, persistTo);
+
     console.log(`D1 migration smoke check applied ${migrations.length} migrations successfully.`);
   } finally {
     if (createdTempDir && !options.keepPersist) {
@@ -119,7 +121,8 @@ function compatibilityFixtureSql() {
     ["prj_decode_it", "decode-it", "Decode It"],
     ["prj_valley_sat_prep", "valley-sat-prep", "Valley SAT Prep"],
     ["prj_techpath_kern", "techpath-kern", "TechPath Kern"],
-    ["prj_continuum", "continuum", "Continuum"]
+    ["prj_continuum", "continuum", "Continuum"],
+    ["prj_fixture_uncanonical", "fixture-uncanonical", "Fixture Uncanonical Project"]
   ];
   const projectValues = awardedProjects
     .map(([id, slug, title]) => `('${id}', '${slug}', '${title}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`)
@@ -132,7 +135,82 @@ function compatibilityFixtureSql() {
     INSERT OR IGNORE INTO projects (id, slug, title, created_at, updated_at)
     VALUES
       ${projectValues};
+
+    INSERT OR IGNORE INTO submissions (id, created_at, team_name, project_title, contact_email, track, payload_json, uploads_json, status)
+    VALUES
+      ('htv_fixture_decode_it', CURRENT_TIMESTAMP, 'Decode It', 'Decode It', 'decode-it@example.com', 'education', '{}', '[]', 'submitted'),
+      ('htv_fixture_uncanonical', CURRENT_TIMESTAMP, 'Fixture Team', 'Fixture Uncanonical Project', 'fixture@example.com', 'community', '{}', '[]', 'submitted');
+
+    INSERT OR IGNORE INTO event_project_submissions (
+      id, event_slug, event_instance_id, project_id, submission_id, status, source, created_at, updated_at
+    ) VALUES
+      ('eps_fixture_decode_it', 'hack-the-valley-2026', NULL, 'prj_decode_it', 'htv_fixture_decode_it', 'submitted', 'compatibility_fixture', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+      ('eps_fixture_uncanonical', 'hack-the-valley-2026', NULL, 'prj_fixture_uncanonical', 'htv_fixture_uncanonical', 'submitted', 'compatibility_fixture', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
   `;
+}
+
+function verifyDataIntegrityFixtures(wranglerBin, options, persistTo) {
+  const checks = [
+    [
+      "archived HTV 2026 instance backfilled",
+      "SELECT COUNT(*) AS count FROM event_instances WHERE id = 'inst_hack_the_valley_2026' AND event_slug = 'hack-the-valley-2026' AND status = 'archived'"
+    ],
+    [
+      "HTV 2026 project links point at the archived instance",
+      "SELECT COUNT(*) AS count FROM event_project_submissions WHERE event_slug = 'hack-the-valley-2026' AND event_instance_id IS NULL"
+    ],
+    [
+      "linked legacy submissions have canonical projects when possible",
+      `SELECT COUNT(*) AS count
+       FROM projects p
+       WHERE p.canonical_submission_id IS NULL
+         AND EXISTS (
+           SELECT 1 FROM event_project_submissions eps
+           WHERE eps.project_id = p.id AND eps.submission_id IS NOT NULL
+         )`
+    ]
+  ];
+
+  for (const [label, sql] of checks) {
+    const [{ results }] = runWranglerJson(wranglerBin, options, persistTo, ["--command", sql], label);
+    const count = Number(results?.[0]?.count ?? 0);
+    if (label === "archived HTV 2026 instance backfilled") {
+      if (count !== 1) throw new Error(`${label}: expected 1, got ${count}`);
+    } else if (count !== 0) {
+      throw new Error(`${label}: expected 0, got ${count}`);
+    }
+  }
+  console.log("✓ data integrity backfill fixtures");
+}
+
+function runWranglerJson(wranglerBin, options, persistTo, executionArgs, label) {
+  const result = spawnSync(wranglerBin, [
+    "d1",
+    "execute",
+    options.database,
+    "--local",
+    "--persist-to",
+    persistTo,
+    "--json",
+    ...executionArgs
+  ], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      CI: process.env.CI || "1",
+      NO_COLOR: process.env.NO_COLOR || "1",
+      HTV_D1_DATABASE_ID: process.env.HTV_D1_DATABASE_ID || "00000000-0000-0000-0000-000000000000"
+    },
+    encoding: "utf8"
+  });
+
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+    throw new Error(`wrangler failed while checking ${label}`);
+  }
+  return JSON.parse(result.stdout);
 }
 
 function runWrangler(wranglerBin, options, persistTo, executionArgs, label) {

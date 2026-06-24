@@ -2218,6 +2218,7 @@ export function renderEventPageHtml(event) {
       <h2>Save your spot</h2>
       <p class="signup-help">Emergency contact is for event safety only — not profile enrichment.</p>
       <p id="signed-in-signup-note" class="signed-in-signup-note" hidden></p>
+      <div id="signup-profile-completion" class="profile-completion-prompt" hidden></div>
       ${roleField}
       <label data-profile-signup-field>Name <input name="name" autocomplete="name"></label>
       <label data-profile-signup-field>Email <input name="email" type="email" required autocomplete="email"></label>
@@ -2230,16 +2231,41 @@ export function renderEventPageHtml(event) {
     <script>
       const signupForm = document.getElementById("signup-form");
       let signedInUser = null;
+      let signedInSafetyReadiness = null;
+      function profileUpdateUrl() {
+        return "/me/?next=" + encodeURIComponent(window.location.pathname + "#signup");
+      }
+      function signedInNeedsSafetyUpdate() {
+        return Boolean(signedInUser && signedInSafetyReadiness && signedInSafetyReadiness.ready === false);
+      }
+      function safetyCompletionText() {
+        return "Your saved profile is missing emergency contact details. You can save your spot here, but organizers need that safety info before check-in. ";
+      }
+      function renderSafetyCompletionPrompt() {
+        const prompt = document.getElementById("signup-profile-completion");
+        if (!signedInNeedsSafetyUpdate()) {
+          prompt.hidden = true;
+          prompt.replaceChildren();
+          return;
+        }
+        const link = document.createElement("a");
+        link.href = profileUpdateUrl();
+        link.textContent = "Update your profile";
+        prompt.hidden = false;
+        prompt.replaceChildren(document.createTextNode(safetyCompletionText()), link, document.createTextNode("."));
+      }
       async function applySignedInSignupMode() {
         try {
           const response = await fetch("/api/me", { headers: { Accept: "application/json" } });
           if (!response.ok) return;
           const data = await response.json();
           signedInUser = data.user || null;
+          signedInSafetyReadiness = data.person_safety_readiness || data.user?.safety_readiness || null;
           if (!signedInUser) return;
           const note = document.getElementById("signed-in-signup-note");
           note.hidden = false;
-          note.textContent = "You're signed in as " + (signedInUser.name || signedInUser.email) + ". This signup only needs your event choice.";
+          note.textContent = "You're signed in as " + (signedInUser.name || signedInUser.email) + ". " + (signedInNeedsSafetyUpdate() ? "Your saved profile details stay hidden here; add emergency contact info from your profile before the event." : "This signup only needs your event choice.");
+          renderSafetyCompletionPrompt();
           signupForm.querySelectorAll("[data-profile-signup-field], [data-email-list-field]").forEach((field) => {
             field.hidden = true;
             field.querySelectorAll("input, textarea, select").forEach((input) => {
@@ -2287,7 +2313,20 @@ export function renderEventPageHtml(event) {
           }
           form.reset();
           button.textContent = "You're signed up";
-          message.textContent = "You're on the list. Emergency contact saved. Check-in QR/token support is coming; organizers can check you in by search today.";
+          if (signedInUser && (data.profile_completion?.required || data.readiness?.ready === false || signedInNeedsSafetyUpdate())) {
+            const link = document.createElement("a");
+            link.href = data.profile_completion?.url || profileUpdateUrl();
+            link.textContent = "update your emergency contact";
+            message.replaceChildren(
+              document.createTextNode("You're on the list. Your event choice was saved. Please "),
+              link,
+              document.createTextNode(" before check-in.")
+            );
+          } else {
+            message.textContent = signedInUser
+              ? "You're on the list. Your event choice was saved from your signed-in account."
+              : "You're on the list. Emergency contact saved. Check-in QR/token support is coming; organizers can check you in by search today.";
+          }
         } catch (error) {
           button.disabled = false;
           message.textContent = error.message;
@@ -2303,7 +2342,7 @@ export function renderEventPageHtml(event) {
   <title>${title} — Hack the Valley</title>
   <meta name="description" content="${description}">
   <style>
-    body{margin:0;background:#0f172a;color:#f8fafc;font-family:Inter,ui-sans-serif,system-ui,sans-serif}a{color:#67e8f9}.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 72px}.nav{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;margin-bottom:48px}.brand{font-weight:900;text-decoration:none;color:#fff}.participant-nav{display:flex;flex-wrap:wrap;gap:8px;font-size:.9rem;font-weight:800}.participant-nav a{border-radius:999px;padding:8px 12px;text-decoration:none;color:#cbd5e1}.participant-nav a:hover{background:#1e293b;color:#67e8f9}.participant-nav a[aria-current="page"]{background:rgba(103,232,249,.14);box-shadow:inset 0 0 0 1px rgba(103,232,249,.36);color:#67e8f9}.hero{display:grid;gap:28px}.kicker{text-transform:uppercase;letter-spacing:.24em;color:#67e8f9;font-weight:800;font-size:.8rem}h1{font-size:clamp(2.5rem,7vw,5.5rem);line-height:.92;margin:.25em 0}.lede{font-size:1.25rem;color:#cbd5e1;max-width:760px}.event-hero-image{width:100%;max-height:760px;object-fit:contain;background:#020617;border-radius:28px;border:1px solid #334155}.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:28px 0}.meta div,.content,.signup-card{background:#111827;border:1px solid #334155;border-radius:22px;padding:22px}.content{font-size:1.08rem;line-height:1.7;color:#dbeafe}.content p{margin:0 0 1em}.signup-card{margin-top:28px;max-width:680px}.signup-card label{display:block;margin:14px 0;color:#cbd5e1}.signup-card input,.signup-card textarea{box-sizing:border-box;width:100%;margin-top:6px;border-radius:12px;border:1px solid #475569;background:#020617;color:#fff;padding:12px}.signup-role-field{border:1px solid #334155;border-radius:16px;padding:14px;margin:14px 0}.signup-role-field legend{font-weight:900;color:#f8fafc}.role-option{display:flex!important;gap:10px;align-items:flex-start;border:1px solid #334155;border-radius:12px;padding:12px}.role-option input{width:auto;margin-top:3px}.role-option strong{display:block;color:#fff}.role-option small{display:block;color:#94a3b8;margin-top:4px}.checkbox{display:flex!important;gap:10px;align-items:flex-start}.checkbox input{width:auto;margin-top:3px}.signed-in-signup-note{border:1px solid rgba(103,232,249,.35);background:rgba(103,232,249,.12);color:#cffafe;border-radius:14px;padding:12px 14px}button{border:0;border-radius:999px;padding:13px 22px;background:#67e8f9;color:#020617;font-weight:900;cursor:pointer}button:disabled{opacity:.6;cursor:not-allowed}#form-message{color:#cbd5e1}.signup-help{color:#94a3b8;margin-top:0}
+    body{margin:0;background:#0f172a;color:#f8fafc;font-family:Inter,ui-sans-serif,system-ui,sans-serif}[hidden]{display:none!important}a{color:#67e8f9}.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 72px}.nav{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;margin-bottom:48px}.brand{font-weight:900;text-decoration:none;color:#fff}.participant-nav{display:flex;flex-wrap:wrap;gap:8px;font-size:.9rem;font-weight:800}.participant-nav a{border-radius:999px;padding:8px 12px;text-decoration:none;color:#cbd5e1}.participant-nav a:hover{background:#1e293b;color:#67e8f9}.participant-nav a[aria-current="page"]{background:rgba(103,232,249,.14);box-shadow:inset 0 0 0 1px rgba(103,232,249,.36);color:#67e8f9}.hero{display:grid;gap:28px}.kicker{text-transform:uppercase;letter-spacing:.24em;color:#67e8f9;font-weight:800;font-size:.8rem}h1{font-size:clamp(2.5rem,7vw,5.5rem);line-height:.92;margin:.25em 0}.lede{font-size:1.25rem;color:#cbd5e1;max-width:760px}.event-hero-image{width:100%;max-height:760px;object-fit:contain;background:#020617;border-radius:28px;border:1px solid #334155}.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:28px 0}.meta div,.content,.signup-card{background:#111827;border:1px solid #334155;border-radius:22px;padding:22px}.content{font-size:1.08rem;line-height:1.7;color:#dbeafe}.content p{margin:0 0 1em}.signup-card{margin-top:28px;max-width:680px}.signup-card label{display:block;margin:14px 0;color:#cbd5e1}.signed-in-signup-note{border:1px solid rgba(103,232,249,.36);background:rgba(103,232,249,.1);border-radius:14px;padding:12px;color:#cffafe}.profile-completion-prompt{border:1px solid rgba(251,191,36,.45);background:rgba(251,191,36,.1);border-radius:14px;padding:12px;color:#fde68a}.signup-card input,.signup-card textarea{box-sizing:border-box;width:100%;margin-top:6px;border-radius:12px;border:1px solid #475569;background:#020617;color:#fff;padding:12px}.signup-role-field{border:1px solid #334155;border-radius:16px;padding:14px;margin:14px 0}.signup-role-field legend{font-weight:900;color:#f8fafc}.role-option{display:flex!important;gap:10px;align-items:flex-start;border:1px solid #334155;border-radius:12px;padding:12px}.role-option input{width:auto;margin-top:3px}.role-option strong{display:block;color:#fff}.role-option small{display:block;color:#94a3b8;margin-top:4px}.checkbox{display:flex!important;gap:10px;align-items:flex-start}.checkbox input{width:auto;margin-top:3px}.signed-in-signup-note{border:1px solid rgba(103,232,249,.35);background:rgba(103,232,249,.12);color:#cffafe;border-radius:14px;padding:12px 14px}button{border:0;border-radius:999px;padding:13px 22px;background:#67e8f9;color:#020617;font-weight:900;cursor:pointer}button:disabled{opacity:.6;cursor:not-allowed}#form-message{color:#cbd5e1}.signup-help{color:#94a3b8;margin-top:0}[hidden]{display:none!important}
   </style>
 </head>
 <body data-event-detail-page="${slug}">

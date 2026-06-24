@@ -84,6 +84,7 @@
 
           <form id="signup-form" class="grid sm:grid-cols-2 gap-4">
             <p id="signed-in-signup-note" class="hidden sm:col-span-2 rounded-2xl border border-bc-cyan/40 bg-bc-cyan/10 px-4 py-3 text-sm text-cyan-100"></p>
+            <div id="signup-profile-completion" class="hidden sm:col-span-2 rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-100"></div>
             <div id="signup-role-field" class="hidden sm:col-span-2"></div>
             <label class="block sm:col-span-2" data-profile-signup-field>
               <span class="text-sm font-semibold text-slate-200">Full name *</span>
@@ -250,15 +251,38 @@
         .join("");
     }
 
+    function signupProfileUpdateUrl() {
+      const next = `${window.location.pathname}#signup`;
+      return `/me/?next=${encodeURIComponent(next)}`;
+    }
+
+    function currentSafetyReadiness() {
+      return state.currentUser?.safety_readiness || state.personSafetyReadiness || null;
+    }
+
+    function signedInNeedsSafetyUpdate() {
+      const readiness = currentSafetyReadiness();
+      return Boolean(state.currentUser && readiness && readiness.ready === false);
+    }
+
+    function safetyCompletionPromptHtml() {
+      return `Your saved profile is missing emergency contact details. You can save your spot here, but organizers need that safety info before check-in. <a href="${escapeHtml(signupProfileUpdateUrl())}" class="font-bold underline text-amber-50">Update your profile</a>.`;
+    }
+
     function updateSignedInSignupMode() {
       const signedIn = Boolean(state.currentUser);
       const note = $("signed-in-signup-note");
+      const completion = $("signup-profile-completion");
+      const needsSafety = signedInNeedsSafetyUpdate();
       note.classList.toggle("hidden", !signedIn);
       note.textContent = signedIn
-        ? `You're signed in as ${state.currentUser.name || state.currentUser.email}. This signup only needs your event choice.`
+        ? `You're signed in as ${state.currentUser.name || state.currentUser.email}. ${needsSafety ? "Your saved profile details stay hidden here; add emergency contact info from your profile before the event." : "This signup only needs your event choice."}`
         : "";
+      completion.classList.toggle("hidden", !needsSafety);
+      completion.innerHTML = needsSafety ? safetyCompletionPromptHtml() : "";
       document.querySelectorAll("[data-profile-signup-field], [data-email-list-field]").forEach((field) => {
         field.hidden = signedIn;
+        field.classList.toggle("hidden", signedIn);
         field.querySelectorAll("input, textarea, select").forEach((input) => {
           if (signedIn) {
             if (input.required) input.dataset.wasRequired = "1";
@@ -373,6 +397,7 @@
         if (!response.ok) return;
         const data = await response.json();
         state.currentUser = data.user || null;
+        state.personSafetyReadiness = data.person_safety_readiness || data.user?.safety_readiness || null;
         updateSignedInSignupMode();
       } catch (_) {}
     }
@@ -434,9 +459,13 @@
         state.completedSignups.add(state.selected.slug);
         button.textContent = "You're signed up";
         button.disabled = true;
-        message.textContent = state.currentUser
-          ? "You're on the list. Your event choice was saved from your signed-in account."
-          : "You're on the list. Emergency contact saved. Organizers can check you in by search when you arrive.";
+        if (state.currentUser && (data.profile_completion?.required || data.readiness?.ready === false || signedInNeedsSafetyUpdate())) {
+          message.innerHTML = `You're on the list. Your event choice was saved. Please <a href="${escapeHtml(data.profile_completion?.url || signupProfileUpdateUrl())}" class="text-bc-cyan font-bold underline">update your emergency contact</a> before check-in.`;
+        } else {
+          message.textContent = state.currentUser
+            ? "You're on the list. Your event choice was saved from your signed-in account."
+            : "You're on the list. Emergency contact saved. Organizers can check you in by search when you arrive.";
+        }
       } catch (error) {
         button.disabled = false;
         message.textContent = error.message;

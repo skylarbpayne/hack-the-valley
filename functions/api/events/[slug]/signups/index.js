@@ -45,11 +45,20 @@ export async function onRequestPost(context) {
     const participation = registration.input;
     const savedSignup = registration.signup;
 
+    const needsProfileCompletion = Boolean(registration.readiness && registration.readiness.ready === false);
+    const profileCompletionUrl = `/me/?next=${encodeURIComponent(`/events/${encodeURIComponent(event.slug)}#signup`)}`;
+
     return jsonResponse({
       success: true,
       message: "Signup received",
       event: { slug: event.slug, title: event.title },
       readiness: registration.readiness,
+      profile_completion: needsProfileCompletion ? {
+        required: true,
+        code: "missing_safety_contact",
+        url: profileCompletionUrl,
+        message: "Add emergency contact details to your profile before event check-in."
+      } : { required: false },
       signup: {
         id: savedSignup.id,
         event_instance_id: savedSignup.event_instance_id,

@@ -31,6 +31,77 @@ function auditFiltersFromUrl(url) {
 }
 
 async function listAuditEvents(db, filters) {
+  try {
+    const result = await db.prepare(`
+      SELECT
+        id,
+        action,
+        actor_user_id,
+        target_user_id,
+        target_email,
+        role,
+        target_type,
+        target_id,
+        scope_type,
+        scope_id,
+        metadata_json,
+        created_at
+      FROM (
+        SELECT
+          id,
+          action,
+          actor_user_id,
+          NULL AS target_user_id,
+          NULL AS target_email,
+          NULL AS role,
+          target_type,
+          target_id,
+          scope_type,
+          scope_id,
+          metadata_json,
+          created_at
+        FROM audit_events
+        UNION ALL
+        SELECT
+          legacy.id,
+          legacy.action,
+          legacy.actor_user_id,
+          legacy.target_user_id,
+          legacy.target_email,
+          legacy.role,
+          NULL AS target_type,
+          NULL AS target_id,
+          legacy.scope_type,
+          legacy.scope_id,
+          legacy.metadata_json,
+          legacy.created_at
+        FROM admin_audit_events legacy
+        WHERE NOT EXISTS (SELECT 1 FROM audit_events generic_event WHERE generic_event.id = legacy.id)
+      ) combined_audit_events
+      WHERE (? IS NULL OR action = ?)
+        AND (? IS NULL OR scope_type = ?)
+        AND (? IS NULL OR target_user_id = ? OR (target_type = 'user' AND target_id = ?))
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).bind(
+      filters.action,
+      filters.action,
+      filters.scopeType,
+      filters.scopeType,
+      filters.targetUserId,
+      filters.targetUserId,
+      filters.targetUserId,
+      filters.limit
+    ).all();
+
+    return (result.results || []).map(toAuditEvent);
+  } catch (error) {
+    if (!isMissingAuditEventsTableError(error)) throw error;
+    return await listLegacyAdminAuditEvents(db, filters);
+  }
+}
+
+async function listLegacyAdminAuditEvents(db, filters) {
   const result = await db.prepare(`
     SELECT
       id,
@@ -60,6 +131,11 @@ async function listAuditEvents(db, filters) {
   ).all();
 
   return (result.results || []).map(toAuditEvent);
+}
+
+function isMissingAuditEventsTableError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("no such table") && message.includes("audit_events");
 }
 
 async function requireSessionAdmin(request, env) {

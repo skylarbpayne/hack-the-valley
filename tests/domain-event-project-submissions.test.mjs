@@ -7,6 +7,7 @@ import {
   listOrganizerEventProjectSubmissions,
   listPublicProjects,
   setEventProjectSubmissionStatus,
+  updateEventProjectSubmissionStatus,
   submitEventInstanceProjectSubmission,
   submitOwnedProjectToEvent,
   submitProjectToEvent
@@ -75,15 +76,31 @@ function createSubmissionDomainDb() {
             const [eventSlug, projectId] = this.args;
             return [...submissions.values()].find((row) => row.event_slug === eventSlug && row.project_id === projectId) || null;
           }
+          if (/FROM event_project_submissions eps\s+JOIN projects p/.test(sql) && /eps.event_slug = \? AND eps.event_instance_id = \? AND eps.project_id = \?/.test(sql)) {
+            const [eventSlug, eventInstanceId, projectId] = this.args;
+            const row = [...submissions.values()].find((item) => item.event_slug === eventSlug && item.event_instance_id === eventInstanceId && item.project_id === projectId);
+            return row ? { ...row, title: projects.get(projectId)?.title || "Show Project", team_name: projects.get(projectId)?.team_name || "Show Team" } : null;
+          }
           if (/FROM event_project_submissions eps\s+JOIN projects p/.test(sql) && /WHERE eps.id = \?/.test(sql)) {
-            const row = submissions.get(this.args[0]);
-            return row ? { ...row, title: "Show Project", team_name: "Show Team" } : null;
+            const [id, eventSlug, projectId] = this.args;
+            const row = submissions.get(id);
+            if (!row) return null;
+            if (/eps\.event_slug = \?/.test(sql) && row.event_slug !== eventSlug) return null;
+            if (/eps\.project_id = \?/.test(sql) && row.project_id !== projectId) return null;
+            return { ...row, title: "Show Project", team_name: "Show Team" };
           }
           if (/SELECT \* FROM projects WHERE slug/.test(sql)) return [...projects.values()].find((project) => project.slug === this.args[0]) || null;
           if (/SELECT \* FROM projects WHERE id/.test(sql)) return projects.get(this.args[0]) || null;
           throw new Error(`Unexpected first query: ${sql}`);
         },
         async all() {
+          if (/FROM event_project_submissions eps\s+JOIN projects p/.test(sql) && /ORDER BY eps\.created_at DESC/.test(sql)) {
+            const [eventSlug, projectId] = this.args;
+            return { results: [...submissions.values()]
+              .filter((row) => row.event_slug === eventSlug && row.project_id === projectId)
+              .slice(0, 2)
+              .map((row) => ({ ...row, title: "Show Project", team_name: "Show Team" })) };
+          }
           if (/FROM event_project_submissions eps\s+JOIN projects p/.test(sql) && /s.id AS submission_id/.test(sql) && /ORDER BY lower\(p.title\)/.test(sql)) {
             return { results: [{
               event_project_submission_id: "eps_show",
@@ -163,6 +180,40 @@ test("setEventProjectSubmissionStatus updates showcase status without editing th
     () => setEventProjectSubmissionStatus(db, { submissionId: submission.id, status: "deleted" }),
     /Unsupported project submission status/
   );
+});
+
+test("updateEventProjectSubmissionStatus scopes project status changes to one event instance", async () => {
+  const db = createSubmissionDomainDb();
+  const first = await submitProjectToEvent(db, { projectId: "prj_show", eventSlug: "hack-the-valley-2026", eventInstanceId: "inst_htv_2026_week_1" });
+  const second = await submitProjectToEvent(db, { projectId: "prj_show", eventSlug: "hack-the-valley-2026", eventInstanceId: "inst_htv_2026_week_2" });
+
+  const hidden = await updateEventProjectSubmissionStatus(db, {
+    eventSlug: "hack-the-valley-2026",
+    eventInstanceId: "inst_htv_2026_week_2",
+    projectId: "prj_show",
+    status: "hidden",
+    actor: "usr_admin"
+  });
+
+  assert.equal(hidden.id, second.id);
+  assert.equal(db.submissions.get(first.id).status, "submitted");
+  assert.equal(db.submissions.get(second.id).status, "hidden");
+  await assert.rejects(
+    () => updateEventProjectSubmissionStatus(db, { eventSlug: "hack-the-valley-2026", projectId: "prj_show", status: "hidden" }),
+    /eventInstanceId or eventProjectSubmissionId is required/
+  );
+
+  const uniqueDb = createSubmissionDomainDb();
+  const only = await submitProjectToEvent(uniqueDb, { projectId: "prj_show", eventSlug: "hack-the-valley-2026", eventInstanceId: "inst_htv_2026_week_1" });
+  const legacyHidden = await updateEventProjectSubmissionStatus(uniqueDb, { eventSlug: "hack-the-valley-2026", projectId: "prj_show", status: "hidden" });
+  assert.equal(legacyHidden.id, only.id);
+  assert.equal(uniqueDb.submissions.get(only.id).status, "hidden");
+
+  await assert.rejects(
+    () => updateEventProjectSubmissionStatus(db, { eventSlug: "hack-the-valley-2026", projectId: "prj_other", submissionId: second.id, status: "hidden" }),
+    /Event project submission not found/
+  );
+  assert.equal(db.submissions.get(second.id).status, "hidden");
 });
 
 test("listEventProjectSubmissions returns event rows without private contact fields", async () => {

@@ -966,7 +966,7 @@ test("manual attendee check-in can create/signup/check in through Participation 
   assert.match(participationSource, /eventInstanceId/);
 });
 
-test("admin check-in route reuses selected existing users without emergency contact or body identity overrides", async () => {
+test("admin check-in route blocks selected existing users without emergency contact readiness", async () => {
   const db = participationRouteDb({ currentUser: { id: "usr_admin", email: "admin@example.com", name: "Admin User", metadata_json: null } });
   const response = await postEventCheckin({
     request: new Request("https://hackthevalley.org/api/events/demo-hours/checkins?instance_id=inst_demo_current", {
@@ -984,20 +984,15 @@ test("admin check-in route reuses selected existing users without emergency cont
     params: { slug: "demo-hours" }
   });
 
-  assert.equal(response.status, 201);
+  assert.equal(response.status, 400);
   const body = await response.json();
-  assert.equal(body.signup.user_id, "usr_existing");
-  assert.equal(body.signup.email, "selected@example.com");
-  assert.equal(body.signup.name, "Selected User");
-  assert.equal(body.signup.event_instance_id, "inst_demo_selected");
-  assert.equal(body.instance.id, "inst_demo_selected");
+  assert.match(body.error, /Emergency contact is required before check-in/);
   assert.equal(db.signups.length, 1);
   assert.equal(db.signups[0].user_id, "usr_existing");
   assert.equal(db.signups[0].event_instance_id, "inst_demo_selected");
+  assert.equal(db.signups[0].email, undefined);
   assert.equal(db.emergencyContacts.length, 0);
-  const checkedInEvent = db.participantEvents.find((event) => event.event_type === "checked_in" && event.event_instance_id === "inst_demo_selected");
-  assert.ok(checkedInEvent);
-  assert.equal(checkedInEvent.actor, "usr_admin");
+  assert.equal(db.participantEvents.some((event) => event.event_type === "checked_in"), false);
 });
 
 test("admin portal exposes event check-in search and manual walk-up form", () => {

@@ -39,8 +39,9 @@
           <p class="text-slate-400 text-sm mt-2">Admin-only soft cleanup. This changes the event submission status; it does not delete project, user, upload, or submission records.</p>
         </div>
       </div>
-      <form id="cleanup-form" class="grid lg:grid-cols-[1fr_1.4fr_.8fr_auto] gap-3 mt-4">
+      <form id="cleanup-form" class="grid lg:grid-cols-[1fr_1fr_1.4fr_.8fr_auto] gap-3 mt-4">
         <label class="block"><span class="text-xs font-bold text-slate-300">Event</span><input name="event_slug" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-3" value="hack-the-valley-2026"></label>
+        <label class="block"><span class="text-xs font-bold text-slate-300">Instance ID</span><input name="event_instance_id" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-3" placeholder="optional; auto-filled from list"></label>
         <label class="block"><span class="text-xs font-bold text-slate-300">Project ID</span><input name="project_id" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-3" placeholder="prj_palmer_smoke_test_delete_me_..."></label>
         <label class="block"><span class="text-xs font-bold text-slate-300">Status</span><select name="status" class="mt-1 w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-3"><option value="hidden">hidden</option><option value="submitted">submitted</option><option value="accepted">accepted</option><option value="showcased">showcased</option><option value="winner">winner</option><option value="rejected">rejected</option></select></label>
         <button class="self-end rounded-xl bg-amber-300 text-slate-950 font-black px-6 py-3">Apply</button>

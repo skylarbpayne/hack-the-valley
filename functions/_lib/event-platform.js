@@ -222,7 +222,7 @@ export async function requireAdmin(request, env, scope = {}) {
 }
 
 export async function requireOrganizerAccess(request, env, scope = {}) {
-  return await requireRoleAccess(request, env, ["super_admin", "admin"], scope);
+  return await requireRoleAccess(request, env, ["super_admin", "admin", "organizer"], scope);
 }
 
 export async function requireSuperAdminAccess(request, env, scope = {}) {
@@ -589,8 +589,8 @@ export async function submitOwnedProjectToEvent(db, userId, projectId, input = {
   return await domainSubmitOwnedProjectToEvent(db, userId, projectId, input);
 }
 
-export async function updateEventProjectSubmissionStatus(db, { eventSlug, projectId, status = "hidden" } = {}) {
-  return await domainUpdateEventProjectSubmissionStatus(db, { eventSlug, projectId, status });
+export async function updateEventProjectSubmissionStatus(db, { eventSlug, eventInstanceId = null, projectId, submissionId = null, status = "hidden", actor = null, now = new Date().toISOString() } = {}) {
+  return await domainUpdateEventProjectSubmissionStatus(db, { eventSlug, eventInstanceId, projectId, submissionId, status, actor, now });
 }
 
 export async function linkProjectSubmission(db, { eventSlug, eventInstanceId = null, projectId, submissionId = null, status = "submitted", source = "submission_portal" } = {}) {
@@ -870,6 +870,14 @@ function randomDigits(length = 6) {
   return [...array].map((value) => String(value % 10)).join("");
 }
 
+function loginCodeDevMode(env = {}) {
+  return env.HTV_AUTH_DEV_CODES === "1" && env.HTV_AUTH_DEV_MODE === "local";
+}
+
+function generatedLoginCode() {
+  return randomDigits(6);
+}
+
 function randomToken(prefix = "htvs") {
   const raw = new Uint8Array(24);
   globalThis.crypto.getRandomValues(raw);
@@ -984,14 +992,8 @@ async function sendLoginCodeWithResend({ email, name, code, magicLoginUrl, expir
 export async function requestLoginCode(db, input = {}, env = {}, fetcher = fetch) {
   const email = normalizeEmail(input.email);
   if (!EMAIL_RE.test(email)) throw Object.assign(new Error("valid email is required"), { status: 400 });
-  const user = await upsertUser(db, {
-    email,
-    name: input.name,
-    first_name: input.first_name,
-    last_name: input.last_name,
-    phone: input.phone
-  });
-  const code = input.code && /^\d{6}$/.test(String(input.code)) ? String(input.code) : randomDigits(6);
+  const user = await ensureLoginBootstrapUser(db, email);
+  const code = generatedLoginCode();
   const now = new Date();
   const createdAt = now.toISOString();
   const expiresAt = addMinutes(now, Number(env.HTV_AUTH_CODE_TTL_MINUTES || 15));
@@ -1005,7 +1007,7 @@ export async function requestLoginCode(db, input = {}, env = {}, fetcher = fetch
       id, user_id, email, code_hash, magic_token_hash, purpose, created_at, expires_at, consumed_at, attempt_count
     ) VALUES (?, ?, ?, ?, ?, 'login', ?, ?, NULL, 0)
   `).bind(id, user.id, email, codeHash, magicTokenHash, createdAt, expiresAt).run();
-  const delivery = await sendLoginCodeWithResend({ email, name: user.name || input.name, code, magicLoginUrl, expiresAt, env, fetcher });
+  const delivery = await sendLoginCodeWithResend({ email, name: user.name || email, code, magicLoginUrl, expiresAt, env, fetcher });
   const response = {
     ok: true,
     user_id: user.id,
@@ -1014,8 +1016,21 @@ export async function requestLoginCode(db, input = {}, env = {}, fetcher = fetch
     expires_at: expiresAt
   };
   if (delivery?.id) response.resend_email_id = delivery.id;
-  if (env.HTV_AUTH_DEV_CODES === "1") response.dev_code = code;
+  if (loginCodeDevMode(env)) response.dev_code = code;
   return response;
+}
+
+async function ensureLoginBootstrapUser(db, email) {
+  const existing = await db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first();
+  if (existing) return existing;
+  const now = new Date().toISOString();
+  const id = generateId("usr");
+  await db.prepare(`
+    INSERT INTO users (
+      id, email, name, first_name, last_name, phone, school, metadata_json, created_at, updated_at
+    ) VALUES (?, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
+  `).bind(id, email, now, now).run();
+  return await db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first() || { id, email, created_at: now, updated_at: now };
 }
 
 export async function verifyLoginCode(db, input = {}, env = {}) {
@@ -1944,11 +1959,13 @@ export async function checkInAttendee(db, event, input, { eventInstance = null, 
     });
   }
 
-  if (!existingUser) {
-    const emergency = await getEmergencyContactStatus(db, resolvedInstance.id, savedSignup.user_id);
-    if (!emergency.present) {
-      throw Object.assign(new Error("Emergency contact is required before check-in."), { status: 409, code: "missing_emergency_contact" });
-    }
+  const readiness = await resolveParticipationReadiness(db, { personId: savedSignup.user_id, eventInstanceId: resolvedInstance.id });
+  if (!readiness.ready) {
+    throw Object.assign(new Error("Emergency contact is required before check-in."), {
+      status: 400,
+      code: "missing_emergency_contact",
+      errors: readiness.missing_safety_fields || []
+    });
   }
 
   const checkin = await checkInParticipant(db, {

@@ -40,7 +40,7 @@ const root = new URL("../", import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), "utf8");
 const adminHeaders = (extra = {}) => ({ cookie: "htv_session=test-session", ...extra });
 
-function withAdminRoleDb(db, { role = "admin" } = {}) {
+function withAdminRoleDb(db, { role = "admin", scope_type = "global", scope_id = "*" } = {}) {
   return {
     prepare(sql) {
       if (/FROM user_sessions/.test(sql)) {
@@ -57,9 +57,9 @@ function withAdminRoleDb(db, { role = "admin" } = {}) {
         return {
           bind(...args) { this.args = args; return this; },
           async first() {
-            return role && this.args.includes(role) ? { role, scope_type: "global", scope_id: "*", created_at: "2026-01-01T00:00:00.000Z" } : null;
+            return role && this.args.includes(role) ? { role, scope_type, scope_id, created_at: "2026-01-01T00:00:00.000Z" } : null;
           },
-          async all() { return { results: role ? [{ role, scope_type: "global", scope_id: "*", created_at: "2026-01-01T00:00:00.000Z" }] : [] }; },
+          async all() { return { results: role ? [{ role, scope_type, scope_id, created_at: "2026-01-01T00:00:00.000Z" }] : [] }; },
           async run() { return { success: true }; }
         };
       }
@@ -280,12 +280,12 @@ test("admin cleanup can hide or restore an event-linked project without deleting
       return statement;
     }
   };
-  const hidden = await updateEventProjectSubmissionStatus(db, { eventSlug: "hack-the-valley-2026", projectId: "prj_smoke", status: "hidden" });
+  const hidden = await updateEventProjectSubmissionStatus(db, { eventSlug: "hack-the-valley-2026", eventInstanceId: "inst_2026", projectId: "prj_smoke", status: "hidden" });
   assert.equal(hidden.status, "hidden");
   assert.match(statements.map((s) => s.sql).join("\n"), /UPDATE event_project_submissions/);
-  assert.ok(statements.some((s) => s.args.includes("hidden") && s.args.includes("prj_smoke")));
+  assert.ok(statements.some((s) => s.args.includes("hack-the-valley-2026") && s.args.includes("inst_2026") && s.args.includes("prj_smoke")));
   await assert.rejects(
-    () => updateEventProjectSubmissionStatus(db, { eventSlug: "hack-the-valley-2026", projectId: "prj_smoke", status: "delete" }),
+    () => updateEventProjectSubmissionStatus(db, { eventSlug: "hack-the-valley-2026", eventInstanceId: "inst_2026", projectId: "prj_smoke", status: "delete" }),
     /Unsupported project submission status/
   );
 });
@@ -626,7 +626,7 @@ test("passwordless login creates a code, verifies it, and resolves current user 
     }
   };
 
-  const request = await requestLoginCode(db, { email: "MAYA@example.com", name: "Maya R." }, { HTV_AUTH_DEV_CODES: "1" });
+  const request = await requestLoginCode(db, { email: "MAYA@example.com", name: "Maya R." }, { HTV_AUTH_DEV_CODES: "1", HTV_AUTH_DEV_MODE: "local" });
   assert.equal(request.ok, true);
   assert.equal(request.email, "maya@example.com");
   assert.match(request.dev_code, /^\d{6}$/);
@@ -706,12 +706,15 @@ test("passwordless login sends one-time codes through Resend when configured", a
   const request = await requestLoginCode(db, { email: "maya@example.com", name: "Maya R.", code: "123456" }, {
     RESEND_API_KEY: "test_resend_key",
     HTV_LOGIN_FROM_EMAIL: "Hack the Valley <updates@hackthevalley.org>",
-    HTV_PUBLIC_BASE_URL: "https://hackthevalley.org"
+    HTV_PUBLIC_BASE_URL: "https://hackthevalley.org",
+    HTV_AUTH_DEV_CODES: "1",
+    HTV_AUTH_DEV_MODE: "local"
   }, fetcher);
 
   assert.equal(request.delivery, "email_sent");
   assert.equal(request.resend_email_id, "email_123");
-  assert.equal(request.dev_code, undefined);
+  assert.match(request.dev_code, /^\d{6}$/);
+  assert.notEqual(request.dev_code, "123456");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, "https://api.resend.com/emails");
   assert.equal(calls[0].options.method, "POST");
@@ -721,9 +724,73 @@ test("passwordless login sends one-time codes through Resend when configured", a
   assert.match(calls[0].body.subject, /login code/i);
   assert.match(calls[0].body.text, /https:\/\/hackthevalley\.org\/api\/auth\/magic-login\?token=htvl_/);
   assert.match(calls[0].body.html, /href="https:\/\/hackthevalley\.org\/api\/auth\/magic-login\?token=htvl_/);
-  assert.match(calls[0].body.text, /123456/);
-  assert.match(calls[0].body.html, /123456/);
+  assert.match(calls[0].body.text, new RegExp(request.dev_code));
+  assert.match(calls[0].body.html, new RegExp(request.dev_code));
+  assert.doesNotMatch(calls[0].body.text, /123456/);
+  assert.doesNotMatch(calls[0].body.html, /123456/);
   assert.equal(request.magic_login_url, undefined);
+});
+
+test("login-code request ignores caller-chosen code and does not mutate existing profile fields", async () => {
+  const statements = [];
+  const user = { id: "usr_existing", email: "maya@example.com", name: "Maya Existing", first_name: "Maya", last_name: "Existing", phone: "661-555-0000" };
+  let storedLoginCode = null;
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async first() {
+          if (/FROM users WHERE email/.test(sql)) return user;
+          if (/FROM auth_login_codes/.test(sql)) {
+            const [userId, codeHash, nowIso] = this.args;
+            return storedLoginCode && storedLoginCode.user_id === userId && storedLoginCode.code_hash === codeHash && storedLoginCode.expires_at > nowIso
+              ? storedLoginCode
+              : null;
+          }
+          return null;
+        },
+        async run() {
+          if (/INSERT INTO auth_login_codes/.test(sql)) {
+            storedLoginCode = {
+              id: this.args[0],
+              user_id: this.args[1],
+              email: this.args[2],
+              code_hash: this.args[3],
+              magic_token_hash: this.args[4],
+              created_at: this.args[5],
+              expires_at: this.args[6],
+              consumed_at: null
+            };
+          }
+          return { success: true };
+        },
+        async all() { return { results: [] }; }
+      };
+      return statement;
+    }
+  };
+
+  const request = await requestLoginCode(db, {
+    email: "maya@example.com",
+    code: "123456",
+    name: "Attacker Name",
+    first_name: "Attacker",
+    last_name: "Override",
+    phone: "000-000-0000"
+  }, { HTV_AUTH_DEV_CODES: "1", HTV_AUTH_DEV_MODE: "local" }, async () => { throw new Error("email disabled in this test"); });
+
+  assert.match(request.dev_code, /^\d{6}$/);
+  assert.notEqual(request.dev_code, "123456");
+  assert.equal(storedLoginCode.email, "maya@example.com");
+  assert.equal(statements.some((statement) => /UPDATE users|INSERT INTO users/.test(statement.sql)), false);
+  assert.equal(user.name, "Maya Existing");
+  await assert.rejects(
+    () => verifyLoginCode(db, { email: "maya@example.com", code: "123456" }, {}),
+    /Invalid or expired login code/
+  );
+  assert.equal(storedLoginCode.consumed_at, null);
 });
 
 test("worker exposes passwordless auth request, verify, and /api/me", async () => {
@@ -751,7 +818,7 @@ test("worker exposes passwordless auth request, verify, and /api/me", async () =
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: "maya@example.com", name: "Maya R." })
-  }), { HTV_DB: fakeDb, HTV_AUTH_DEV_CODES: "1" }, {});
+  }), { HTV_DB: fakeDb, HTV_AUTH_DEV_CODES: "1", HTV_AUTH_DEV_MODE: "local" }, {});
   assert.equal(requestResponse.status, 200);
   const requested = await requestResponse.json();
   assert.match(requested.dev_code, /^\d{6}$/);
@@ -1154,8 +1221,10 @@ test("rendered public RSVP collects emergency contact and excludes school notes 
 test("organizer access helpers require session roles and separate super admin", async () => {
   const baseDb = { prepare() { throw new Error("base DB should not be queried by auth helper test"); } };
   const request = new Request("https://hackthevalley.org/admin", { headers: adminHeaders() });
-  const organizer = await requireOrganizerAccess(request, { HTV_DB: withAdminRoleDb(baseDb, { role: "admin" }) });
-  assert.equal(organizer.role.role, "admin");
+  const adminOrganizer = await requireOrganizerAccess(request, { HTV_DB: withAdminRoleDb(baseDb, { role: "admin" }) });
+  assert.equal(adminOrganizer.role.role, "admin");
+  const eventOrganizer = await requireOrganizerAccess(request, { HTV_DB: withAdminRoleDb(baseDb, { role: "organizer", scope_type: "event", scope_id: "hack-the-valley-2026" }) }, { scopeType: "event", scopeId: "hack-the-valley-2026" });
+  assert.equal(eventOrganizer.role.role, "organizer");
   const superAdmin = await requireSuperAdminAccess(request, { HTV_DB: withAdminRoleDb(baseDb, { role: "super_admin" }) });
   assert.equal(superAdmin.role.role, "super_admin");
   await assert.rejects(
@@ -1292,7 +1361,7 @@ test("worker routes admin soft-cleanup for event-linked projects", async () => {
         bind(...args) { this.args = args; statements.push(this); return this; },
         async run() { return { success: true }; },
         async first() {
-          if (/FROM event_project_submissions eps/.test(sql)) return { event_slug: "hack-the-valley-2026", project_id: "prj_smoke", status: "submitted", title: "Smoke" };
+          if (/FROM event_project_submissions eps/.test(sql)) return { id: "eps_smoke_inst_2026", event_slug: "hack-the-valley-2026", event_instance_id: "inst_2026", project_id: "prj_smoke", status: "submitted", title: "Smoke" };
           return null;
         },
         async all() { return { results: [] }; }
@@ -1306,11 +1375,12 @@ test("worker routes admin soft-cleanup for event-linked projects", async () => {
   assert.match(options.headers.get("access-control-allow-methods") || "", /PATCH/);
   const unauthorized = await worker.fetch(new Request(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "hidden" }) }), { HTV_DB: fakeDb, SUBMISSIONS_ADMIN_TOKEN: "secret" }, {});
   assert.equal(unauthorized.status, 401);
-  const hidden = await worker.fetch(new Request(url, { method: "PATCH", headers: { "x-admin-token": "secret", "Content-Type": "application/json" }, body: JSON.stringify({ status: "hidden" }) }), { HTV_DB: fakeDb, SUBMISSIONS_ADMIN_TOKEN: "secret" }, {});
+  const hidden = await worker.fetch(new Request(url, { method: "PATCH", headers: adminHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ status: "hidden", event_instance_id: "inst_2026" }) }), { HTV_DB: withAdminRoleDb(fakeDb), SUBMISSIONS_ADMIN_TOKEN: "secret" }, {});
   assert.equal(hidden.status, 200);
   const body = await hidden.json();
   assert.equal(body.project.status, "hidden");
-  assert.ok(statements.some((s) => s.args.includes("hidden") && s.args.includes("prj_smoke")));
+  assert.ok(statements.some((s) => s.args.includes("hidden") && s.args.includes("eps_smoke_inst_2026")));
+  assert.ok(statements.some((s) => /INSERT INTO audit_events/.test(s.sql) && s.args.includes("usr_admin")));
   const list = await worker.fetch(new Request("https://hackthevalley.org/api/events/hack-the-valley-2026/projects", { headers: { "x-admin-token": "secret" } }), { HTV_DB: fakeDb, SUBMISSIONS_ADMIN_TOKEN: "secret" }, {});
   assert.equal(list.status, 200);
   assert.equal((await list.json()).count, 0);
@@ -1571,7 +1641,7 @@ test("worker routes cockpit API and requires admin", async () => {
   assert.equal(body.instance.id, "inst_123");
 });
 
-test("check-in allows existing users without emergency contact and keeps manual walk-up contact gate", async () => {
+test("check-in blocks existing users without emergency contact and keeps manual walk-up contact gate", async () => {
   const sqls = [];
   const db = {
     prepare(sql) {
@@ -1589,14 +1659,16 @@ test("check-in allows existing users without emergency contact and keeps manual 
     }
   };
 
-  const result = await checkInAttendee(
-    db,
-    { slug: "hack-hours", title: "Hack Hours" },
-    { user_id: "usr_maya" },
-    { eventInstance: { id: "inst_hack_hours_20260620", event_slug: "hack-hours" } }
+  await assert.rejects(
+    () => checkInAttendee(
+      db,
+      { slug: "hack-hours", title: "Hack Hours" },
+      { user_id: "usr_maya" },
+      { eventInstance: { id: "inst_hack_hours_20260620", event_slug: "hack-hours" } }
+    ),
+    (error) => error.status === 400 && error.code === "missing_emergency_contact"
   );
-  assert.equal(result.signup.user_id, "usr_maya");
-  assert.doesNotMatch(sqls.join("\n"), /FROM emergency_contacts/);
+  assert.match(sqls.join("\n"), /FROM emergency_contacts/);
 
   await assert.rejects(
     () => checkInAttendee(db, { slug: "hack-hours", title: "Hack Hours" }, { name: "New Person", email: "new@example.com" }, { eventInstance: { id: "inst_hack_hours_20260620", event_slug: "hack-hours" } }),

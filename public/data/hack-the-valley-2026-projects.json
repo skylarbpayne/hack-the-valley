@@ -58,6 +58,16 @@
       ]
     },
     {
+      "slug": "continuum",
+      "title": "Continuum",
+      "team": "Continuum",
+      "tracks": [
+        "AI"
+      ],
+      "description": "Best AI winning project at Hack the Valley 2026.",
+      "links": []
+    },
+    {
       "slug": "decode-it",
       "title": "decode it",
       "team": "aiden michael sawyer preston",
@@ -204,15 +214,11 @@
       ]
     }
   ],
-  "withheldCount": 4,
+  "withheldCount": 3,
   "withheldReasons": [
     {
       "title": "RateMyRunner",
       "reason": "duplicate/admin-editor URL"
-    },
-    {
-      "title": "Continuum",
-      "reason": "needs organizer cleanup before public display"
     },
     {
       "title": "Test Title",

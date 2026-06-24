@@ -31,9 +31,11 @@ function cleanupEventSlug() {
   return cleanupForm.elements.event_slug.value.trim() || 'hack-the-valley-2026';
 }
 
-function fillCleanupProject(projectId, status = 'hidden') {
+function fillCleanupProject(projectId, status = 'hidden', eventProjectSubmissionId = '', eventInstanceId = '') {
   cleanupForm.elements.project_id.value = projectId;
   cleanupForm.elements.status.value = status;
+  cleanupForm.elements.event_instance_id.value = eventInstanceId || '';
+  cleanupForm.dataset.eventProjectSubmissionId = eventProjectSubmissionId || '';
   cleanupStatus.textContent = `Ready to set ${projectId} to ${status}.`;
 }
 
@@ -46,11 +48,11 @@ function renderEventProjects(projects = []) {
     <div class="rounded-xl border border-slate-700 bg-slate-950/50 p-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
       <div>
         <div class="font-bold text-white">${escapeHtml(project.title || project.project_id)}</div>
-        <div class="font-mono text-xs text-slate-500">${escapeHtml(project.project_id)} · ${escapeHtml(project.status || 'submitted')} ${project.submission_id ? `· ${escapeHtml(project.submission_id)}` : ''}</div>
+        <div class="font-mono text-xs text-slate-500">${escapeHtml(project.project_id)} · ${escapeHtml(project.status || 'submitted')} ${project.event_instance_id ? `· ${escapeHtml(project.event_instance_id)}` : ''} ${project.event_project_submission_id ? `· ${escapeHtml(project.event_project_submission_id)}` : ''}</div>
       </div>
       <div class="flex gap-2">
-        <button type="button" data-cleanup-fill="${escapeHtml(project.project_id)}" data-cleanup-status="hidden" class="rounded-lg bg-amber-300 text-slate-950 px-3 py-2 font-bold">Hide</button>
-        <button type="button" data-cleanup-fill="${escapeHtml(project.project_id)}" data-cleanup-status="submitted" class="rounded-lg border border-slate-600 px-3 py-2 font-bold text-slate-200">Restore</button>
+        <button type="button" data-cleanup-fill="${escapeHtml(project.project_id)}" data-cleanup-submission-id="${escapeHtml(project.event_project_submission_id || '')}" data-cleanup-instance-id="${escapeHtml(project.event_instance_id || '')}" data-cleanup-status="hidden" class="rounded-lg bg-amber-300 text-slate-950 px-3 py-2 font-bold">Hide</button>
+        <button type="button" data-cleanup-fill="${escapeHtml(project.project_id)}" data-cleanup-submission-id="${escapeHtml(project.event_project_submission_id || '')}" data-cleanup-instance-id="${escapeHtml(project.event_instance_id || '')}" data-cleanup-status="submitted" class="rounded-lg border border-slate-600 px-3 py-2 font-bold text-slate-200">Restore</button>
       </div>
     </div>
   `).join('');
@@ -191,7 +193,12 @@ loadEventProjectsButton.addEventListener('click', async () => {
 eventProjectCleanupList.addEventListener('click', (event) => {
   const button = event.target.closest('[data-cleanup-fill]');
   if (!button) return;
-  fillCleanupProject(button.dataset.cleanupFill, button.dataset.cleanupStatus || 'hidden');
+  fillCleanupProject(
+    button.dataset.cleanupFill,
+    button.dataset.cleanupStatus || 'hidden',
+    button.dataset.cleanupSubmissionId || '',
+    button.dataset.cleanupInstanceId || ''
+  );
 });
 
 cleanupForm.addEventListener('submit', async (event) => {
@@ -204,6 +211,8 @@ cleanupForm.addEventListener('submit', async (event) => {
   const eventSlug = cleanupEventSlug();
   const projectId = form.elements.project_id.value.trim();
   const status = form.elements.status.value.trim();
+  const eventInstanceId = form.elements.event_instance_id.value.trim();
+  const eventProjectSubmissionId = form.dataset.eventProjectSubmissionId || '';
   if (!eventSlug || !projectId) {
     cleanupStatus.textContent = 'Event and project ID are required.';
     return;
@@ -213,7 +222,11 @@ cleanupForm.addEventListener('submit', async (event) => {
     const response = await fetch(apiUrl(`/api/events/${encodeURIComponent(eventSlug)}/projects/${encodeURIComponent(projectId)}`), {
       method: 'PATCH',
       headers: { 'content-type': 'application/json', 'x-admin-token': token() },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({
+        status,
+        ...(eventInstanceId ? { event_instance_id: eventInstanceId } : {}),
+        ...(eventProjectSubmissionId ? { event_project_submission_id: eventProjectSubmissionId } : {})
+      }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);

@@ -818,15 +818,26 @@ test("admin page lists event instances as flat rows without dropdowns", () => {
   assert.doesNotMatch(html, /signup\.notes/);
 });
 
-test("public event signup form skips profile fields for signed-in users", () => {
+test("public event signup form skips profile fields for signed-in users and keeps anonymous form fields", () => {
   const html = readFileSync(new URL("../public/events/index.html", import.meta.url), "utf8");
+  assert.match(html, /name="name"/);
+  assert.match(html, /name="email" type="email" required/);
   assert.match(html, /name="emergency_contact_name"/);
   assert.match(html, /name="emergency_contact_phone"/);
+  assert.match(html, /id="signup-profile-completion"/);
   assert.match(html, /data-profile-signup-field/);
   assert.match(html, /data-email-list-field/);
   assert.match(html, /fetch\("\/api\/me"/);
   assert.match(html, /state\.currentUser/);
+  assert.match(html, /data\.person_safety_readiness \|\| data\.user\?\.safety_readiness/);
+  assert.match(html, /signedInNeedsSafetyUpdate/);
+  assert.match(html, /field\.hidden = signedIn/);
+  assert.match(html, /field\.classList\.toggle\("hidden", signedIn\)/);
+  assert.match(html, /input\.disabled = true/);
+  assert.match(html, /signup-role-field/);
   assert.match(html, /payload\.signed_in_signup = true/);
+  assert.match(html, /data\.profile_completion\?\.required/);
+  assert.match(html, /update your emergency contact/);
   assert.match(html, /data\.code === "existing_account"/);
   assert.match(html, /data-existing-account-login/);
   assert.match(html, /Sign in with a magic link/);
@@ -853,8 +864,16 @@ test("rendered event detail page shows venue name and address and supports signe
   assert.match(html, /Mesh Cowork • 2020 Eye street/);
   assert.match(html, /data-profile-signup-field/);
   assert.match(html, /data-email-list-field/);
+  assert.match(html, /id="signup-profile-completion"/);
   assert.match(html, /fetch\("\/api\/me"/);
+  assert.match(html, /signedInSafetyReadiness/);
+  assert.match(html, /signedInNeedsSafetyUpdate/);
+  assert.match(html, /\[hidden\]\{display:none!important\}/);
+  assert.match(html, /field\.hidden = true/);
+  assert.match(html, /input\.disabled = true/);
   assert.match(html, /body\.signed_in_signup = true/);
+  assert.match(html, /data\.profile_completion\?\.required/);
+  assert.match(html, /update your emergency contact/);
   assert.match(html, /data\.code === "existing_account"/);
   assert.match(html, /existingAccountLogin/);
   assert.match(html, /Sign in with a magic link/);
@@ -898,6 +917,10 @@ test("signed-in event signup route uses session identity through Participation a
   assert.equal(body.signup.event_instance_id, "inst_demo_current");
   assert.equal(body.signup.signup_role, "demo");
   assert.equal(body.signup.emergency_contact_present, false);
+  assert.equal(body.readiness.ready, false);
+  assert.equal(body.profile_completion.required, true);
+  assert.equal(body.profile_completion.code, "missing_safety_contact");
+  assert.equal(body.profile_completion.url, "/me/?next=%2Fevents%2Fdemo-hours%23signup");
   assert.equal(db.signups.length, 1);
   assert.equal(db.signups[0].user_id, "usr_session");
   assert.match(db.signups[0].metadata_json, /"signup_role":"demo"/);
@@ -957,6 +980,7 @@ test("anonymous event signup creates a new account once and stores event-specifi
   assert.equal(response.status, 201);
   const body = await response.json();
   assert.equal(body.signup.email, "new.builder@example.com");
+  assert.equal(body.profile_completion.required, false);
   assert.equal(db.signups.length, 1);
   assert.equal(db.signups[0].user_id, body.signup.user_id);
   const metadata = JSON.parse(db.signups[0].metadata_json);

@@ -129,6 +129,12 @@ test("participant projects workspace lets signed-in users create, edit, upload, 
   assert.match(html, /name="title"/);
   assert.match(html, /name="repo_url"/);
   assert.match(html, /name="demo_url"/);
+  assert.match(html, /name="media_link"/);
+  assert.match(html, /name="project_uploads"/);
+  assert.match(html, /createdProjectId\(data\)/);
+  assert.match(html, /saveProjectMaterials\(projectIdValue, payload, uploaded\)/);
+  assert.match(html, /Edit<\/button>/);
+  assert.doesNotMatch(html, /Edit \/ upload/);
   assert.match(html, /\/api\/me\/projects/);
   assert.doesNotMatch(html, /\/api\/upload/);
   assert.match(html, /fetch\("\/api\/me"/);

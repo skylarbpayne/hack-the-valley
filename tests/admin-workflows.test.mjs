@@ -82,6 +82,35 @@ test("admin HTML declares the non-editorial workflow command surface and loads /
   assert.doesNotMatch(workflowHtml, /blog|campaign|email blast/i);
 });
 
+test("admin HTML exposes sectioned IA and keeps sensitive access separate", () => {
+  const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
+  assert.match(html, /id="admin-section-nav"/);
+  for (const section of ["dashboard", "live-ops", "events", "people", "resources", "access"]) {
+    assert.match(html, new RegExp(`data-admin-nav="${section}"`));
+  }
+  for (const section of ["dashboard", "live-ops", "events", "people", "resources", "access"]) {
+    assert.match(html, new RegExp(`data-admin-section="${section}"`));
+  }
+  assert.match(html, /function showAdminSection/);
+  assert.match(html, /ADMIN_SECTION_TARGETS/);
+  assert.match(html, /adminSectionFromHash/);
+  assert.match(html, /Sensitive access changes are isolated from normal event work/);
+
+  for (const id of [
+    "event-cockpit",
+    "events-admin",
+    "event-form",
+    "event-signups",
+    "event-checkin",
+    "users-admin",
+    "helper-interest-admin",
+    "physical-resources-admin",
+    "role-admin"
+  ]) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+});
+
 test("workflow endpoint requires an admin session role", async () => {
   const noSession = await getWorkflows({
     request: adminRequest("/api/admin/workflows", {}),

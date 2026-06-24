@@ -36,12 +36,23 @@
         <div>
           <a href="/events" class="text-bc-cyan text-sm">← Public events</a>
           <h1 class="text-4xl font-black mt-2">Hack the Valley Admin</h1>
-          <p class="text-slate-400 mt-2 max-w-2xl">One admin page for event ops and organizer tools. Admin actions require your signed-in session to have an active <code>admin</code> or <code>super_admin</code> role.</p>
+          <p class="text-slate-400 mt-2 max-w-2xl">A sectioned admin console for live ops, event setup, participants, resources, and access control. Admin actions require your signed-in session to have an active <code>admin</code> or <code>super_admin</code> role.</p>
         </div>
         <button id="logout" class="border border-slate-600 px-4 py-2 rounded-lg text-sm hover:border-bc-cyan">Sign in as another account</button>
       </div>
 
-      <section id="event-cockpit" class="bg-bc-navy border-2 border-bc-cyan/60 rounded-3xl p-6 mb-8 shadow-2xl shadow-cyan-950/20">
+      <nav id="admin-section-nav" aria-label="Admin sections" class="sticky top-3 z-20 mb-8 rounded-3xl border border-slate-700 bg-slate-950/90 p-3 shadow-2xl shadow-slate-950/30 backdrop-blur">
+        <div class="grid sm:grid-cols-2 lg:grid-cols-6 gap-2 text-sm font-black">
+          <button type="button" data-admin-nav="dashboard" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Dashboard</button>
+          <button type="button" data-admin-nav="live-ops" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Live ops</button>
+          <button type="button" data-admin-nav="events" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Events</button>
+          <button type="button" data-admin-nav="people" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">People</button>
+          <button type="button" data-admin-nav="resources" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Resources</button>
+          <button id="access-admin-nav" type="button" data-admin-nav="access" class="hidden rounded-2xl border border-violet-500/50 px-4 py-3 text-left text-violet-200 hover:border-violet-300">Access</button>
+        </div>
+      </nav>
+
+      <section id="event-cockpit" data-admin-section="live-ops" class="hidden bg-bc-navy border-2 border-bc-cyan/60 rounded-3xl p-6 mb-8 shadow-2xl shadow-cyan-950/20">
         <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
           <div>
             <p class="text-bc-cyan uppercase tracking-[0.22em] text-xs font-black">Organizer cockpit</p>
@@ -108,45 +119,45 @@
         </div>
       </section>
 
-      <section class="grid md:grid-cols-6 gap-4 mb-8">
-        <a href="#events-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
+      <section id="admin-dashboard" data-admin-section="dashboard" class="grid md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+        <a href="#event-cockpit" data-admin-nav="live-ops" class="block bg-bc-navy border border-bc-cyan/60 rounded-2xl p-5 hover:border-bc-cyan transition">
+          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Live ops</div>
+          <h2 class="text-xl font-black mt-2">Run the room</h2>
+          <p class="text-slate-400 text-sm mt-2">Cockpit, roster, check-in, emergency contacts, event photos, and follow-up packet.</p>
+        </a>
+        <a href="#events-admin" data-admin-nav="events" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Events</div>
-          <h2 class="text-xl font-black mt-2">Create / update event</h2>
-          <p class="text-slate-400 text-sm mt-2">Open/close signups, set event photos, add page copy, and export registrants.</p>
+          <h2 class="text-xl font-black mt-2">Plan events</h2>
+          <p class="text-slate-400 text-sm mt-2">Create/update events, page copy, signup config, images, instances, and exports.</p>
         </a>
-        <a href="#users-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
+        <a href="#users-admin" data-admin-nav="people" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">People</div>
-          <h2 class="text-xl font-black mt-2">Users</h2>
-          <p class="text-slate-400 text-sm mt-2">See imported Resend contacts and users created by event signups.</p>
-        </a>
-        <a id="super-admin-card" href="#role-admin" class="hidden bg-bc-navy border border-violet-500/60 rounded-2xl p-5 hover:border-violet-300 transition">
-          <div class="text-xs uppercase tracking-[0.2em] text-violet-300 font-semibold">Super admin</div>
-          <h2 class="text-xl font-black mt-2">Role grants</h2>
-          <p class="text-slate-400 text-sm mt-2">Grant or revoke global admin access. Skylar-only trust root.</p>
+          <h2 class="text-xl font-black mt-2">Participants + helpers</h2>
+          <p class="text-slate-400 text-sm mt-2">Review users, registrations, event signups, helper interest, volunteers, mentors, judges, and sponsors.</p>
         </a>
         <a href="/admin-submissions" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
-          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Project submissions</div>
-          <h2 class="text-xl font-black mt-2">Review submitted projects</h2>
+          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Projects</div>
+          <h2 class="text-xl font-black mt-2">Review submissions</h2>
           <p class="text-slate-400 text-sm mt-2">Jump to the private submissions table and media review tools.</p>
         </a>
-        <a href="#helper-interest-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
-          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Helper interest</div>
-          <h2 class="text-xl font-black mt-2">Review helpers</h2>
-          <p class="text-slate-400 text-sm mt-2">Volunteer, mentor, judge, sponsor, and organizer leads separate from participant signups.</p>
+        <a href="#physical-resources-admin" data-admin-nav="resources" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
+          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Resources</div>
+          <h2 class="text-xl font-black mt-2">Physical inventory</h2>
+          <p class="text-slate-400 text-sm mt-2">Track equipment, supplies, checkouts, returns, photos, and assignment history.</p>
         </a>
-        <a href="#physical-resources-admin" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
-          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Inventory</div>
-          <h2 class="text-xl font-black mt-2">Physical resources</h2>
-          <p class="text-slate-400 text-sm mt-2">Track equipment, supplies, checkouts, returns, and assignment history for admins only.</p>
+        <a id="super-admin-card" href="#role-admin" data-admin-nav="access" class="hidden bg-bc-navy border border-violet-500/60 rounded-2xl p-5 hover:border-violet-300 transition">
+          <div class="text-xs uppercase tracking-[0.2em] text-violet-300 font-semibold">Sensitive access</div>
+          <h2 class="text-xl font-black mt-2">Role grants</h2>
+          <p class="text-slate-400 text-sm mt-2">Grant or revoke global admin access. Isolated from normal event operations on purpose.</p>
         </a>
         <a href="/projects/" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Public tools</div>
           <h2 class="text-xl font-black mt-2">Project workspace</h2>
-          <p class="text-slate-400 text-sm mt-2">Open the participant-facing projects and upload page.</p>
+          <p class="text-slate-400 text-sm mt-2">Open the participant-facing project directory and upload page.</p>
         </a>
       </section>
 
-      <section id="workflow-command-surface" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mb-8">
+      <section id="workflow-command-surface" data-admin-section="dashboard" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mb-8">
         <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-5">
           <div>
             <p class="text-bc-cyan uppercase tracking-[0.22em] text-xs font-black">Workflow map</p>
@@ -162,14 +173,14 @@
         </div>
       </section>
 
-      <section id="events-admin" class="bg-bc-navy border border-slate-700 rounded-2xl p-5 mb-8">
+      <section id="events-admin" data-admin-section="events" class="hidden bg-bc-navy border border-slate-700 rounded-2xl p-5 mb-8">
         <div class="flex flex-wrap gap-3 items-center">
           <button id="load-events" class="bg-bc-cyan text-bc-dark px-5 py-2.5 rounded-lg font-bold hover:bg-cyan-400">Load events</button>
           <p id="status" class="text-sm text-slate-300"></p>
         </div>
       </section>
 
-      <section class="grid lg:grid-cols-[1fr_1.2fr] gap-8">
+      <section id="events-workspace" data-admin-section="events" class="hidden grid lg:grid-cols-[1fr_1.2fr] gap-8">
         <form id="event-form" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 space-y-4">
           <h2 class="text-2xl font-black">Create / update event</h2>
           <label class="block"><span class="text-sm font-semibold">Title *</span><input name="title" required class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></label>
@@ -206,7 +217,7 @@
         </section>
       </section>
 
-      <section id="event-signups" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
+      <section id="event-signups" data-admin-section="people" class="hidden bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
             <h2 class="text-2xl font-black">Event signups</h2>
@@ -216,7 +227,7 @@
         <div id="event-signups-list" class="overflow-x-auto text-sm text-slate-300"></div>
       </section>
 
-      <section id="helper-interest-admin" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
+      <section id="helper-interest-admin" data-admin-section="people" class="hidden bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
             <h2 class="text-2xl font-black">Helper interest</h2>
@@ -227,7 +238,7 @@
         <div id="helper-interest-list" class="overflow-x-auto text-sm text-slate-300"></div>
       </section>
 
-      <section id="physical-resources-admin" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
+      <section id="physical-resources-admin" data-admin-section="resources" class="hidden bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
         <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-5">
           <div>
             <p class="text-bc-cyan uppercase tracking-[0.22em] text-xs font-black">Admin-only inventory</p>
@@ -271,7 +282,7 @@
         </div>
       </section>
 
-      <section id="event-checkin" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
+      <section id="event-checkin" data-admin-section="live-ops" class="hidden bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
             <h2 class="text-2xl font-black">Event check-in</h2>
@@ -296,7 +307,7 @@
         </div>
       </section>
 
-      <section id="users-admin" class="bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
+      <section id="users-admin" data-admin-section="people" class="hidden bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
             <h2 class="text-2xl font-black">Users</h2>
@@ -307,12 +318,12 @@
         <div id="users-list" class="overflow-x-auto text-sm text-slate-300"></div>
       </section>
 
-      <section id="role-admin" class="hidden bg-bc-navy border border-violet-500/50 rounded-2xl p-6 mt-8">
+      <section id="role-admin" data-admin-section="access" class="hidden bg-bc-navy border-2 border-violet-500/70 rounded-2xl p-6 mt-8">
         <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5 mb-4">
           <div>
             <p class="text-violet-300 uppercase tracking-[0.2em] text-xs font-black">Super admin</p>
             <h2 class="text-2xl font-black mt-1">Admin role grants</h2>
-            <p id="role-admin-status" class="text-sm text-slate-400 mt-1">Only the global super admin can grant or revoke admin access.</p>
+            <p id="role-admin-status" class="text-sm text-slate-400 mt-1">Sensitive access changes are isolated from normal event work. Only the global super admin can grant or revoke admin access.</p>
           </div>
           <button id="load-admin-roles" class="border border-violet-400 text-violet-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-violet-400 hover:text-bc-dark">Refresh roles</button>
         </div>
@@ -343,8 +354,25 @@
     let workflowSections = [];
     let selectedWorkflowId = null;
     let currentPhysicalResources = [];
+    let currentAdminSection = "dashboard";
     let checkinSearchTimer = null;
     $("login-link").href = `/login/?next=${encodeURIComponent("/admin")}`;
+
+    const ADMIN_SECTION_TARGETS = {
+      "admin-dashboard": "dashboard",
+      "workflow-command-surface": "dashboard",
+      "event-cockpit": "live-ops",
+      "event-checkin": "live-ops",
+      "events-admin": "events",
+      "events-workspace": "events",
+      "event-form": "events",
+      "event-signups": "people",
+      "users-admin": "people",
+      "helper-interest-admin": "people",
+      "physical-resources-admin": "resources",
+      "physical-resource-form": "resources",
+      "role-admin": "access"
+    };
 
     function slugify(value) {
       return String(value || "")
@@ -378,6 +406,46 @@
       return roles.some((role) => role.role === "super_admin" && !role.revoked_at);
     }
 
+    function isCurrentSuperAdmin() {
+      return hasSuperAdminRole(currentAdminUser?.roles || []);
+    }
+
+    function adminSectionFromHash(hash = window.location.hash) {
+      const target = String(hash || "").replace(/^#/, "");
+      return ADMIN_SECTION_TARGETS[target] || (["dashboard", "live-ops", "events", "people", "resources", "access"].includes(target) ? target : "dashboard");
+    }
+
+    function setAdminNavState(section) {
+      document.querySelectorAll("[data-admin-nav]").forEach((control) => {
+        const selected = control.dataset.adminNav === section;
+        control.setAttribute("aria-selected", selected ? "true" : "false");
+        control.classList.toggle("border-bc-cyan", selected && section !== "access");
+        control.classList.toggle("bg-cyan-400/10", selected && section !== "access");
+        control.classList.toggle("text-white", selected && section !== "access");
+        control.classList.toggle("border-violet-300", selected && section === "access");
+        control.classList.toggle("bg-violet-400/10", selected && section === "access");
+      });
+    }
+
+    function showAdminSection(section = "dashboard", { focusTarget = null, updateHash = false } = {}) {
+      let nextSection = section;
+      if (nextSection === "access" && !isCurrentSuperAdmin()) nextSection = "dashboard";
+      currentAdminSection = nextSection;
+      document.querySelectorAll("[data-admin-section]").forEach((panel) => {
+        const shouldShow = panel.dataset.adminSection === nextSection;
+        if (panel.id === "role-admin" && !isCurrentSuperAdmin()) {
+          panel.classList.add("hidden");
+          return;
+        }
+        panel.classList.toggle("hidden", !shouldShow);
+      });
+      setAdminNavState(nextSection);
+      const targetId = focusTarget || nextSection;
+      if (updateHash && targetId) history.replaceState(null, "", `#${targetId}`);
+      const target = focusTarget ? $(focusTarget) : null;
+      if (target) requestAnimationFrame(() => target.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+
     function showLogin(message = "Sign in with an admin account to continue.", error = false) {
       adminApp.classList.add("hidden");
       loginPanel.classList.remove("hidden");
@@ -389,8 +457,10 @@
       const superAdmin = hasSuperAdminRole(me.roles || []);
       $("role-admin").classList.toggle("hidden", !superAdmin);
       $("super-admin-card").classList.toggle("hidden", !superAdmin);
+      $("access-admin-nav").classList.toggle("hidden", !superAdmin);
       loginPanel.classList.add("hidden");
       adminApp.classList.remove("hidden");
+      showAdminSection(adminSectionFromHash(), { updateHash: false });
     }
 
     async function checkAdminSession({ loadData = false } = {}) {
@@ -654,8 +724,8 @@
       currentCockpitInstanceId = instance?.id || event.active_instance_id || currentCockpitInstanceId;
       currentCheckinEvent = event;
       currentCheckinInstanceId = currentCockpitInstanceId;
+      showAdminSection("live-ops", { focusTarget: "event-cockpit", updateHash: true });
       loadEventCockpit(event.slug, currentCockpitInstanceId).catch(() => {});
-      $("event-cockpit").scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     async function loadEventCockpit(slug = currentCockpitEvent?.slug || "hack-hours", instanceId = currentCockpitInstanceId) {
@@ -1066,6 +1136,7 @@
       form.elements.status.value = resource.status || "available";
       form.elements.description.value = resource.description || "";
       form.elements.notes.value = resource.notes || "";
+      showAdminSection("resources", { focusTarget: "physical-resource-form", updateHash: true });
       form.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
@@ -1208,6 +1279,7 @@
     async function loadEventSignups(slug, title = slug, instanceId = null, instanceKey = "") {
       const status = $("event-signups-status");
       try {
+        showAdminSection("people", { focusTarget: "event-signups", updateHash: true });
         const instanceLabel = instanceKey || instanceId || "all instances";
         status.textContent = `Loading signups for ${title} (${instanceLabel})…`;
         const params = new URLSearchParams();
@@ -1227,13 +1299,13 @@
     function openCheckin(event, instance = null) {
       currentCheckinEvent = event;
       currentCheckinInstanceId = instance?.id || event.active_instance_id || null;
+      showAdminSection("live-ops", { focusTarget: "event-checkin", updateHash: true });
       $("checkin-search").value = "";
       $("checkin-results").innerHTML = "";
       $("checkin-event-title").textContent = currentCheckinEvent.title || currentCheckinEvent.slug;
       $("checkin-status").className = "text-sm text-slate-400 mt-1";
       $("checkin-status").textContent = `Showing signups for ${event.title || event.slug}${instance ? ` (${instanceLabel(instance)})` : ""}. Type to search all users.`;
       loadCheckinCandidates().catch(() => {});
-      $("event-checkin").scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     async function loadCheckinCandidates() {
@@ -1412,6 +1484,7 @@
 
     function fillForm(event) {
       editingSlug = event.slug;
+      showAdminSection("events", { focusTarget: "event-form", updateHash: true });
       eventForm.title.value = event.title || "";
       eventForm.slug.value = event.slug || "";
       eventForm.description.value = event.description || "";
@@ -1454,6 +1527,19 @@
     titleInput.addEventListener("input", () => {
       if (!editingSlug) slugInput.value = slugify(titleInput.value);
     });
+
+    document.querySelectorAll("[data-admin-nav]").forEach((control) => {
+      control.addEventListener("click", (event) => {
+        const section = control.dataset.adminNav;
+        const href = control.getAttribute("href") || "";
+        const focusTarget = href.startsWith("#") ? href.slice(1) : null;
+        if (!section) return;
+        event.preventDefault();
+        showAdminSection(section, { focusTarget, updateHash: true });
+      });
+    });
+
+    window.addEventListener("hashchange", () => showAdminSection(adminSectionFromHash(), { updateHash: false }));
 
     $("retry-session").addEventListener("click", () => {
       setLoginStatus("Checking session…");

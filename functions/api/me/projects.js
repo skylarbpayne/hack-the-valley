@@ -108,6 +108,14 @@ async function saveOwnedProjectMaterials(context, db, user, projectId, input) {
   return { submission, state };
 }
 
+export async function onRequestGet(context) {
+  return handleErrors(async () => {
+    const { db, user } = await signedInUser(context);
+    const state = await getUserCommunityState(db, user.id);
+    return jsonResponse({ ok: true, ...state }, { status: 200 });
+  });
+}
+
 export async function onRequestPost(context) {
   return handleErrors(async () => {
     const { db, user } = await signedInUser(context);
@@ -160,5 +168,5 @@ export async function onRequestPut(context) {
 }
 
 export async function onRequest(context) {
-  return methodNotAllowed(["POST", "PATCH", "PUT"]);
+  return methodNotAllowed(["GET", "POST", "PATCH", "PUT"]);
 }

@@ -233,6 +233,10 @@ export default {
       return routeApiRequest(request, env, ctx, route.routeModule, route.params);
     }
 
+    if (url.pathname === '/demo-hours' || url.pathname === '/demo-hours/') {
+      return Response.redirect(new URL('/events/demo-hours', url), 302);
+    }
+
     if (url.pathname === '/submit' || url.pathname === '/submit/') {
       return Response.redirect(new URL('/me/projects/', url), 302);
     }

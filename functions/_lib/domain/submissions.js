@@ -68,12 +68,14 @@ export async function listOrganizerEventProjectSubmissions(db, { eventSlug, even
 
 export async function updateEventProjectReviewSubmissionStatus(db, {
   eventSlug,
+  eventInstanceId = null,
   projectId,
+  submissionId = null,
   status = "hidden",
   actor = null,
   now = new Date().toISOString()
 } = {}) {
-  return await updateEventProjectSubmissionStatus(db, { eventSlug, projectId, status, actor, now });
+  return await updateEventProjectSubmissionStatus(db, { eventSlug, eventInstanceId, projectId, submissionId, status, actor, now });
 }
 
 export async function submitEventInstanceProjectSubmission(db, {
@@ -139,23 +141,54 @@ export async function setEventProjectSubmissionStatus(db, { submissionId, status
   };
 }
 
-export async function updateEventProjectSubmissionStatus(db, { eventSlug, projectId, status = "hidden", actor = null, now = new Date().toISOString() } = {}) {
+export async function updateEventProjectSubmissionStatus(db, { eventSlug, eventInstanceId = null, projectId, submissionId = null, status = "hidden", actor = null, now = new Date().toISOString() } = {}) {
   if (!eventSlug) throw Object.assign(new Error("eventSlug is required"), { status: 400 });
-  if (!projectId) throw Object.assign(new Error("projectId is required"), { status: 400 });
+  if (!submissionId && !projectId) throw Object.assign(new Error("projectId or eventProjectSubmissionId is required"), { status: 400 });
   const normalizedStatus = normalizeSubmissionStatus(status);
-  const existing = await db.prepare(`
-    SELECT eps.*, p.title, p.team_name
-    FROM event_project_submissions eps
-    JOIN projects p ON p.id = eps.project_id
-    WHERE eps.event_slug = ? AND eps.project_id = ?
-    LIMIT 1
-  `).bind(eventSlug, projectId).first();
+  let existing;
+  if (submissionId) {
+    existing = projectId
+      ? await db.prepare(`
+        SELECT eps.*, p.title, p.team_name
+        FROM event_project_submissions eps
+        JOIN projects p ON p.id = eps.project_id
+        WHERE eps.id = ? AND eps.event_slug = ? AND eps.project_id = ?
+        LIMIT 1
+      `).bind(submissionId, eventSlug, projectId).first()
+      : await db.prepare(`
+        SELECT eps.*, p.title, p.team_name
+        FROM event_project_submissions eps
+        JOIN projects p ON p.id = eps.project_id
+        WHERE eps.id = ? AND eps.event_slug = ?
+        LIMIT 1
+      `).bind(submissionId, eventSlug).first();
+  } else if (eventInstanceId) {
+    existing = await db.prepare(`
+      SELECT eps.*, p.title, p.team_name
+      FROM event_project_submissions eps
+      JOIN projects p ON p.id = eps.project_id
+      WHERE eps.event_slug = ? AND eps.event_instance_id = ? AND eps.project_id = ?
+      LIMIT 1
+    `).bind(eventSlug, eventInstanceId, projectId).first();
+  } else {
+    const matches = await db.prepare(`
+      SELECT eps.*, p.title, p.team_name
+      FROM event_project_submissions eps
+      JOIN projects p ON p.id = eps.project_id
+      WHERE eps.event_slug = ? AND eps.project_id = ?
+      ORDER BY eps.created_at DESC, eps.id DESC
+      LIMIT 2
+    `).bind(eventSlug, projectId).all();
+    const rows = matches?.results || [];
+    if (rows.length > 1) throw Object.assign(new Error("eventInstanceId or eventProjectSubmissionId is required for projects submitted to multiple event instances"), { status: 409 });
+    existing = rows[0] || null;
+  }
   if (!existing) throw Object.assign(new Error("Event project submission not found"), { status: 404 });
   await db.prepare(`
     UPDATE event_project_submissions
     SET status = ?, updated_at = ?
-    WHERE event_slug = ? AND project_id = ?
-  `).bind(normalizedStatus, now, eventSlug, projectId).run();
+    WHERE id = ?
+  `).bind(normalizedStatus, now, existing.id).run();
   return {
     ...existing,
     status: normalizedStatus,
@@ -315,9 +348,9 @@ export function sanitizePublicProjectRow(row = {}) {
     slug: row.slug,
     title: row.title,
     team_name: row.team_name,
-    description: row.description,
-    repo_url: row.repo_url || null,
-    demo_url: row.demo_url || null,
+    description: publicTextOrNull(row.description),
+    repo_url: publicUrlOrNull(row.repo_url),
+    demo_url: publicUrlOrNull(row.demo_url),
     tracks: parseJsonArray(row.tracks_json, normalizeTracks(row.tracks_json)),
     event_slug: row.event_slug || null,
     status: row.status || "showcased",
@@ -355,6 +388,19 @@ function normalizeTrustedSource(source) {
     .replace(/^_+|_+$/g, "")
     .slice(0, 96);
   return normalized || "organizer";
+}
+
+function publicTextOrNull(value) {
+  const text = String(value || "").trim();
+  if (!text || text === ".") return null;
+  return text;
+}
+
+function publicUrlOrNull(value) {
+  const url = String(value || "").trim();
+  if (!url || url === ".") return null;
+  if (/^https?:\/\/nothing\/?$/i.test(url) || /^nothing$/i.test(url)) return null;
+  return url;
 }
 
 function normalizeTracks(value) {

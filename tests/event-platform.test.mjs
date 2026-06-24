@@ -36,6 +36,7 @@ import {
 import worker from "../worker.js";
 import { onRequestPost as postEventSignup } from "../functions/api/events/[slug]/signups/index.js";
 import { onRequestPost as postEventCheckin } from "../functions/api/events/[slug]/checkins/index.js";
+import { onRequestPost as postLegacyRegister } from "../functions/api/register.js";
 
 function roleAwareAdminDb({ role = "admin", users = [] } = {}) {
   return {
@@ -889,6 +890,109 @@ test("signed-in event signup route uses session identity through Participation a
   assert.equal(db.signups[0].user_id, "usr_session");
   assert.match(db.signups[0].metadata_json, /"signup_role":"demo"/);
   assert.equal(db.participantEvents.some((event) => event.event_type === "signed_up" && event.source === "signed-in-event-signup"), true);
+});
+
+test("anonymous event signup with an existing account email points to magic-link login without writing a duplicate", async () => {
+  const db = participationRouteDb();
+  const response = await postEventSignup({
+    request: new Request("https://hackthevalley.org/api/events/demo-hours/signups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Selected Imposter",
+        email: " SELECTED@example.com ",
+        signup_role: "demo",
+        emergency_contact_name: "Helper",
+        emergency_contact_phone: "661-555-0100"
+      })
+    }),
+    env: { HTV_DB: db },
+    params: { slug: "demo-hours" }
+  });
+
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.equal(body.code, "existing_account");
+  assert.equal(body.action, "sign_in");
+  assert.equal(body.login_url, "/login/?next=%2Fevents%2Fdemo-hours%23signup");
+  assert.match(body.error, /already has a Hack the Valley profile/);
+  assert.equal(db.signups.length, 0);
+  assert.equal(db.participantEvents.length, 0);
+});
+
+test("legacy /api/register event path shares the existing-account login guard", async () => {
+  const db = participationRouteDb();
+  const response = await postLegacyRegister({
+    request: new Request("https://hackthevalley.org/api/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventSlug: "demo-hours",
+        name: "Selected Imposter",
+        email: "selected@example.com",
+        signup_role: "demo",
+        emergency_contact_name: "Helper",
+        emergency_contact_phone: "661-555-0100"
+      })
+    }),
+    env: { HTV_DB: db },
+    params: {}
+  });
+
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.equal(body.code, "existing_account");
+  assert.equal(body.action, "sign_in");
+  assert.equal(body.login_url, "/login/?next=%2Fevents%2Fdemo-hours%23signup");
+  assert.equal(db.signups.length, 0);
+  assert.equal(db.participantEvents.length, 0);
+});
+
+test("signed-in event signup reuses profile safety details while preserving event-specific role", async () => {
+  const currentUser = {
+    id: "usr_returning",
+    email: "returning@example.com",
+    name: "Returning Hacker",
+    first_name: "Returning",
+    last_name: "Hacker",
+    phone: "661-555-1212",
+    school: "CSUB",
+    metadata_json: JSON.stringify({
+      safety_profile: {
+        emergency_contact: { name: "Profile Helper", phone: "661-555-3434", relationship: "Friend" },
+        updated_at: "2026-06-01T00:00:00.000Z"
+      }
+    })
+  };
+  const db = participationRouteDb({ currentUser });
+  const response = await postEventSignup({
+    request: new Request("https://hackthevalley.org/api/events/demo-hours/signups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie: "htv_session=returning-session" },
+      body: JSON.stringify({
+        email: "attacker@example.com",
+        name: "Request Override",
+        signup_role: "demo"
+      })
+    }),
+    env: { HTV_DB: db },
+    params: { slug: "demo-hours" }
+  });
+
+  assert.equal(response.status, 201);
+  const body = await response.json();
+  assert.equal(body.readiness.ready, true);
+  assert.equal(body.signup.email, "returning@example.com");
+  assert.equal(body.signup.name, "Returning Hacker");
+  assert.equal(body.signup.signup_role, "demo");
+  assert.equal(body.signup.emergency_contact_present, true);
+  assert.equal(db.signups.length, 1);
+  assert.equal(db.signups[0].user_id, "usr_returning");
+  assert.equal(db.signups[0].phone, "661-555-1212");
+  assert.equal(db.signups[0].school, "CSUB");
+  assert.match(db.signups[0].metadata_json, /"signup_role":"demo"/);
+  assert.equal(db.emergencyContacts[0].name, "Profile Helper");
+  assert.equal(db.emergencyContacts[0].source, "signup");
 });
 
 test("check-in search ranks signed-up attendees first while searching all users", async () => {

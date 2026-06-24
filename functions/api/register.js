@@ -1,12 +1,10 @@
 import {
-  addSignupToEmailList,
+  getCurrentUserFromRequest,
   getDb,
-  getEvent,
   handleErrors,
   jsonResponse,
-  normalizeSignupInput,
+  registerEventSignup,
   readJson,
-  upsertSignup
 } from "../_lib/event-platform.js";
 
 export async function onRequestPost(context) {
@@ -18,32 +16,25 @@ export async function onRequestPost(context) {
     // Legacy path remains below so an old /api/register caller does not break before D1 is configured.
     if (eventSlug && (context.env.HTV_DB || context.env.SUBMISSIONS_DB || context.env.DB)) {
       const db = getDb(context.env);
-      const event = await getEvent(db, eventSlug);
-      if (!event || event.status === "archived") {
-        return jsonResponse({ error: "Event not found" }, { status: 404 });
-      }
-      if (event.status !== "open") {
-        return jsonResponse({ error: "Signups are not open for this event" }, { status: 409 });
-      }
-
-      const { signup, errors } = normalizeSignupInput(input, eventSlug);
-      if (errors.length) {
-        return jsonResponse({ error: errors.join("; "), errors }, { status: 400 });
-      }
-
-      const mailingListResult = await addSignupToEmailList(context.env, signup, event);
-      const savedSignup = await upsertSignup(db, eventSlug, input, mailingListResult);
+      const currentUser = await getCurrentUserFromRequest(db, context.request);
+      const registration = await registerEventSignup(db, context.env, eventSlug, input, { currentUser });
+      const savedSignup = registration.signup;
 
       return jsonResponse({
         success: true,
         message: "Signup received",
-        event: { slug: event.slug, title: event.title },
+        event: { slug: registration.event.slug, title: registration.event.title },
+        readiness: registration.readiness,
         signup: {
           id: savedSignup.id,
+          event_instance_id: savedSignup.event_instance_id,
+          signup_role: registration.input.eventRole,
           user_id: savedSignup.user_id,
+          signed_in: Boolean(currentUser),
           name: savedSignup.name,
           email: savedSignup.email,
-          mailing_list_status: savedSignup.mailing_list_status
+          mailing_list_status: savedSignup.mailing_list_status,
+          emergency_contact_present: Boolean(registration.readiness?.safety_contact_present)
         }
       }, { status: 201 });
     }

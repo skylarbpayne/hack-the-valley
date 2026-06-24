@@ -1421,6 +1421,28 @@ export async function upsertSignup(db, eventSlug, input, mailingListResult, even
   return result.signup;
 }
 
+function eventSignupLoginUrl(eventSlug) {
+  const next = `/events/${encodeURIComponent(eventSlug)}#signup`;
+  return `/login/?next=${encodeURIComponent(next)}`;
+}
+
+async function guardAnonymousExistingAccountSignup(db, eventSlug, input = {}, currentUser = null) {
+  if (currentUser?.id || currentUser?.email) return null;
+  const email = normalizeEmail(input.email);
+  if (!EMAIL_RE.test(email)) return null;
+  const existingUser = await db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first();
+  if (!existingUser) return null;
+  throw Object.assign(
+    new Error("This email already has a Hack the Valley profile. Sign in with a magic link, then return to finish this event signup without re-entering profile details."),
+    {
+      status: 409,
+      code: "existing_account",
+      login_url: eventSignupLoginUrl(eventSlug),
+      action: "sign_in"
+    }
+  );
+}
+
 export async function registerEventSignup(db, env, eventSlug, input = {}, { currentUser = null, syncEmailList = addSignupToEmailList } = {}) {
   const event = await getEvent(db, eventSlug);
   if (!event || event.status === "archived") {
@@ -1429,6 +1451,8 @@ export async function registerEventSignup(db, env, eventSlug, input = {}, { curr
   if (event.status !== "open") {
     throw Object.assign(new Error("Signups are not open for this event"), { status: 409 });
   }
+
+  await guardAnonymousExistingAccountSignup(db, eventSlug, input, currentUser);
 
   const instance = await resolveSignupEventInstance(db, eventSlug);
   if (!instance) {
@@ -2178,10 +2202,23 @@ export function renderEventPageHtml(event) {
             body: JSON.stringify(body)
           });
           const data = await response.json();
-          if (!response.ok) throw new Error(data.error || "Signup failed");
+          if (!response.ok) {
+            button.disabled = false;
+            if (data.code === "existing_account" && data.login_url) {
+              message.textContent = (data.error || "This email already has a Hack the Valley profile.") + " ";
+              const link = document.createElement("a");
+              link.href = data.login_url;
+              link.textContent = "Sign in with a magic link";
+              message.appendChild(link);
+              return;
+            }
+            throw new Error(data.error || "Signup failed");
+          }
           form.reset();
           button.textContent = "You're signed up";
-          message.textContent = "You're on the list. Emergency contact saved. Check-in QR/token support is coming; organizers can check you in by search today.";
+          message.textContent = signedInUser
+            ? "You're on the list. Your event choice was saved from your signed-in account."
+            : "You're on the list. Emergency contact saved. Check-in QR/token support is coming; organizers can check you in by search today.";
         } catch (error) {
           button.disabled = false;
           message.textContent = error.message;
@@ -2221,6 +2258,9 @@ export async function handleErrors(fn) {
   } catch (error) {
     const status = error.status || 500;
     if (status >= 500) console.error(error);
-    return jsonResponse({ error: error.message || "Internal server error", errors: error.errors, code: error.code }, { status });
+    const body = { error: error.message || "Internal server error", errors: error.errors, code: error.code };
+    if (error.login_url) body.login_url = error.login_url;
+    if (error.action) body.action = error.action;
+    return jsonResponse(body, { status });
   }
 }

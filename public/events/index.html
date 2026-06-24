@@ -420,7 +420,19 @@
           body: JSON.stringify(payload)
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Signup failed");
+        if (!response.ok) {
+          button.disabled = false;
+          if (data.code === "existing_account" && data.login_url) {
+            message.textContent = `${data.error || "This email already has a Hack the Valley profile."} `;
+            const link = document.createElement("a");
+            link.href = data.login_url;
+            link.className = "text-bc-cyan font-bold underline";
+            link.textContent = "Sign in with a magic link";
+            message.appendChild(link);
+            return;
+          }
+          throw new Error(data.error || "Signup failed");
+        }
         formElement.reset();
         state.completedSignups.add(state.selected.slug);
         button.textContent = "You're signed up";

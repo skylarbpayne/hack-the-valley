@@ -149,6 +149,7 @@ function participationRouteDb({ currentUser = null, role = "admin" } = {}) {
           if (/SELECT \* FROM event_instances WHERE event_slug = \? AND id = \?/.test(sql)) return instances.find((row) => row.event_slug === this.args[0] && row.id === this.args[1]) || null;
           if (/SELECT \* FROM users WHERE id = \?/.test(sql)) return usersById.get(this.args[0]) || null;
           if (/SELECT \* FROM users WHERE email = \?/.test(sql)) return usersByEmail.get(this.args[0]) || null;
+          if (/SELECT \* FROM users WHERE lower\(email\) = \?/.test(sql)) return usersByEmail.get(this.args[0]) || null;
           if (/FROM emergency_contacts/.test(sql)) return emergencyContacts.find((row) => row.event_instance_id === this.args[0] && row.user_id === this.args[1]) || null;
           if (/FROM signups s\s+JOIN users u/.test(sql)) {
             const eventInstanceId = this.args.length === 3 ? this.args[1] : this.args[0];
@@ -826,6 +827,12 @@ test("public event signup form skips profile fields for signed-in users", () => 
   assert.match(html, /fetch\("\/api\/me"/);
   assert.match(html, /state\.currentUser/);
   assert.match(html, /payload\.signed_in_signup = true/);
+  assert.match(html, /data\.code === "existing_account"/);
+  assert.match(html, /data-existing-account-login/);
+  assert.match(html, /Sign in with a magic link/);
+  assert.doesNotMatch(html, /name="name" required/);
+  assert.doesNotMatch(html, /name="emergency_contact_name" required/);
+  assert.doesNotMatch(html, /name="emergency_contact_phone" required/);
   assert.doesNotMatch(html, /School \/ organization/);
   assert.doesNotMatch(html, /name="school"/);
   assert.doesNotMatch(html, /name="notes"/);
@@ -848,6 +855,12 @@ test("rendered event detail page shows venue name and address and supports signe
   assert.match(html, /data-email-list-field/);
   assert.match(html, /fetch\("\/api\/me"/);
   assert.match(html, /body\.signed_in_signup = true/);
+  assert.match(html, /data\.code === "existing_account"/);
+  assert.match(html, /existingAccountLogin/);
+  assert.match(html, /Sign in with a magic link/);
+  assert.doesNotMatch(html, /name="name" required/);
+  assert.doesNotMatch(html, /name="emergency_contact_name" required/);
+  assert.doesNotMatch(html, /name="emergency_contact_phone" required/);
 });
 
 test("signed-in event signup route uses session identity through Participation and preserves instance role state", async () => {
@@ -889,6 +902,76 @@ test("signed-in event signup route uses session identity through Participation a
   assert.equal(db.signups[0].user_id, "usr_session");
   assert.match(db.signups[0].metadata_json, /"signup_role":"demo"/);
   assert.equal(db.participantEvents.some((event) => event.event_type === "signed_up" && event.source === "signed-in-event-signup"), true);
+});
+
+test("anonymous event signup blocks existing emails with login handoff and no duplicate signup", async () => {
+  const db = participationRouteDb();
+  const response = await postEventSignup({
+    request: new Request("https://hackthevalley.org/api/events/demo-hours/signups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "SELECTED@example.com",
+        signup_role: "demo"
+      })
+    }),
+    env: { HTV_DB: db },
+    params: { slug: "demo-hours" }
+  });
+
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.equal(body.code, "existing_account");
+  assert.equal(body.existing_account, true);
+  assert.equal(body.email, "selected@example.com");
+  assert.equal(body.login_url, "/login/?next=%2Fevents%2Fdemo-hours%23signup");
+  assert.equal(body.request_code_url, "/api/auth/request-code");
+  assert.match(body.error, /Sign in with a magic link/);
+  assert.equal(db.signups.length, 0);
+  assert.equal(db.participantEvents.length, 0);
+});
+
+test("anonymous event signup creates a new account once and stores event-specific fields only on signup metadata", async () => {
+  const db = participationRouteDb();
+  const response = await postEventSignup({
+    request: new Request("https://hackthevalley.org/api/events/demo-hours/signups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "New Builder",
+        email: "new.builder@example.com",
+        phone: "661-555-0101",
+        school: "CSUB",
+        signup_role: "demo",
+        major: "Computer Science",
+        dietary: "vegetarian",
+        tshirt: "M",
+        emergency_contact_name: "Helper Person",
+        emergency_contact_phone: "661-555-0100"
+      })
+    }),
+    env: { HTV_DB: db },
+    params: { slug: "demo-hours" }
+  });
+
+  assert.equal(response.status, 201);
+  const body = await response.json();
+  assert.equal(body.signup.email, "new.builder@example.com");
+  assert.equal(db.signups.length, 1);
+  assert.equal(db.signups[0].user_id, body.signup.user_id);
+  const metadata = JSON.parse(db.signups[0].metadata_json);
+  assert.deepEqual(metadata, {
+    major: "Computer Science",
+    dietary: "vegetarian",
+    tshirt: "M",
+    signup_role: "demo"
+  });
+  const user = db.usersByEmail.get("new.builder@example.com");
+  assert.equal(user.name, "New Builder");
+  assert.equal(user.school, "CSUB");
+  assert.match(user.metadata_json, /"safety_profile"/);
+  assert.equal(user.metadata_json.includes("Computer Science"), false);
+  assert.equal(JSON.stringify(user).includes("Computer Science"), false);
 });
 
 test("check-in search ranks signed-up attendees first while searching all users", async () => {

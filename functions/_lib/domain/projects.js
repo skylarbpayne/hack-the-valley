@@ -1,14 +1,36 @@
 import { parseJsonArray, stringOrNull } from "./shared.js";
+import { randomId, sanitizeFilename } from "../../_shared/submissions.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PROJECT_MEMBER_ROLES = new Set(["owner", "member", "mentor", "judge", "admin"]);
+const PROJECT_MEDIA_KINDS = new Set(["image", "video", "artifact"]);
+const PROJECT_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const PROJECT_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
+const PROJECT_ARTIFACT_TYPES = new Set(["application/pdf", "application/zip", "application/x-zip-compressed"]);
+const PROJECT_MEDIA_EXTENSIONS = {
+  "image/jpeg": new Set(["jpg", "jpeg"]),
+  "image/png": new Set(["png"]),
+  "image/webp": new Set(["webp"]),
+  "image/gif": new Set(["gif"]),
+  "video/mp4": new Set(["mp4"]),
+  "video/webm": new Set(["webm"]),
+  "video/quicktime": new Set(["mov", "qt"]),
+  "application/pdf": new Set(["pdf"]),
+  "application/zip": new Set(["zip"]),
+  "application/x-zip-compressed": new Set(["zip"])
+};
+const DEFAULT_PROJECT_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+const DEFAULT_PROJECT_MEDIA_MAX_FILES = 10;
 
-export function normalizeProjectInput(input = {}, existing = {}) {
+export function normalizeProjectInput(input = {}, existing = {}, options = {}) {
   const links = normalizeLinks(input.links);
   const title = firstPresent(input.title, input.project_title, input.projectTitle, existing.title);
   const slug = firstPresent(input.slug, existing.slug, slugify(title));
   const tracks = normalizeTracks(input.tracks ?? input.track ?? existing.tracks_json);
+  const canonicalSubmissionId = options.allowCanonicalSubmissionId === true
+    ? firstPresent(input.canonical_submission_id, input.submission_id, input.submissionId, existing.canonical_submission_id)
+    : existing.canonical_submission_id || null;
   const project = {
     slug,
     title,
@@ -17,7 +39,7 @@ export function normalizeProjectInput(input = {}, existing = {}) {
     repo_url: firstPresent(input.repo_url, input.repoLink, input.repository_url, input.repository, links.repo_url, links.repository, existing.repo_url),
     demo_url: firstPresent(input.demo_url, input.demoLink, input.demo, links.demo_url, links.demo, existing.demo_url),
     tracks_json: stringifyJson(tracks),
-    canonical_submission_id: firstPresent(input.canonical_submission_id, input.submission_id, input.submissionId, existing.canonical_submission_id)
+    canonical_submission_id: canonicalSubmissionId
   };
   const errors = [];
   if (!project.title) errors.push("project title is required");
@@ -60,9 +82,9 @@ export async function createProject(db, { ownerPerson = null, title, teamName, d
   return result;
 }
 
-export async function upsertProject(db, input = {}) {
+export async function upsertProject(db, input = {}, options = {}) {
   if (!db) throw Object.assign(new Error("db is required"), { status: 500 });
-  const { project, errors } = normalizeProjectInput(input);
+  const { project, errors } = normalizeProjectInput(input, {}, { allowCanonicalSubmissionId: options.allowCanonicalSubmissionId === true });
   if (errors.length) throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
   const now = input.now || new Date().toISOString();
   const id = input.id && String(input.id).startsWith("prj_") ? String(input.id) : `prj_${project.slug.replace(/-/g, "_")}`;
@@ -96,10 +118,10 @@ export async function upsertProject(db, input = {}) {
     || { id, ...project, created_at: now, updated_at: now };
 }
 
-export async function updateProject(db, { projectId, actorPerson, patch = {}, now = new Date().toISOString() } = {}) {
+export async function updateProject(db, { projectId, actorPerson, patch = {}, now = new Date().toISOString(), allowCanonicalSubmissionId = false } = {}) {
   if (!db) throw Object.assign(new Error("db is required"), { status: 500 });
   const existing = await getProjectForActor(db, projectId, actorPerson);
-  const { project, errors } = normalizeProjectInput(patch, existing);
+  const { project, errors } = normalizeProjectInput(patch, existing, { allowCanonicalSubmissionId });
   if (errors.length) throw Object.assign(new Error(errors.join("; ")), { status: 400, errors });
   await db.prepare(`
     UPDATE projects
@@ -190,11 +212,11 @@ export async function claimProjectForUser(db, userId, input = {}) {
   return { project: sanitizeProjectRow(project), membership };
 }
 
-export async function updateOwnedProjectForUser(db, userId, projectId, input = {}) {
+export async function updateOwnedProjectForUser(db, userId, projectId, input = {}, options = {}) {
   if (!userId) throw Object.assign(new Error("userId is required"), { status: 400 });
   const user = await getUserById(db, userId);
   if (!user) throw Object.assign(new Error("User not found"), { status: 404 });
-  return await updateProject(db, { projectId, actorPerson: user, patch: input });
+  return await updateProject(db, { projectId, actorPerson: user, patch: input, allowCanonicalSubmissionId: options.allowCanonicalSubmissionId === true });
 }
 
 export async function getOwnedProject(db, userId, projectId) {
@@ -202,6 +224,94 @@ export async function getOwnedProject(db, userId, projectId) {
   const user = await getUserById(db, userId);
   if (!user) throw Object.assign(new Error("User not found"), { status: 404 });
   return await getProjectForActor(db, projectId, user);
+}
+
+export async function prepareOwnedProjectMediaUpload(db, {
+  projectId,
+  user,
+  sessionId = null,
+  filename = "project-media",
+  kind = "artifact",
+  contentType = "",
+  contentLength = 0,
+  env = {},
+  eventSlug = null,
+  eventInstanceId = null,
+  now = new Date()
+} = {}) {
+  if (!user?.id) throw Object.assign(new Error("signed-in user is required"), { status: 401 });
+  const project = await getProjectForActor(db, projectId, user);
+  await ensureProjectMediaUploadTable(db);
+  const upload = validateAndBuildProjectMediaUpload({ project, user, sessionId, filename, kind, contentType, contentLength, env, eventSlug, eventInstanceId, now });
+  if (!upload.ok) throw Object.assign(new Error("Upload rejected."), { status: 400, errors: upload.errors });
+
+  const maxFiles = maxProjectMediaFiles(env);
+  const countRow = await db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM project_media_uploads
+    WHERE project_id = ?
+  `).bind(project.id).first();
+  const existingCount = Number(countRow?.count || 0);
+  if (existingCount >= maxFiles) {
+    throw Object.assign(new Error(`Project media upload limit reached (${maxFiles} files).`), { status: 400 });
+  }
+
+  return upload;
+}
+
+export async function createProjectMediaUploadRecord(db, upload = {}) {
+  if (!upload?.key) throw Object.assign(new Error("upload key is required"), { status: 400 });
+  await ensureProjectMediaUploadTable(db);
+  await db.prepare(`
+    INSERT INTO project_media_uploads (
+      id, project_id, uploaded_by_user_id, session_id, event_slug, event_instance_id,
+      storage_key, original_filename, content_type, kind, bytes, metadata_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    upload.id,
+    upload.projectId,
+    upload.uploadedByUserId,
+    upload.sessionId,
+    upload.eventSlug,
+    upload.eventInstanceId,
+    upload.key,
+    upload.filename,
+    upload.contentType,
+    upload.kind,
+    upload.size,
+    JSON.stringify(upload.provenance || {}),
+    upload.uploadedAt
+  ).run();
+  return upload;
+}
+
+export async function verifyOwnedProjectMaterialUploads(db, { projectId, userId, uploads = [] } = {}) {
+  const uploadList = Array.isArray(uploads) ? uploads.filter((upload) => upload?.key) : [];
+  if (!uploadList.length) return [];
+  await ensureProjectMediaUploadTable(db);
+  const verified = [];
+  for (const upload of uploadList) {
+    const key = String(upload.key || "").trim();
+    const row = await db.prepare(`
+      SELECT storage_key, original_filename, content_type, kind, bytes
+      FROM project_media_uploads
+      WHERE project_id = ?
+        AND uploaded_by_user_id = ?
+        AND storage_key = ?
+      LIMIT 1
+    `).bind(projectId, userId, key).first();
+    if (!row) {
+      throw Object.assign(new Error("Upload must be created by the signed-in project owner before it can be attached."), { status: 400 });
+    }
+    verified.push({
+      key: row.storage_key,
+      kind: row.kind || upload.kind || "artifact",
+      filename: row.original_filename || upload.filename || "project-media",
+      contentType: row.content_type || upload.contentType || upload.content_type || null,
+      size: Number(row.bytes || upload.size || upload.bytes || 0) || null
+    });
+  }
+  return verified;
 }
 
 export async function getProjectForActor(db, projectId, actorPerson = {}) {
@@ -213,7 +323,9 @@ export async function getProjectForActor(db, projectId, actorPerson = {}) {
     SELECT p.*
     FROM projects p
     JOIN project_members pm ON pm.project_id = p.id
-    WHERE p.id = ? AND (pm.user_id = ? OR lower(pm.email) = lower(?))
+    WHERE p.id = ?
+      AND (pm.user_id = ? OR lower(pm.email) = lower(?))
+      AND pm.role IN ('owner', 'member', 'admin')
     LIMIT 1
   `).bind(projectId, personId || "", email || "").first();
   if (!project) throw Object.assign(new Error("Project not found for signed-in user"), { status: 404 });
@@ -320,8 +432,135 @@ function normalizeMemberRole(value) {
   return PROJECT_MEMBER_ROLES.has(normalized) ? normalized : "member";
 }
 
+function fileExtension(filename) {
+  const match = String(filename || "").toLowerCase().match(/\.([a-z0-9]{1,12})$/);
+  return match ? match[1] : "";
+}
+
 function displayName(person = {}) {
   return stringOrNull(person?.name) || stringOrNull(`${person?.first_name || ""} ${person?.last_name || ""}`);
+}
+
+async function ensureProjectMediaUploadTable(db) {
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS project_media_uploads (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      uploaded_by_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      session_id TEXT REFERENCES user_sessions(id) ON DELETE SET NULL,
+      event_slug TEXT REFERENCES events(slug) ON DELETE SET NULL,
+      event_instance_id TEXT REFERENCES event_instances(id) ON DELETE SET NULL,
+      storage_key TEXT NOT NULL UNIQUE,
+      original_filename TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('image', 'video', 'artifact')),
+      bytes INTEGER NOT NULL DEFAULT 0,
+      metadata_json TEXT,
+      created_at TEXT NOT NULL
+    )
+  `).run();
+  await db.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_project_media_uploads_project_created
+      ON project_media_uploads(project_id, created_at DESC)
+  `).run();
+  await db.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_project_media_uploads_uploader_created
+      ON project_media_uploads(uploaded_by_user_id, created_at DESC)
+  `).run();
+}
+
+export function maxProjectMediaBytes(env = {}) {
+  const configured = Number(env.PROJECT_MEDIA_MAX_UPLOAD_BYTES || env.PROJECT_MEDIA_MAX_UPLOAD_MB && Number(env.PROJECT_MEDIA_MAX_UPLOAD_MB) * 1024 * 1024);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_PROJECT_MEDIA_MAX_BYTES;
+}
+
+function maxProjectMediaFiles(env = {}) {
+  const configured = Number(env.PROJECT_MEDIA_MAX_FILES || env.PROJECT_MEDIA_UPLOAD_LIMIT);
+  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : DEFAULT_PROJECT_MEDIA_MAX_FILES;
+}
+
+function normalizeContentType(value) {
+  return String(value || "").split(";")[0].trim().toLowerCase();
+}
+
+function validateAndBuildProjectMediaUpload({ project = {}, user = {}, sessionId = null, filename, kind, contentType, contentLength, env = {}, eventSlug = null, eventInstanceId = null, now = new Date() } = {}) {
+  const safeFilename = sanitizeFilename(filename || "project-media");
+  const type = normalizeContentType(contentType);
+  const normalizedKind = normalizeProjectMediaKind(kind, type);
+  const size = Number(contentLength || 0);
+  const limit = maxProjectMediaBytes(env);
+  const errors = [];
+
+  if (!project?.id) errors.push("project is required");
+  if (!user?.id) errors.push("signed-in user is required");
+  if (!PROJECT_MEDIA_KINDS.has(normalizedKind)) errors.push("Upload kind must be image, video, or artifact.");
+  if (!type) errors.push("Content-Type is required.");
+  if (normalizedKind === "image" && !PROJECT_IMAGE_TYPES.has(type)) errors.push("Image uploads must be jpeg, png, webp, or gif.");
+  if (normalizedKind === "video" && !PROJECT_VIDEO_TYPES.has(type)) errors.push("Video uploads must be mp4, mov, or webm.");
+  if (normalizedKind === "artifact" && !PROJECT_ARTIFACT_TYPES.has(type)) errors.push("Artifact uploads must be PDF or ZIP files.");
+  const extension = fileExtension(safeFilename);
+  const allowedExtensions = PROJECT_MEDIA_EXTENSIONS[type];
+  if (allowedExtensions && (!extension || !allowedExtensions.has(extension))) {
+    errors.push(`${type} uploads must use one of these filename extensions: ${[...allowedExtensions].join(", ")}.`);
+  }
+  if (!size || size < 1) errors.push("Content-Length is required.");
+  if (size && size > limit) errors.push(`File is too large. Limit is ${Math.round(limit / 1024 / 1024)}MB; paste a YouTube/Loom/Drive link for larger videos.`);
+
+  if (errors.length) return { ok: false, errors, safeFilename, contentType: type, kind: normalizedKind, size };
+
+  const uploadedAt = now instanceof Date ? now.toISOString() : new Date(now).toISOString();
+  const id = randomId("pmu");
+  const teamSlug = slugify(project.team_name || project.title || project.slug || project.id);
+  const projectSlug = slugify(project.slug || project.title || project.id);
+  const key = `submissions/${teamSlug}/project-media/${projectSlug}/${uploadedAt.replace(/[:.]/g, "-")}-${id}-${safeFilename}`;
+  const cleanEventSlug = eventSlug && SLUG_RE.test(String(eventSlug)) ? String(eventSlug) : null;
+  const cleanEventInstanceId = stringOrNull(eventInstanceId);
+  const provenance = {
+    uploaderUserId: user.id,
+    uploaderEmail: user.email || null,
+    sessionId: sessionId || null,
+    projectId: project.id,
+    projectSlug: project.slug || null,
+    eventSlug: cleanEventSlug,
+    eventInstanceId: cleanEventInstanceId,
+    uploadedAt,
+    key
+  };
+  return {
+    ok: true,
+    id,
+    projectId: project.id,
+    uploadedByUserId: user.id,
+    sessionId: sessionId || null,
+    eventSlug: cleanEventSlug,
+    eventInstanceId: cleanEventInstanceId,
+    key,
+    kind: normalizedKind,
+    filename: safeFilename,
+    contentType: type,
+    size,
+    uploadedAt,
+    provenance,
+    metadata: {
+      originalFilename: safeFilename,
+      kind: normalizedKind,
+      projectId: project.id,
+      projectSlug: project.slug || null,
+      eventSlug: cleanEventSlug || "",
+      eventInstanceId: cleanEventInstanceId || "",
+      uploadedByUserId: user.id,
+      sessionId: sessionId || "",
+      uploadedAt
+    }
+  };
+}
+
+function normalizeProjectMediaKind(kind, type) {
+  const normalized = String(kind || "").trim().toLowerCase();
+  if (PROJECT_MEDIA_KINDS.has(normalized)) return normalized;
+  if (String(type || "").startsWith("image/")) return "image";
+  if (String(type || "").startsWith("video/")) return "video";
+  return "artifact";
 }
 
 async function findProjectByInputSlug(db, input = {}) {

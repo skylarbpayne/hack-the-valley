@@ -51,7 +51,7 @@ export async function submitOwnedProjectToEvent(db, userId, projectId, input = {
     eventSlug,
     eventInstanceId: explicitInstanceId || eventInstance?.id || null,
     projectId: project.id,
-    submissionId: input.submission_id || input.submissionId || project.canonical_submission_id || null,
+    submissionId: project.canonical_submission_id || null,
     status: "submitted",
     source: "participant_dashboard"
   });
@@ -245,7 +245,7 @@ export async function upsertProjectFromSubmission(db, submissionId, { eventSlug 
     demo_url: payload.demoLink || payload.demo_url || payload.demo,
     tracks: payload.tracks || submission.track,
     canonical_submission_id: submission.id
-  });
+  }, { allowCanonicalSubmissionId: true });
   await linkProjectSubmission(db, { eventSlug, eventInstanceId, projectId: project.id, submissionId: submission.id, status, source, now });
   return project;
 }
@@ -315,7 +315,7 @@ export async function listPublicProjects(db, { eventSlug = null, includeHidden =
         JOIN submissions s2 ON s2.id = eps2.submission_id
         WHERE eps2.event_slug = eps.event_slug
           AND eps2.project_id = p.id
-          AND eps2.status NOT IN ('hidden', 'rejected')
+          AND eps2.status IN ('showcased', 'winner')
           AND s2.uploads_json IS NOT NULL
           AND s2.uploads_json != '[]'
         ORDER BY s2.created_at ASC
@@ -370,7 +370,7 @@ export async function getPublicProject(db, { eventSlug, projectSlug } = {}) {
         JOIN submissions s2 ON s2.id = eps2.submission_id
         WHERE eps2.event_slug = eps.event_slug
           AND eps2.project_id = p.id
-          AND eps2.status NOT IN ('hidden', 'rejected')
+          AND eps2.status IN ('showcased', 'winner')
           AND s2.uploads_json IS NOT NULL
           AND s2.uploads_json != '[]'
         ORDER BY s2.created_at ASC

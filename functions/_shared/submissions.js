@@ -15,7 +15,7 @@ export function corsHeaders() {
   return {
     'access-control-allow-origin': '*',
     'access-control-allow-methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
-    'access-control-allow-headers': 'authorization, content-type, x-admin-token, x-filename, x-project-title, x-team-name, x-upload-kind',
+    'access-control-allow-headers': 'authorization, content-type, x-admin-token, x-filename, x-project-title, x-team-name, x-upload-kind, x-htv-session',
     'access-control-max-age': '86400',
   };
 }

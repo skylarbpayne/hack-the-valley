@@ -225,10 +225,7 @@
     }
 
     async function uploadFile(projectId, file) {
-      const form = document.querySelector(`[data-project-edit-form][data-project-id="${CSS.escape(projectId)}"]`);
-      const title = form?.elements.title.value || "project";
-      const teamName = form?.elements.team_name.value || title;
-      const url = `/api/upload?filename=${encodeURIComponent(file.name)}&kind=${encodeURIComponent(uploadKind(file))}&teamName=${encodeURIComponent(teamName)}&projectTitle=${encodeURIComponent(title)}`;
+      const url = `/api/me/projects/${encodeURIComponent(projectId)}/media?filename=${encodeURIComponent(file.name)}&kind=${encodeURIComponent(uploadKind(file))}&event=${encodeURIComponent(submitEventFor({}))}`;
       const response = await fetch(url, { method: "POST", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Upload failed");

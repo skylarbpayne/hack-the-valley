@@ -28,6 +28,7 @@ export async function onRequestGet(context) {
     object.writeHttpMetadata(headers);
     headers.set("etag", object.httpEtag);
     headers.set("cache-control", "public, max-age=3600");
+    headers.set("x-content-type-options", "nosniff");
     headers.set("content-disposition", `inline; filename="${String(media.filename || media.originalFilename || "project-media").replace(/["\\]/g, "")}"`);
     return new Response(object.body, { headers });
   });

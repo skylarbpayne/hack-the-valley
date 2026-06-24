@@ -777,7 +777,7 @@ export async function getPublicProjectHeroMedia(db, { eventSlug, projectSlug } =
     JOIN submissions s ON s.id = eps.submission_id
     WHERE eps.event_slug = ?
       AND p.slug = ?
-      AND eps.status NOT IN ('hidden', 'rejected')
+      AND eps.status IN ('showcased', 'winner')
       AND s.uploads_json IS NOT NULL
       AND s.uploads_json != '[]'
     ORDER BY s.created_at ASC

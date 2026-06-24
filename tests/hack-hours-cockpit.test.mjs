@@ -39,6 +39,7 @@ import worker from "../worker.js";
 const root = new URL("../", import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), "utf8");
 const adminHeaders = (extra = {}) => ({ cookie: "htv_session=test-session", ...extra });
+const samplePngBody = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d]);
 
 function withAdminRoleDb(db, { role = "admin", scope_type = "global", scope_id = "*" } = {}) {
   return {
@@ -129,10 +130,10 @@ test("participant projects workspace lets signed-in users create, edit, upload, 
   assert.match(html, /name="repo_url"/);
   assert.match(html, /name="demo_url"/);
   assert.match(html, /\/api\/me\/projects/);
-  assert.match(html, /\/api\/upload/);
+  assert.doesNotMatch(html, /\/api\/upload/);
   assert.match(html, /fetch\("\/api\/me"/);
   assert.match(html, /encodeURIComponent\(window\.location\.pathname \+ window\.location\.search\)/);
-  assert.match(html, /const url = `\/api\/upload/);
+  assert.match(html, /const url = `\/api\/me\/projects\/\$\{encodeURIComponent\(projectId\)\}\/media/);
   assert.doesNotMatch(html, /API_ORIGIN\s*=\s*'https:\/\/hack-the-valley\.pages\.dev'/);
   assert.match(html, /\/materials/);
   assert.match(html, /data-project-upload/);
@@ -477,7 +478,7 @@ test("/api/me/projects can create a project and associate it with an event conte
   const response = await worker.fetch(new Request("https://hackthevalley.org/api/me/projects", {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: "htv_session=test-session-token" },
-    body: JSON.stringify({ title: "Valley SAT Prep", team_name: "Sequoia Sasquatches", event_slug: "hack-the-valley-2026" })
+    body: JSON.stringify({ title: "Valley SAT Prep", team_name: "Sequoia Sasquatches", event_slug: "hack-the-valley-2026", canonical_submission_id: "sub_forged", submission_id: "sub_forged" })
   }), { HTV_DB: fakeDb }, {});
   assert.equal(response.status, 200);
   const body = await response.json();
@@ -487,6 +488,10 @@ test("/api/me/projects can create a project and associate it with an event conte
   assert.equal(body.state.user.email, "maya@example.com");
   assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO project_members/);
   assert.match(statements.map((s) => s.sql).join("\n"), /INSERT INTO event_project_submissions/);
+  const projectInsert = statements.find((s) => /INSERT INTO projects/.test(s.sql));
+  assert.equal(projectInsert.args[8], null);
+  const eventSubmissionInsert = statements.find((s) => /INSERT INTO event_project_submissions/.test(s.sql));
+  assert.equal(eventSubmissionInsert.args[4], null);
 });
 
 test("/api/me/projects/<id> supports owner edit and event submission", async () => {
@@ -525,13 +530,15 @@ test("/api/me/projects/<id> supports owner edit and event submission", async () 
   const submitResponse = await worker.fetch(new Request("https://hackthevalley.org/api/me/projects/prj_valley_sat_prep/submissions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: "htv_session=test-session-token" },
-    body: JSON.stringify({ event_slug: "hack-the-valley-2026" })
+    body: JSON.stringify({ event_slug: "hack-the-valley-2026", submission_id: "sub_forged" })
   }), { HTV_DB: fakeDb }, {});
   assert.equal(submitResponse.status, 200);
   assert.equal((await submitResponse.json()).submission.status, "submitted");
   const sql = statements.map((s) => s.sql).join("\n");
   assert.match(sql, /UPDATE projects/);
   assert.match(sql, /INSERT INTO event_project_submissions/);
+  const eventSubmissionInsert = statements.find((s) => /INSERT INTO event_project_submissions/.test(s.sql));
+  assert.equal(eventSubmissionInsert.args[4], null);
 });
 
 test("/api/me/projects/<id>/materials saves uploaded materials against the owned project", async () => {
@@ -547,6 +554,10 @@ test("/api/me/projects/<id>/materials saves uploaded materials against the owned
           if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
           if (/FROM projects p/.test(sql) && /project_members pm/.test(sql)) return { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep", team_name: "Sequoia Sasquatches", description: "SAT helper", repo_url: "", demo_url: "", tracks_json: "[]", canonical_submission_id: "htv_old" };
           if (/SELECT \* FROM projects/.test(sql)) return { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep", team_name: "Sequoia Sasquatches", description: "SAT helper", repo_url: "", demo_url: "", tracks_json: "[]", canonical_submission_id: "htv_old" };
+          if (/FROM project_media_uploads/.test(sql)) {
+            if (this.args?.[2] !== "submissions/team/video.mp4") return null;
+            return { storage_key: "submissions/team/video.mp4", original_filename: "demo.mp4", content_type: "video/mp4", kind: "video", bytes: 1024 };
+          }
           if (/FROM submissions WHERE id/.test(sql)) return { payload_json: JSON.stringify({ mediaLink: "https://loom.example.com/old-demo" }), uploads_json: JSON.stringify([{ key: "submissions/team/old.png", filename: "old.png", kind: "image" }]) };
           if (/FROM users/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R." };
           return null;
@@ -568,6 +579,7 @@ test("/api/me/projects/<id>/materials saves uploaded materials against the owned
       team_name: "Sequoia Sasquatches",
       description: "SAT helper",
       mediaLink: "https://loom.example.com/new-demo",
+      canonical_submission_id: "htv_attacker",
       uploads: [{ key: "submissions/team/video.mp4", filename: "demo.mp4", kind: "video" }]
     })
   }), { HTV_DB: fakeDb, SUBMISSIONS_MEDIA: { put: async () => ({}) } }, {});
@@ -581,8 +593,95 @@ test("/api/me/projects/<id>/materials saves uploaded materials against the owned
   assert.match(sql, /UPDATE event_project_submissions/);
   const insertedSubmission = statements.find((s) => /INSERT INTO submissions/.test(s.sql));
   const uploadsJson = insertedSubmission.args[7];
-  assert.match(uploadsJson, /old\.png/);
+  assert.doesNotMatch(uploadsJson, /old\.png/);
   assert.match(uploadsJson, /demo\.mp4/);
+  const firstProjectUpdate = statements.find((s) => /UPDATE projects/.test(s.sql));
+  assert.equal(firstProjectUpdate.args[7], "htv_old");
+  assert.notEqual(firstProjectUpdate.args[7], "htv_attacker");
+});
+
+test("/api/me/projects/<id>/media requires a signed-in project owner and records upload provenance", async () => {
+  const statements = [];
+  const stored = new Map();
+  const fakeDb = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        args: [],
+        bind(...args) { this.args = args; statements.push(this); return this; },
+        async run() { return { success: true }; },
+        async first() {
+          if (/FROM user_sessions us/.test(sql)) return { id: "usr_maya", email: "maya@example.com", name: "Maya R.", session_id: "ses_1", session_expires_at: "2999-01-01T00:00:00.000Z" };
+          if (/FROM projects p\s+JOIN project_members pm/.test(sql)) {
+            if (/pm\.role IN/.test(sql) && this.args?.[0] === "prj_readonly") return null;
+            return { id: "prj_valley_sat_prep", slug: "valley-sat-prep", title: "Valley SAT Prep", team_name: "Sequoia Sasquatches", tracks_json: "[]" };
+          }
+          if (/COUNT\(\*\) AS count\s+FROM project_media_uploads/.test(sql)) return { count: 0 };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+      return statement;
+    }
+  };
+
+  const unauthenticated = await worker.fetch(new Request("https://hackthevalley.org/api/me/projects/prj_valley_sat_prep/media", {
+    method: "POST",
+    headers: { "Content-Type": "image/png" },
+    body: samplePngBody
+  }), { HTV_DB: fakeDb, SUBMISSIONS_MEDIA: { put: async () => { throw new Error("unauthenticated upload should not store"); } } }, {});
+  assert.equal(unauthenticated.status, 401);
+
+  const badType = await worker.fetch(new Request("https://hackthevalley.org/api/me/projects/prj_valley_sat_prep/media?filename=notes.txt&kind=image", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Cookie: "htv_session=test-session-token" },
+    body: "not an image"
+  }), { HTV_DB: fakeDb, SUBMISSIONS_MEDIA: { put: async () => { throw new Error("rejected upload should not store"); } } }, {});
+  assert.equal(badType.status, 400);
+
+  const mismatchedBody = await worker.fetch(new Request("https://hackthevalley.org/api/me/projects/prj_valley_sat_prep/media?filename=demo.png&kind=image", {
+    method: "POST",
+    headers: { "Content-Type": "image/png", Cookie: "htv_session=test-session-token" },
+    body: "not-a-real-png"
+  }), { HTV_DB: fakeDb, SUBMISSIONS_MEDIA: { put: async () => { throw new Error("mismatched upload should not store"); } } }, {});
+  assert.equal(mismatchedBody.status, 400);
+
+  const readonlyMember = await worker.fetch(new Request("https://hackthevalley.org/api/me/projects/prj_readonly/media?filename=demo.png&kind=image", {
+    method: "POST",
+    headers: { "Content-Type": "image/png", Cookie: "htv_session=test-session-token" },
+    body: samplePngBody
+  }), { HTV_DB: fakeDb, SUBMISSIONS_MEDIA: { put: async () => { throw new Error("readonly member upload should not store"); } } }, {});
+  assert.equal(readonlyMember.status, 404);
+
+  const response = await worker.fetch(new Request("https://hackthevalley.org/api/me/projects/prj_valley_sat_prep/media?filename=../demo.png&kind=image&event=hack-the-valley-2026", {
+    method: "POST",
+    headers: { "Content-Type": "image/png", Cookie: "htv_session=test-session-token" },
+    body: samplePngBody
+  }), {
+    HTV_DB: fakeDb,
+    SUBMISSIONS_MEDIA: {
+      async put(key, body, options) {
+        stored.set(key, { bytes: (await new Response(body).arrayBuffer()).byteLength, options });
+      }
+    }
+  }, {});
+  assert.equal(response.status, 201);
+  const json = await response.json();
+  assert.equal(json.upload.filename, "demo.png");
+  assert.equal(json.upload.kind, "image");
+  assert.match(json.upload.key, /^submissions\/sequoia-sasquatches\/project-media\/valley-sat-prep\//);
+  assert.equal(stored.get(json.upload.key).bytes, samplePngBody.byteLength);
+  assert.equal(stored.get(json.upload.key).options.customMetadata.uploadedByUserId, "usr_maya");
+  assert.equal(stored.get(json.upload.key).options.customMetadata.sessionId, "ses_1");
+
+  const insert = statements.find((statement) => /INSERT INTO project_media_uploads/.test(statement.sql));
+  assert.ok(insert, "expected durable project media upload record");
+  assert.equal(insert.args[1], "prj_valley_sat_prep");
+  assert.equal(insert.args[2], "usr_maya");
+  assert.equal(insert.args[3], "ses_1");
+  assert.equal(insert.args[4], "hack-the-valley-2026");
+  assert.equal(insert.args[6], json.upload.key);
+  assert.match(insert.args[11], /"uploaderEmail":"maya@example.com"/);
 });
 
 test("schema and migrations add passwordless user login sessions without passwords", () => {
@@ -1565,7 +1664,7 @@ test("public project media endpoint serves only media attached to a public proje
         bind(...args) { this.args = args; return this; },
         async all() {
           assert.deepEqual(this.args, ["hack-the-valley-2026", "techpath-kern"]);
-          assert.match(sql, /eps\.status NOT IN \('hidden', 'rejected'\)/);
+          assert.match(sql, /eps\.status IN \('showcased', 'winner'\)/);
           return { results: [{ uploads_json: JSON.stringify([
             { key: "submissions/kern-coders/readme.txt", kind: "file", contentType: "text/plain" },
             { key: "submissions/kern-coders/screenshot.png", kind: "image", filename: "screenshot.png", contentType: "image/png" }
@@ -1593,6 +1692,7 @@ test("public project media endpoint serves only media attached to a public proje
   }, {});
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("content-type"), "image/png");
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
   assert.match(response.headers.get("cache-control") || "", /public/);
   assert.equal(await response.arrayBuffer().then((buffer) => new Uint8Array(buffer)[1]), 80);
 });

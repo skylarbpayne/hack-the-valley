@@ -5,39 +5,16 @@ import {
   requireAdmin
 } from "../../../_lib/event-platform.js";
 import {
+  assertEventImageKeyForRoute,
+  prepareEventImageUploadFromAdminRoute
+} from "../../../_lib/domain/events.js";
+import {
   corsHeaders,
   maxUploadBytes,
   optionsResponse,
   randomId,
   sanitizeFilename
 } from "../../../_shared/submissions.js";
-
-function imageKeyFor(slug, filename) {
-  const now = new Date().toISOString().replace(/[:.]/g, "-");
-  return `event-images/${slug}/${now}-${randomId("img")}-${sanitizeFilename(filename || "event-image")}`;
-}
-
-function assertImageUpload(request, env) {
-  const type = String(request.headers.get("content-type") || "").toLowerCase();
-  if (!type.startsWith("image/")) {
-    throw Object.assign(new Error("Event image must be an image file."), { status: 400 });
-  }
-
-  const size = Number(request.headers.get("content-length") || 0);
-  const limit = maxUploadBytes(env);
-  if (size && size > limit) {
-    throw Object.assign(new Error(`Event image is too large. Limit is ${Math.round(limit / 1024 / 1024)}MB.`), { status: 400 });
-  }
-
-  return type;
-}
-
-function assertEventImageKey(slug, key) {
-  const prefix = `event-images/${slug}/`;
-  if (!key || !key.startsWith(prefix)) {
-    throw Object.assign(new Error("Valid event image key required."), { status: 400 });
-  }
-}
 
 export function onRequestOptions() {
   return optionsResponse();
@@ -51,23 +28,23 @@ export async function onRequestPost(context) {
     }
 
     const slug = context.params.slug;
-    const contentType = assertImageUpload(context.request, context.env);
     const url = new URL(context.request.url);
     const filename = url.searchParams.get("filename") || context.request.headers.get("x-filename") || "event-image";
-    const key = imageKeyFor(slug, filename);
-
-    await context.env.SUBMISSIONS_MEDIA.put(key, context.request.body, {
-      httpMetadata: { contentType },
-      customMetadata: {
-        originalFilename: sanitizeFilename(filename),
-        kind: "event-image",
-        eventSlug: slug,
-        uploadedAt: new Date().toISOString()
-      }
+    const upload = prepareEventImageUploadFromAdminRoute({
+      slug,
+      filename: sanitizeFilename(filename),
+      contentType: context.request.headers.get("content-type"),
+      contentLength: context.request.headers.get("content-length"),
+      maxBytes: maxUploadBytes(context.env),
+      id: randomId("img")
     });
 
-    const imageUrl = `/api/events/${encodeURIComponent(slug)}/image?key=${encodeURIComponent(key)}`;
-    return jsonResponse({ ok: true, image_url: imageUrl, image_key: key });
+    await context.env.SUBMISSIONS_MEDIA.put(upload.key, context.request.body, {
+      httpMetadata: { contentType: upload.contentType },
+      customMetadata: upload.metadata
+    });
+
+    return jsonResponse({ ok: true, image_url: upload.imageUrl, image_key: upload.key });
   });
 }
 
@@ -80,7 +57,7 @@ export async function onRequestGet(context) {
     const slug = context.params.slug;
     const url = new URL(context.request.url);
     const key = url.searchParams.get("key");
-    assertEventImageKey(slug, key);
+    assertEventImageKeyForRoute(slug, key);
 
     const object = await context.env.SUBMISSIONS_MEDIA.get(key);
     if (!object) {

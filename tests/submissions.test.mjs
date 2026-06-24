@@ -88,7 +88,8 @@ test('project workspace moved under /me/projects and legacy submit redirects the
   assert.match(projectsHtml, /\/api\/upload/);
   assert.match(projectsHtml, /\/api\/me\/projects/);
   assert.match(publicProjectsHtml, /Student project showcase/);
-  assert.match(publicProjectsHtml, /\/api\/projects\?event=hack-the-valley-2026/);
+  assert.match(publicProjectsHtml, /fetch\('\/api\/projects'/);
+  assert.doesNotMatch(publicProjectsHtml, /\/api\/projects\?event=hack-the-valley-2026/);
   assert.match(submitHtml, /url=\/me\/projects\//);
   assert.match(submitHtml, /window\.location\.replace\('\/me\/projects\/'\)/);
   assert.doesNotMatch(projectsHtml, /Showcase event slug|id="track"[^>]*required/);

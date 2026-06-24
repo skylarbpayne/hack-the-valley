@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  getPublicProject,
   listEventProjectReviewSubmissions,
   listEventProjectSubmissions,
   listOrganizerEventProjectSubmissions,
@@ -21,7 +22,8 @@ function createSubmissionDomainDb() {
   ]);
   const members = [{ project_id: "prj_show", user_id: "usr_maya", email: "maya@example.com", role: "owner" }];
   const publicRows = [
-    { event_slug: "hack-the-valley-2026", status: "showcased", project_id: "prj_show", slug: "show", title: "Show Project", team_name: "Show Team", description: "Public", tracks_json: "[]" },
+    { event_slug: "hack-the-valley-2026", status: "showcased", project_id: "prj_show", slug: "show", title: "Show Project", team_name: "Show Team", description: "Public", repo_url: "https://github.com/example/show", demo_url: "https://show.example.com", tracks_json: "[]" },
+    { event_slug: "hack-hours", status: "showcased", project_id: "prj_other", slug: "other", title: "Other Event Project", team_name: "Other Team", description: "Other", repo_url: "javascript:alert(document.domain)", demo_url: "data:text/html,<script>alert(1)</script>", tracks_json: "[]" },
     { event_slug: "hack-the-valley-2026", status: "hidden", project_id: "prj_hidden", slug: "hidden", title: "Hidden Project", team_name: "Hidden Team", description: "Hidden", tracks_json: "[]" },
     { event_slug: "hack-the-valley-2026", status: "rejected", project_id: "prj_rejected", slug: "rejected", title: "Rejected Project", team_name: "Rejected Team", description: "Rejected", tracks_json: "[]" }
   ];
@@ -91,6 +93,20 @@ function createSubmissionDomainDb() {
           }
           if (/SELECT \* FROM projects WHERE slug/.test(sql)) return [...projects.values()].find((project) => project.slug === this.args[0]) || null;
           if (/SELECT \* FROM projects WHERE id/.test(sql)) return projects.get(this.args[0]) || null;
+          if (/FROM event_project_submissions eps\s+JOIN projects p/.test(sql) && /p\.slug = \?/.test(sql) && /eps\.status NOT IN \('hidden', 'rejected'\)/.test(sql)) {
+            const [eventSlug, projectSlug] = this.args;
+            const row = publicRows.find((item) => item.event_slug === eventSlug && item.slug === projectSlug && !["hidden", "rejected"].includes(item.status));
+            return row ? {
+              ...row,
+              repo_url: row.repo_url,
+              demo_url: row.demo_url,
+              tracks_json: JSON.stringify(["AI", "Education"]),
+              awards_json: JSON.stringify([{ award_slug: "overall", award_title: "Overall Winner", award_rank: 1, prize_amount_cents: 50000 }]),
+              hero_uploads_json: JSON.stringify([{ key: "submissions/show-team/private-key.png", kind: "image", filename: "show.png", contentType: "image/png" }]),
+              contact_email: "private@example.com",
+              payload_json: JSON.stringify({ admin_notes: "private" })
+            } : null;
+          }
           throw new Error(`Unexpected first query: ${sql}`);
         },
         async all() {
@@ -117,7 +133,8 @@ function createSubmissionDomainDb() {
           }
           if (/FROM event_project_submissions eps\s+JOIN projects p/.test(sql) && /LEFT JOIN event_project_awards/.test(sql)) {
             const excludeHidden = /eps.status NOT IN \('hidden', 'rejected'\)/.test(sql);
-            return { results: publicRows.filter((row) => !excludeHidden || !["hidden", "rejected"].includes(row.status)) };
+            const filteredByEvent = /eps\.event_slug = \?/.test(sql) ? publicRows.filter((row) => row.event_slug === this.args[0]) : publicRows;
+            return { results: filteredByEvent.filter((row) => !excludeHidden || !["hidden", "rejected"].includes(row.status)) };
           }
           throw new Error(`Unexpected all query: ${sql}`);
         }
@@ -260,7 +277,39 @@ test("listPublicProjects hides rejected or hidden event submissions but not the 
   const rows = await listPublicProjects(db, { eventSlug: "hack-the-valley-2026" });
 
   assert.deepEqual(rows.map((row) => row.title), ["Show Project"]);
-  assert.match(db.statements.at(-1).sql, /eps.status NOT IN \('hidden', 'rejected'\)/);
+  assert.equal(rows[0].public_url, "/projects/hack-the-valley-2026/show/");
+  const allPublic = await listPublicProjects(db);
+  assert.deepEqual(allPublic.map((row) => row.title), ["Show Project", "Other Event Project"]);
+  assert.equal(allPublic[1].repo_url, null);
+  assert.equal(allPublic[1].demo_url, null);
+  const publicListSql = db.statements.at(-2).sql;
+  assert.match(publicListSql, /eps.status NOT IN \('hidden', 'rejected'\)/);
+  assert.match(publicListSql, /eps2.status NOT IN \('hidden', 'rejected'\)/);
+  assert.doesNotMatch(db.statements.at(-1).sql, /eps\.event_slug = \?/);
   const withHidden = await listPublicProjects(db, { eventSlug: "hack-the-valley-2026", includeHidden: true });
   assert.deepEqual(withHidden.map((row) => row.title), ["Show Project", "Hidden Project", "Rejected Project"]);
+});
+
+test("getPublicProject returns one canonical privacy-safe public project detail", async () => {
+  const db = createSubmissionDomainDb();
+  const project = await getPublicProject(db, { eventSlug: "hack-the-valley-2026", projectSlug: "show" });
+
+  assert.equal(project.title, "Show Project");
+  assert.equal(project.public_url, "/projects/hack-the-valley-2026/show/");
+  assert.deepEqual(project.tracks, ["AI", "Education"]);
+  assert.equal(project.awards[0].title, "Overall Winner");
+  assert.equal(project.awards[0].prize_amount_cents, undefined);
+  assert.equal(project.hero_media.url, "/api/projects/media?event=hack-the-valley-2026&project=show");
+  assert.equal(project.hero_media.key, undefined);
+  assert.equal(project.contact_email, undefined);
+  assert.equal(project.payload_json, undefined);
+  assert.doesNotMatch(JSON.stringify(project), /private@example\.com|admin_notes|50000|prize_amount_cents|private-key/);
+
+  const hidden = await getPublicProject(db, { eventSlug: "hack-the-valley-2026", projectSlug: "hidden" });
+  assert.equal(hidden, null);
+  assert.match(db.statements.at(-1).sql, /eps\.status NOT IN \('hidden', 'rejected'\)/);
+
+  const unsafeLinks = await getPublicProject(db, { eventSlug: "hack-hours", projectSlug: "other" });
+  assert.equal(unsafeLinks.repo_url, null);
+  assert.equal(unsafeLinks.demo_url, null);
 });

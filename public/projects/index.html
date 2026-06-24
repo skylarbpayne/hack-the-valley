@@ -78,9 +78,22 @@
       return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
     }
 
-    function money(cents) {
-      if (!Number.isFinite(Number(cents))) return '';
-      return `$${Math.round(Number(cents) / 100).toLocaleString()}`;
+    function eventDisplayName(eventSlug) {
+      const slug = String(eventSlug || '').trim();
+      if (!slug) return '';
+      const lowerCaseWords = new Set(['a', 'an', 'and', 'at', 'for', 'in', 'of', 'on', 'or', 'the', 'to']);
+      return slug.split(/[-_]+/).filter(Boolean).map((part, index) => {
+        if (/^\d+$/.test(part)) return part;
+        const lower = part.toLowerCase();
+        return index > 0 && lowerCaseWords.has(lower) ? lower : lower.charAt(0).toUpperCase() + lower.slice(1);
+      }).join(' ');
+    }
+
+    function awardLabel(award, project) {
+      if (award.display_text) return award.display_text;
+      const title = award.title || 'Award';
+      const event = award.event || eventDisplayName(award.event_slug || project.event_slug);
+      return event ? `${title} - ${event}` : title;
     }
 
     function awardMarkup(project) {
@@ -88,7 +101,7 @@
       if (!awards.length) return '';
       return `<div class="flex flex-wrap gap-2 mb-4">${awards.map((award) => `
         <span class="inline-flex items-center rounded-full bg-bc-orange/15 border border-bc-orange/40 px-3 py-1 text-xs font-black text-bc-orange">
-          ${escapeHtml(award.title)}${award.prize_amount_cents ? ` · ${escapeHtml(money(award.prize_amount_cents))}` : ''}
+          ${escapeHtml(awardLabel(award, project))}
         </span>
       `).join('')}</div>`;
     }

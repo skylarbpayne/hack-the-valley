@@ -111,7 +111,8 @@
       return `<li class="rounded-2xl border border-dashed border-slate-600 bg-slate-950/40 p-4 text-sm text-slate-400">${escapeHtml(copy)}</li>`;
     }
 
-    function eventLabel(slug) {
+    function eventLabel(slug, title) {
+      if (title) return title;
       if (!slug) return "No event submission yet";
       return slug === "hack-the-valley-2026" ? "Hack the Valley 2026" : slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
     }
@@ -166,12 +167,23 @@
 
     function renderAttendance(events = []) {
       $("attendance-count").textContent = `${events.length} event${events.length === 1 ? "" : "s"}`;
-      $("attendance-list").innerHTML = events.length ? events.map((event) => `
+      $("attendance-list").innerHTML = events.length ? events.map((event) => {
+        const scheduledAt = event.instance_starts_at || event.event_starts_at || event.occurred_at;
+        const status = event.instance_status || event.event_status || "recorded";
+        const location = [event.venue_name, event.venue_address].filter(Boolean).join(" · ");
+        const instance = event.instance_title && event.instance_title !== event.event_title ? event.instance_title : "";
+        return `
         <li class="rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
-          <div class="font-bold text-white">${escapeHtml(eventLabel(event.event_slug))}</div>
-          <div class="text-sm text-slate-400">${escapeHtml(event.event_type === "checked_in" ? "Checked in" : event.event_type || "Participated")} · ${escapeHtml(prettyDate(event.occurred_at))}</div>
-        </li>
-      `).join("") : emptyItem("No attendance yet. Sign up for Hack Hours to start your history.");
+          <div class="font-bold text-white">${escapeHtml(eventLabel(event.event_slug, event.event_title))}</div>
+          ${instance ? `<div class="text-sm text-slate-300">${escapeHtml(instance)}</div>` : ""}
+          <div class="mt-1 text-sm text-slate-400">${escapeHtml(event.event_type === "checked_in" ? "Checked in" : event.event_type || "Participated")} · ${escapeHtml(prettyDate(event.occurred_at))}</div>
+          <div class="mt-2 flex flex-wrap gap-2 text-xs">
+            <span class="rounded-full bg-cyan-400/10 px-2 py-1 text-bc-cyan">${escapeHtml(prettyDate(scheduledAt))}</span>
+            ${location ? `<span class="rounded-full bg-slate-800 px-2 py-1 text-slate-300">${escapeHtml(location)}</span>` : ""}
+            <span class="rounded-full bg-slate-800 px-2 py-1 text-slate-300">${escapeHtml(status)}</span>
+          </div>
+        </li>`;
+      }).join("") : emptyItem("No attendance yet. Sign up for Hack Hours to start your history.");
     }
 
     function renderProjects(projects = []) {

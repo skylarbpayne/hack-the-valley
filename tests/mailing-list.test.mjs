@@ -199,7 +199,7 @@ test('top navigation stays participant-focused and keeps the survey off the home
   assert.doesNotMatch(eventHtml, /Help build the next one/);
   assert.match(eventHtml, /data-nav-link="events" href="\/events"[^>]*aria-current="page"[^>]*>Events<\/a>/);
   assert.match(eventHtml, /data-nav-link="projects" href="\/projects\/"[^>]*>Projects<\/a>/);
-  assert.match(eventHtml, /data-nav-link="profile" href="\/login\/\?next=\/me\/"[^>]*>Profile<\/a>/);
+  assert.match(eventHtml, /data-nav-link="profile" href="\/me\/"[^>]*>Profile<\/a>/);
   assert.match(eventHtml, /data-nav-link="leaderboard" href="\/leaderboard\/"[^>]*>Leaderboard<\/a>/);
 });
 

@@ -1650,6 +1650,52 @@ test("/api/me denies attendance history without a signed-in session", async () =
   assert.equal(body.attendance, undefined);
 });
 
+test("/api/auth/logout revokes the current session token and clears the session cookie", async () => {
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      return {
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async run() {
+          statements.push({ sql, args: this.args });
+          return { success: true };
+        }
+      };
+    }
+  };
+
+  const response = await worker.fetch(
+    new Request("https://hackthevalley.org/api/auth/logout", { method: "POST", headers: { cookie: "htv_session=test-session" } }),
+    { HTV_DB: db },
+    {}
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).ok, true);
+  assert.equal(statements.length, 1);
+  assert.match(statements[0].sql, /UPDATE user_sessions SET revoked_at = \?/);
+  assert.equal(statements[0].args.length, 2);
+  assert.notEqual(statements[0].args[1], "test-session");
+  const setCookie = response.headers.get("set-cookie") || "";
+  assert.match(setCookie, /htv_session=;/);
+  assert.match(setCookie, /Max-Age=0/);
+  assert.match(setCookie, /HttpOnly/);
+  assert.match(setCookie, /SameSite=Lax/);
+});
+
+test("/api/auth/logout clears the browser cookie even when no session cookie is present", async () => {
+  const response = await worker.fetch(
+    new Request("https://hackthevalley.org/api/auth/logout", { method: "POST" }),
+    {},
+    {}
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).ok, true);
+  assert.match(response.headers.get("set-cookie") || "", /htv_session=;.*Max-Age=0/);
+});
+
 test("profile page renders enriched attendance-history fields from /api/me", () => {
   const html = readFileSync(new URL("../public/me/index.html", import.meta.url), "utf8");
   assert.match(html, /Event history/);

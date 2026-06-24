@@ -6,8 +6,21 @@ import {
 } from "../../_lib/event-platform.js";
 
 function safeNextPath(value) {
-  const next = String(value || "").trim();
-  return next.startsWith("/") && !next.startsWith("//") ? next : "/me/";
+  const fallback = "/me/";
+  let next = String(value || "").trim();
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return fallback;
+  for (let i = 0; i < 2; i += 1) {
+    if (/[\\\u0000-\u001f\u007f]/.test(next) || next.startsWith("//")) return fallback;
+    try {
+      const decoded = decodeURIComponent(next);
+      if (decoded === next) break;
+      next = decoded;
+    } catch {
+      break;
+    }
+  }
+  if (!next.startsWith("/") || next.startsWith("//") || /[\\\u0000-\u001f\u007f]/.test(next)) return fallback;
+  return next;
 }
 
 function redirectWithMessage(request, message) {

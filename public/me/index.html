@@ -22,6 +22,7 @@
           <a data-nav-link="projects" href="/projects/" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Projects</a>
           <a data-nav-link="profile" href="/me/" aria-current="page" class="rounded-full bg-bc-cyan/15 px-3 py-2 text-bc-cyan ring-1 ring-bc-cyan/40">Profile</a>
           <a data-nav-link="leaderboard" href="/leaderboard/" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Leaderboard</a>
+          <button id="logout-button" type="button" class="rounded-full border border-slate-600 px-3 py-2 text-slate-300 hover:border-bc-cyan hover:text-bc-cyan transition">Log out</button>
         </div>
       </div>
     </nav>
@@ -276,6 +277,18 @@
         status.className = "text-xs text-red-300";
         status.textContent = error.message || "Could not save profile.";
       }
+    });
+
+    $("logout-button").addEventListener("click", async () => {
+      const button = $("logout-button");
+      button.disabled = true;
+      button.textContent = "Logging out…";
+      try {
+        await jsonFetch("/api/auth/logout", { method: "POST", body: JSON.stringify({}) });
+      } catch {
+        // Still leave this browser session: the server response may have cleared the cookie even if JSON parsing failed.
+      }
+      window.location.href = "/login/";
     });
 
     loadProfile();

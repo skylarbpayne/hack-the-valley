@@ -99,6 +99,13 @@ export async function onRequestPost(context) {
     const fetcher = context.fetch || fetch;
     const config = resolveBroadcastConfig(env);
 
+    // Resolve the target audience BEFORE reserving the row. This is a read-only
+    // lookup that creates nothing at Resend, so doing it first means an audience
+    // misconfiguration (no/ambiguous audience) fails the request without leaving
+    // behind a 'pending' row — which would otherwise block every future retry on
+    // the idempotency key even after the config is fixed.
+    const audienceId = await resolveAudienceId({ env, fetcher });
+
     // Reserve this blast before touching Resend. The UNIQUE idempotency key
     // means a retry with the same slug + scheduled time collides here instead
     // of creating a second broadcast.
@@ -124,8 +131,6 @@ export async function onRequestPost(context) {
         existing?.broadcast_id ? { broadcastId: existing.broadcast_id } : undefined,
       );
     }
-
-    const audienceId = await resolveAudienceId({ env, fetcher });
 
     let result;
     try {
@@ -159,9 +164,13 @@ export async function onRequestPost(context) {
       throw err;
     }
 
+    // Resend has only *accepted* the scheduled send — it hasn't gone out yet
+    // (and could still fail at send time). Record 'scheduled', not 'sent'; the
+    // reconcile cron advances this to sending/sent/canceled from Resend's real
+    // broadcast status. Writing 'sent' here would be a lie that never self-corrects.
     await db
       .prepare(
-        `UPDATE blog_broadcast_sends SET broadcast_id = ?, status = 'sent', updated_at = ? WHERE idempotency_key = ?`
+        `UPDATE blog_broadcast_sends SET broadcast_id = ?, status = 'scheduled', updated_at = ? WHERE idempotency_key = ?`
       )
       .bind(result.id, new Date().toISOString(), key)
       .run();
@@ -173,10 +182,30 @@ export async function onRequestPost(context) {
       scheduledAt,
       broadcastId: result.id,
       scheduled: result.scheduled,
+      status: 'scheduled',
     });
   });
 }
 
+// GET /api/blog/broadcast — admin-only. Returns the recent blast send-log so the
+// organizer page can show each blast's reconciled status (the cron keeps these
+// rows honest: scheduled -> sending -> sent/canceled).
+export async function onRequestGet(context) {
+  return handleErrors(async () => {
+    await requireAdmin(context.request, context.env);
+    const db = getDb(context.env);
+    const query = await db
+      .prepare(
+        `SELECT slug, scheduled_at, broadcast_id, status, error, last_reconciled_at, created_at, updated_at
+         FROM blog_broadcast_sends
+         ORDER BY scheduled_at DESC
+         LIMIT 50`
+      )
+      .all();
+    return jsonResponse({ ok: true, sends: query?.results || [] });
+  });
+}
+
 export async function onRequest() {
-  return methodNotAllowed(['POST']);
+  return methodNotAllowed(['GET', 'POST']);
 }

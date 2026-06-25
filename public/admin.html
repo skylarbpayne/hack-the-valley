@@ -369,6 +369,16 @@
             <iframe id="blog-preview-frame" class="w-full h-[520px] rounded-2xl border border-slate-700 bg-white" title="Email preview"></iframe>
           </div>
         </div>
+        <div class="mt-8 border-t border-slate-700 pt-6">
+          <div class="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h3 class="text-lg font-black">Recent blasts</h3>
+              <p class="text-xs text-slate-500 mt-1">Status is reconciled from Resend (every ~15 min): scheduled → sending → sent. A scheduled send only means Resend accepted it — not that mail has gone out yet.</p>
+            </div>
+            <button id="blog-sends-refresh" type="button" class="border border-slate-600 text-slate-200 px-4 py-2 rounded-lg text-sm font-bold hover:border-bc-cyan hover:text-bc-cyan">Refresh</button>
+          </div>
+          <div id="blog-sends-list" class="overflow-x-auto text-sm text-slate-300"></div>
+        </div>
       </section>
     </section>
   </main>
@@ -1684,6 +1694,7 @@
     $("logout").addEventListener("click", switchAccount);
     $("blog-preview").addEventListener("click", () => previewBlogBlast());
     $("blog-send").addEventListener("click", () => sendBlogBlast());
+    $("blog-sends-refresh").addEventListener("click", () => loadBlogSends());
 
     function setBlogStatus(message, error = false) {
       $("blog-blast-status").className = `text-sm ${error ? "text-red-300" : "text-slate-300"}`;
@@ -1699,6 +1710,67 @@
         if (!posts.length) setBlogStatus("No published posts found in /blog/posts.json.", true);
       } catch {
         setBlogStatus("Could not load /blog/posts.json.", true);
+      }
+      await loadBlogSends();
+    }
+
+    function blogStatusBadge(status) {
+      const s = String(status || "").toLowerCase();
+      const styles = {
+        sent: "bg-emerald-500/15 text-emerald-200 border-emerald-500/40",
+        sending: "bg-cyan-500/15 text-cyan-200 border-cyan-500/40",
+        scheduled: "bg-blue-500/15 text-blue-200 border-blue-500/40",
+        pending: "bg-amber-500/15 text-amber-200 border-amber-500/40",
+        canceled: "bg-slate-700 text-slate-300 border-slate-600",
+        send_failed: "bg-red-500/15 text-red-200 border-red-500/40",
+      };
+      const cls = styles[s] || "bg-slate-800 text-slate-300 border-slate-700";
+      return `<span class="rounded-full ${cls} border px-2 py-0.5 text-[0.68rem] uppercase tracking-[0.12em]">${escapeHtml(s || "unknown")}</span>`;
+    }
+
+    function renderBlogSends(sends) {
+      const container = $("blog-sends-list");
+      if (!container) return;
+      if (!sends.length) {
+        container.innerHTML = `<p class="text-sm text-slate-500">No blasts have been scheduled yet.</p>`;
+        return;
+      }
+      const fmt = (value) => {
+        if (!value) return "—";
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
+      };
+      const rows = sends.map((send) => `
+        <tr class="border-t border-slate-800">
+          <td class="py-2 pr-4 font-semibold text-slate-200">${escapeHtml(send.slug)}</td>
+          <td class="py-2 pr-4 whitespace-nowrap">${fmt(send.scheduled_at)}</td>
+          <td class="py-2 pr-4">${blogStatusBadge(send.status)}${send.error ? `<span class="block text-xs text-red-300 mt-1">${escapeHtml(send.error)}</span>` : ""}</td>
+          <td class="py-2 pr-4 whitespace-nowrap text-slate-500">${fmt(send.last_reconciled_at)}</td>
+          <td class="py-2 text-slate-500 font-mono text-xs">${send.broadcast_id ? escapeHtml(send.broadcast_id) : "—"}</td>
+        </tr>`).join("");
+      container.innerHTML = `
+        <table class="min-w-full text-left">
+          <thead class="text-xs uppercase tracking-[0.12em] text-slate-500">
+            <tr>
+              <th class="py-2 pr-4 font-semibold">Post</th>
+              <th class="py-2 pr-4 font-semibold">Scheduled for</th>
+              <th class="py-2 pr-4 font-semibold">Status</th>
+              <th class="py-2 pr-4 font-semibold">Last checked</th>
+              <th class="py-2 font-semibold">Broadcast ID</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    async function loadBlogSends() {
+      const container = $("blog-sends-list");
+      if (!container) return;
+      try {
+        const data = await api("/api/blog/broadcast");
+        renderBlogSends(data.sends || []);
+      } catch (error) {
+        container.innerHTML = `<p class="text-sm text-red-300">${escapeHtml(error.message)}</p>`;
       }
     }
 
@@ -1742,7 +1814,8 @@
       setBlogStatus("Scheduling…");
       try {
         const data = await api("/api/blog/broadcast", { method: "POST", body: blogBlastPayload({ scheduledAt }) });
-        setBlogStatus(`Scheduled! Resend broadcast ${data.broadcastId} for "${data.subject}" at ${new Date(data.scheduledAt).toLocaleString()}.`);
+        setBlogStatus(`Scheduled! Resend broadcast ${data.broadcastId} for "${data.subject}" at ${new Date(data.scheduledAt).toLocaleString()}. It will show as "sent" once Resend confirms delivery.`);
+        await loadBlogSends();
       } catch (error) {
         setBlogStatus(error.message, true);
       } finally {

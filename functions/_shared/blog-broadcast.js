@@ -216,3 +216,90 @@ export async function createAndSendBroadcast({
 
   return { id: broadcastId, scheduled: Boolean(scheduledAt) };
 }
+
+// Our local status for a row given Resend's broadcast status. A scheduled send
+// passes through Resend states draft -> scheduled -> queued -> sent; canceling a
+// scheduled broadcast reverts it to draft. There is no Resend "failed" broadcast
+// status, so the only terminal outcomes are "sent" and "canceled". Returns null
+// for anything we don't recognize so the caller leaves the row untouched.
+export function mapResendBroadcastStatus(resendStatus) {
+  switch (String(resendStatus || '').toLowerCase()) {
+    case 'sent':
+      return 'sent';
+    case 'queued':
+      return 'sending';
+    case 'scheduled':
+      return 'scheduled';
+    case 'draft':
+      // A send we'd already handed to Resend is only "draft" again if its
+      // schedule was canceled — treat that as a terminal cancellation.
+      return 'canceled';
+    default:
+      return null;
+  }
+}
+
+// Fetch a single broadcast's current status from Resend. Returns
+// { found: false } on a 404 (broadcast deleted), { found: true, status } on
+// success, and throws on a transient error so the caller can retry later.
+export async function fetchBroadcastStatus({ env = {}, fetcher = fetch, broadcastId } = {}) {
+  const apiKey = String(env.RESEND_API_KEY || '').trim();
+  const response = await fetcher(`https://api.resend.com/broadcasts/${encodeURIComponent(broadcastId)}`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (response.status === 404) return { found: false, status: null };
+  if (!response.ok) {
+    throw httpError(`Could not fetch Resend broadcast ${broadcastId} (HTTP ${response.status}).`, 502);
+  }
+  const payload = await response.json().catch(() => ({}));
+  return { found: true, status: payload?.status || payload?.data?.status || null };
+}
+
+// Reconcile non-terminal send-log rows against Resend's real broadcast status.
+// Designed to be called from a scheduled (cron) handler: it polls each row that
+// is still scheduled/sending and advances it toward a terminal state. One row's
+// failure never aborts the batch — transient errors leave the row for next time.
+export async function reconcileBroadcastSends({ db, env = {}, fetcher = fetch } = {}) {
+  const apiKey = String(env.RESEND_API_KEY || '').trim();
+  if (!apiKey) return { checked: 0, updated: 0, errors: 0, skipped: 'no-api-key' };
+
+  const query = await db
+    .prepare(
+      `SELECT id, broadcast_id, status FROM blog_broadcast_sends
+       WHERE status IN ('scheduled', 'sending') AND broadcast_id IS NOT NULL`
+    )
+    .all();
+  const rows = query?.results || [];
+
+  let checked = 0;
+  let updated = 0;
+  let errors = 0;
+  for (const row of rows) {
+    checked += 1;
+    try {
+      const { found, status } = await fetchBroadcastStatus({ env, fetcher, broadcastId: row.broadcast_id });
+      const next = found ? mapResendBroadcastStatus(status) : 'canceled';
+      const checkedAt = new Date().toISOString();
+      if (next && next !== row.status) {
+        await db
+          .prepare(
+            `UPDATE blog_broadcast_sends SET status = ?, last_reconciled_at = ?, updated_at = ? WHERE id = ?`
+          )
+          .bind(next, checkedAt, checkedAt, row.id)
+          .run();
+        updated += 1;
+      } else {
+        // No change (still scheduled/sending, or an unrecognized status): just
+        // record that we checked so monitoring can see liveness.
+        await db
+          .prepare('UPDATE blog_broadcast_sends SET last_reconciled_at = ? WHERE id = ?')
+          .bind(checkedAt, row.id)
+          .run();
+      }
+    } catch {
+      // Transient (network / 5xx): leave the row as-is to retry next run.
+      errors += 1;
+    }
+  }
+  return { checked, updated, errors };
+}

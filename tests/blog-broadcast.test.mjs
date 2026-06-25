@@ -9,11 +9,14 @@ import {
   buildBroadcastEmailHtml,
   createAndSendBroadcast,
   extractPostContent,
+  fetchBroadcastStatus,
+  mapResendBroadcastStatus,
   normalizeScheduledAt,
+  reconcileBroadcastSends,
   resolveAudienceId,
   resolveBroadcastConfig,
 } from '../functions/_shared/blog-broadcast.js';
-import { onRequestPost, onRequest } from '../functions/api/blog/broadcast.js';
+import { onRequestPost, onRequestGet, onRequest } from '../functions/api/blog/broadcast.js';
 
 // A valid, comfortably-future schedule for handler tests (well past the buffer).
 function futureIso(msAhead = 60 * 60 * 1000) {
@@ -83,9 +86,12 @@ function adminDb({ role = 'admin', store = new Map() } = {}) {
             const key = this.args[this.args.length - 1];
             const row = store.get(key);
             if (row) {
-              row.broadcast_id = this.args[0];
-              row.status = /status = 'sent'/.test(sql) ? 'sent' : 'send_failed';
-              if (row.status === 'send_failed') row.error = this.args[1];
+              const statusMatch = sql.match(/status = '(\w+)'/);
+              if (statusMatch) {
+                row.broadcast_id = this.args[0];
+                row.status = statusMatch[1];
+                if (row.status === 'send_failed') row.error = this.args[1];
+              }
             }
             return { success: true };
           }
@@ -95,7 +101,12 @@ function adminDb({ role = 'admin', store = new Map() } = {}) {
           }
           throw new Error(`Unexpected run() query: ${sql}`);
         },
-        async all() { return { results: [] }; },
+        async all() {
+          if (/FROM blog_broadcast_sends/.test(sql)) {
+            return { results: [...store.values()] };
+          }
+          return { results: [] };
+        },
       };
     },
   };
@@ -262,6 +273,8 @@ test('handler schedules a broadcast for an admin', async () => {
   assert.equal(body.broadcastId, 'bc_9');
   assert.equal(body.subject, 'Custom subject');
   assert.equal(body.scheduledAt, scheduledAt);
+  // accepted by Resend != delivered: the row is 'scheduled', reconciled later
+  assert.equal(body.status, 'scheduled');
   assert.equal(calls.length, 2);
   // the schedule is forwarded to Resend's send call
   assert.equal(JSON.parse(calls[1].init.body).scheduled_at, scheduledAt);
@@ -420,6 +433,149 @@ test('handler allows a clean retry after a create failure (reservation released)
   assert.equal(retry.status, 200);
 });
 
+test('handler does not orphan a pending row when audience resolution fails', async () => {
+  const store = new Map();
+  const db = adminDb({ store });
+  const scheduledAt = futureIso();
+
+  // No RESEND_AUDIENCE_ID configured, and Resend reports several audiences ->
+  // resolveAudienceId throws 409 before anything is reserved.
+  const ambiguous = await onRequestPost({
+    request: broadcastRequest({ slug: 'test-post', scheduledAt }, { cookie: 'htv_session=tok' }),
+    env: { HTV_DB: db, ASSETS: assets(), RESEND_API_KEY: 'k', RESEND_BROADCAST_FROM: 'HTV <a@b.co>' },
+    fetch: mockFetch([{ status: 200, body: { data: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] } }]),
+  });
+  assert.equal(ambiguous.status, 409);
+  assert.equal(store.size, 0, 'a failed audience lookup must not leave a pending row behind');
+
+  // Once the audience is disambiguated, the same slug + time can still be sent
+  // (no forever-pending row blocks it on the idempotency key).
+  const retry = await onRequestPost({
+    request: broadcastRequest({ slug: 'test-post', scheduledAt }, { cookie: 'htv_session=tok' }),
+    env: { HTV_DB: db, ASSETS: assets(), RESEND_API_KEY: 'k', RESEND_AUDIENCE_ID: 'aud_1', RESEND_BROADCAST_FROM: 'HTV <a@b.co>' },
+    fetch: mockFetch([{ status: 200, body: { id: 'bc_ok' } }, { status: 200, body: { id: 'bc_ok' } }]),
+  });
+  assert.equal(retry.status, 200);
+});
+
+// --- reconciliation (cron) -------------------------------------------------
+
+// In-memory DB for the reconcile cron: serves the non-terminal SELECT and
+// applies status / last_reconciled_at UPDATEs by row id.
+function reconcileDb(seedRows) {
+  const byId = new Map(seedRows.map((row) => [row.id, { ...row }]));
+  return {
+    rows: byId,
+    prepare(sql) {
+      return {
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async all() {
+          if (/SELECT[\s\S]*FROM blog_broadcast_sends/.test(sql)) {
+            const results = [...byId.values()]
+              .filter((r) => (r.status === 'scheduled' || r.status === 'sending') && r.broadcast_id)
+              .map((r) => ({ id: r.id, broadcast_id: r.broadcast_id, status: r.status }));
+            return { results };
+          }
+          return { results: [] };
+        },
+        async run() {
+          if (/UPDATE blog_broadcast_sends/.test(sql)) {
+            const id = this.args[this.args.length - 1];
+            const row = byId.get(id);
+            if (row) {
+              if (/SET status = \?/.test(sql)) {
+                row.status = this.args[0];
+                row.last_reconciled_at = this.args[1];
+              } else {
+                row.last_reconciled_at = this.args[0];
+              }
+            }
+          }
+          return { success: true };
+        },
+      };
+    },
+  };
+}
+
+test('mapResendBroadcastStatus maps Resend states to our state machine', () => {
+  assert.equal(mapResendBroadcastStatus('sent'), 'sent');
+  assert.equal(mapResendBroadcastStatus('queued'), 'sending');
+  assert.equal(mapResendBroadcastStatus('scheduled'), 'scheduled');
+  assert.equal(mapResendBroadcastStatus('draft'), 'canceled');
+  assert.equal(mapResendBroadcastStatus('SENT'), 'sent'); // case-insensitive
+  assert.equal(mapResendBroadcastStatus('something-new'), null); // unknown -> leave alone
+  assert.equal(mapResendBroadcastStatus(undefined), null);
+});
+
+test('fetchBroadcastStatus returns status, handles 404, throws on transient error', async () => {
+  const ok = mockFetch([{ status: 200, body: { id: 'bc_1', status: 'queued' } }]);
+  assert.deepEqual(await fetchBroadcastStatus({ env: { RESEND_API_KEY: 'k' }, fetcher: ok, broadcastId: 'bc_1' }), { found: true, status: 'queued' });
+
+  const gone = mockFetch([{ status: 404, body: {} }]);
+  assert.deepEqual(await fetchBroadcastStatus({ env: { RESEND_API_KEY: 'k' }, fetcher: gone, broadcastId: 'bc_x' }), { found: false, status: null });
+
+  const down = mockFetch([{ status: 500, body: {} }]);
+  await assert.rejects(fetchBroadcastStatus({ env: { RESEND_API_KEY: 'k' }, fetcher: down, broadcastId: 'bc_1' }), (err) => err.status === 502);
+});
+
+test('reconcileBroadcastSends advances scheduled->sending and sending->sent', async () => {
+  const db = reconcileDb([
+    { id: 1, broadcast_id: 'bc_a', status: 'scheduled' },
+    { id: 2, broadcast_id: 'bc_b', status: 'sending' },
+  ]);
+  const fetcher = mockFetch([
+    { status: 200, body: { status: 'queued' } }, // bc_a -> sending
+    { status: 200, body: { status: 'sent' } }, // bc_b -> sent
+  ]);
+  const summary = await reconcileBroadcastSends({ db, env: { RESEND_API_KEY: 'k' }, fetcher });
+  assert.deepEqual(summary, { checked: 2, updated: 2, errors: 0 });
+  assert.equal(db.rows.get(1).status, 'sending');
+  assert.equal(db.rows.get(2).status, 'sent');
+  assert.ok(db.rows.get(2).last_reconciled_at, 'records when it last checked');
+});
+
+test('reconcileBroadcastSends marks canceled on a draft revert or a 404', async () => {
+  const db = reconcileDb([
+    { id: 1, broadcast_id: 'bc_a', status: 'scheduled' },
+    { id: 2, broadcast_id: 'bc_b', status: 'scheduled' },
+  ]);
+  const fetcher = mockFetch([
+    { status: 200, body: { status: 'draft' } }, // schedule canceled -> canceled
+    { status: 404, body: {} }, // broadcast deleted -> canceled
+  ]);
+  const summary = await reconcileBroadcastSends({ db, env: { RESEND_API_KEY: 'k' }, fetcher });
+  assert.equal(summary.updated, 2);
+  assert.equal(db.rows.get(1).status, 'canceled');
+  assert.equal(db.rows.get(2).status, 'canceled');
+});
+
+test('reconcileBroadcastSends leaves a row untouched on a transient error', async () => {
+  const db = reconcileDb([{ id: 1, broadcast_id: 'bc_a', status: 'sending' }]);
+  const fetcher = mockFetch([{ status: 500, body: {} }]);
+  const summary = await reconcileBroadcastSends({ db, env: { RESEND_API_KEY: 'k' }, fetcher });
+  assert.deepEqual(summary, { checked: 1, updated: 0, errors: 1 });
+  assert.equal(db.rows.get(1).status, 'sending', 'transient failure must not change the status');
+});
+
+test('reconcileBroadcastSends only touches non-terminal rows and no-ops without an API key', async () => {
+  const db = reconcileDb([
+    { id: 1, broadcast_id: 'bc_a', status: 'sent' }, // terminal -> skipped
+    { id: 2, broadcast_id: 'bc_b', status: 'pending' }, // no broadcast yet -> skipped
+    { id: 3, broadcast_id: 'bc_c', status: 'scheduled' },
+  ]);
+  const calls = [];
+  const fetcher = mockFetch([{ status: 200, body: { status: 'sent' } }], calls);
+  const summary = await reconcileBroadcastSends({ db, env: { RESEND_API_KEY: 'k' }, fetcher });
+  assert.equal(summary.checked, 1, 'only the scheduled row is polled');
+  assert.equal(calls.length, 1);
+
+  const noKey = await reconcileBroadcastSends({ db, env: {}, fetcher: mockFetch([], calls) });
+  assert.equal(noKey.skipped, 'no-api-key');
+  assert.equal(calls.length, 1, 'no Resend calls without an API key');
+});
+
 // --- manifest integrity ----------------------------------------------------
 
 test('handler returns 422 (not 404) when posts.json is malformed', async () => {
@@ -468,7 +624,40 @@ test('every post in the real posts.json is complete and loadable', () => {
   }
 });
 
-test('GET is not allowed', async () => {
+test('unsupported methods are not allowed (405 advertising GET + POST)', async () => {
   const response = await onRequest();
   assert.equal(response.status, 405);
+});
+
+// --- send-log read (admin UI) ----------------------------------------------
+
+function sendLogRequest({ cookie } = {}) {
+  const headers = {};
+  if (cookie) headers.cookie = cookie;
+  return new Request('https://hackthevalley.org/api/blog/broadcast', { method: 'GET', headers });
+}
+
+test('GET send-log rejects non-admins with 401', async () => {
+  const response = await onRequestGet({ request: sendLogRequest(), env: { HTV_DB: adminDb() } });
+  assert.equal(response.status, 401);
+});
+
+test('GET send-log returns the recorded blasts for an admin', async () => {
+  const store = new Map();
+  store.set('k1', {
+    idempotency_key: 'k1', slug: 'test-post', scheduled_at: '2026-07-01T00:00:00.000Z',
+    broadcast_id: 'bc_1', status: 'sent', error: null,
+    last_reconciled_at: '2026-07-01T00:05:00.000Z', created_at: 'c', updated_at: 'u',
+  });
+  const response = await onRequestGet({
+    request: sendLogRequest({ cookie: 'htv_session=tok' }),
+    env: { HTV_DB: adminDb({ store }) },
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.sends.length, 1);
+  assert.equal(body.sends[0].slug, 'test-post');
+  assert.equal(body.sends[0].status, 'sent');
+  assert.equal(body.sends[0].broadcast_id, 'bc_1');
 });

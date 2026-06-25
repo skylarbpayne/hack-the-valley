@@ -8,6 +8,8 @@ import {
 } from "../../../_lib/event-platform.js";
 import {
   createPhysicalResource,
+  getPhysicalResource,
+  normalizePhysicalResourceId,
   listPhysicalResources
 } from "../../../_lib/domain/physical-resources.js";
 import { appendAuditEvent, buildAuditEvent } from "../../../_lib/domain/audit.js";
@@ -60,6 +62,11 @@ export async function onRequestPost(context) {
     const access = requireSessionAdmin(await requireAdmin(context.request, context.env));
     const db = getDb(context.env);
     const input = await readJson(context.request);
+    const requestedId = normalizePhysicalResourceId(input?.id ?? input?.resource_id ?? input?.resourceId);
+    if (requestedId) {
+      const existing = await getPhysicalResource(db, requestedId);
+      if (existing) return jsonResponse({ ok: true, resource: existing, existing: true });
+    }
     const resource = await createPhysicalResource(db, input, { actorUserId: actorId(access) });
     await auditResourceChange(db, { action: "physical_resource.create", access, resource });
     return jsonResponse({ ok: true, resource }, { status: 201 });

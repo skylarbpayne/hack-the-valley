@@ -1743,10 +1743,10 @@
       const rows = sends.map((send) => `
         <tr class="border-t border-slate-800">
           <td class="py-2 pr-4 font-semibold text-slate-200">${escapeHtml(send.slug)}</td>
-          <td class="py-2 pr-4 whitespace-nowrap">${fmt(send.scheduled_at)}</td>
+          <td class="py-2 pr-4 whitespace-nowrap">${fmt(send.scheduledAt)}</td>
           <td class="py-2 pr-4">${blogStatusBadge(send.status)}${send.error ? `<span class="block text-xs text-red-300 mt-1">${escapeHtml(send.error)}</span>` : ""}</td>
-          <td class="py-2 pr-4 whitespace-nowrap text-slate-500">${fmt(send.last_reconciled_at)}</td>
-          <td class="py-2 text-slate-500 font-mono text-xs">${send.broadcast_id ? escapeHtml(send.broadcast_id) : "—"}</td>
+          <td class="py-2 pr-4 whitespace-nowrap text-slate-500">${fmt(send.lastReconciledAt)}</td>
+          <td class="py-2 text-slate-500 font-mono text-xs">${send.broadcastId ? escapeHtml(send.broadcastId) : "—"}</td>
         </tr>`).join("");
       container.innerHTML = `
         <table class="min-w-full text-left">

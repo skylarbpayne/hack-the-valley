@@ -30,7 +30,7 @@ import * as submissions from './functions/api/submissions.js';
 import * as subscribe from './functions/api/subscribe.js';
 import * as helperInterest from './functions/api/helper-interest.js';
 import * as blogBroadcast from './functions/api/blog/broadcast.js';
-import { reconcileBroadcastSends } from './functions/_shared/blog-broadcast.js';
+import { reconcileBroadcastSends } from './functions/_lib/domain/blog-broadcast.js';
 import { getDb, getEvent, handleErrors, renderEventPageHtml } from './functions/_lib/event-platform.js';
 import * as upload from './functions/api/upload.js';
 import * as users from './functions/api/users/index.js';
@@ -412,7 +412,7 @@ export default {
     // (logged) so a transient Resend hiccup never fails the cron tick.
     try {
       const db = getDb(env);
-      const summary = await reconcileBroadcastSends({ db, env });
+      const summary = await reconcileBroadcastSends(db, { env });
       console.log('blog broadcast reconcile', summary);
     } catch (err) {
       console.error('blog broadcast reconcile failed', err);

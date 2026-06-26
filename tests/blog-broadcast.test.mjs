@@ -5,17 +5,19 @@ import { fileURLToPath } from 'node:url';
 
 import {
   absolutizeUrls,
-  broadcastIdempotencyKey,
   buildBroadcastEmailHtml,
-  createAndSendBroadcast,
   extractPostContent,
+} from '../functions/_shared/blog-broadcast.js';
+import {
+  broadcastIdempotencyKey,
+  createAndSendBroadcast,
   fetchBroadcastStatus,
   mapResendBroadcastStatus,
   normalizeScheduledAt,
   reconcileBroadcastSends,
   resolveAudienceId,
   resolveBroadcastConfig,
-} from '../functions/_shared/blog-broadcast.js';
+} from '../functions/_lib/domain/blog-broadcast.js';
 import { onRequestPost, onRequestGet, onRequest } from '../functions/api/blog/broadcast.js';
 
 // A valid, comfortably-future schedule for handler tests (well past the buffer).
@@ -529,7 +531,7 @@ test('reconcileBroadcastSends advances scheduled->sending and sending->sent', as
     { status: 200, body: { status: 'queued' } }, // bc_a -> sending
     { status: 200, body: { status: 'sent' } }, // bc_b -> sent
   ]);
-  const summary = await reconcileBroadcastSends({ db, env: { RESEND_API_KEY: 'k' }, fetcher });
+  const summary = await reconcileBroadcastSends(db, {env: { RESEND_API_KEY: 'k' }, fetcher });
   assert.deepEqual(summary, { checked: 2, updated: 2, errors: 0 });
   assert.equal(db.rows.get(1).status, 'sending');
   assert.equal(db.rows.get(2).status, 'sent');
@@ -545,7 +547,7 @@ test('reconcileBroadcastSends marks canceled on a draft revert or a 404', async 
     { status: 200, body: { status: 'draft' } }, // schedule canceled -> canceled
     { status: 404, body: {} }, // broadcast deleted -> canceled
   ]);
-  const summary = await reconcileBroadcastSends({ db, env: { RESEND_API_KEY: 'k' }, fetcher });
+  const summary = await reconcileBroadcastSends(db, {env: { RESEND_API_KEY: 'k' }, fetcher });
   assert.equal(summary.updated, 2);
   assert.equal(db.rows.get(1).status, 'canceled');
   assert.equal(db.rows.get(2).status, 'canceled');
@@ -554,7 +556,7 @@ test('reconcileBroadcastSends marks canceled on a draft revert or a 404', async 
 test('reconcileBroadcastSends leaves a row untouched on a transient error', async () => {
   const db = reconcileDb([{ id: 1, broadcast_id: 'bc_a', status: 'sending' }]);
   const fetcher = mockFetch([{ status: 500, body: {} }]);
-  const summary = await reconcileBroadcastSends({ db, env: { RESEND_API_KEY: 'k' }, fetcher });
+  const summary = await reconcileBroadcastSends(db, {env: { RESEND_API_KEY: 'k' }, fetcher });
   assert.deepEqual(summary, { checked: 1, updated: 0, errors: 1 });
   assert.equal(db.rows.get(1).status, 'sending', 'transient failure must not change the status');
 });
@@ -567,11 +569,11 @@ test('reconcileBroadcastSends only touches non-terminal rows and no-ops without 
   ]);
   const calls = [];
   const fetcher = mockFetch([{ status: 200, body: { status: 'sent' } }], calls);
-  const summary = await reconcileBroadcastSends({ db, env: { RESEND_API_KEY: 'k' }, fetcher });
+  const summary = await reconcileBroadcastSends(db, {env: { RESEND_API_KEY: 'k' }, fetcher });
   assert.equal(summary.checked, 1, 'only the scheduled row is polled');
   assert.equal(calls.length, 1);
 
-  const noKey = await reconcileBroadcastSends({ db, env: {}, fetcher: mockFetch([], calls) });
+  const noKey = await reconcileBroadcastSends(db, {env: {}, fetcher: mockFetch([], calls) });
   assert.equal(noKey.skipped, 'no-api-key');
   assert.equal(calls.length, 1, 'no Resend calls without an API key');
 });
@@ -659,5 +661,5 @@ test('GET send-log returns the recorded blasts for an admin', async () => {
   assert.equal(body.sends.length, 1);
   assert.equal(body.sends[0].slug, 'test-post');
   assert.equal(body.sends[0].status, 'sent');
-  assert.equal(body.sends[0].broadcast_id, 'bc_1');
+  assert.equal(body.sends[0].broadcastId, 'bc_1');
 });

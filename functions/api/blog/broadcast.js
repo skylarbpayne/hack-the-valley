@@ -8,14 +8,13 @@ import {
 } from '../../_lib/event-platform.js';
 import {
   absolutizeUrls,
-  broadcastIdempotencyKey,
   buildBroadcastEmailHtml,
-  createAndSendBroadcast,
   extractPostContent,
-  normalizeScheduledAt,
-  resolveAudienceId,
-  resolveBroadcastConfig,
 } from '../../_shared/blog-broadcast.js';
+import {
+  listRecentSends,
+  scheduleBroadcast,
+} from '../../_lib/domain/blog-broadcast.js';
 
 function httpError(message, status, extra) {
   return Object.assign(new Error(message), { status }, extra || {});
@@ -63,127 +62,55 @@ async function loadPostContent(env, request, slug, base) {
   return absolutizeUrls(extractPostContent(html), base);
 }
 
+// Turn a published post into the email blast's subject/name/html. This is the
+// presentation/asset work that belongs at the web layer; the domain takes the
+// finished email and owns sending + lifecycle.
+async function renderPostEmail(context, slug, subjectInput) {
+  const { request, env } = context;
+  const base = baseUrl(request, env);
+  const post = await loadManifestPost(env, request, slug);
+  const contentHtml = await loadPostContent(env, request, slug, base);
+  const subject = String(subjectInput || post.title || 'Hack the Valley update').trim().slice(0, 200);
+  const html = buildBroadcastEmailHtml({
+    title: post.title || subject,
+    contentHtml,
+    postUrl: `${base}/blog/${encodeURIComponent(slug)}`,
+    eventsUrl: `${base}/events`,
+  });
+  return { post, subject, html };
+}
+
 // POST /api/blog/broadcast  { slug, subject?, scheduledAt?, dryRun? }
-// Admin-only. Turns a published post into a Resend broadcast and sends it.
-// Pass dryRun:true to get the rendered email back without sending.
+// Admin-only. Renders a published post into an email and hands it to the Blog
+// Broadcast domain to schedule. Pass dryRun:true to get the rendered email back
+// without sending.
 export async function onRequestPost(context) {
   return handleErrors(async () => {
     await requireAdmin(context.request, context.env);
-    const { request, env } = context;
 
-    const input = await readJson(request);
+    const input = await readJson(context.request);
     const slug = String(input.slug || '').trim();
     if (!slug) {
       throw httpError('A post slug is required.', 400);
     }
 
-    const base = baseUrl(request, env);
-    const post = await loadManifestPost(env, request, slug);
-    const contentHtml = await loadPostContent(env, request, slug, base);
-
-    const subject = String(input.subject || post.title || 'Hack the Valley update').trim().slice(0, 200);
-    const emailHtml = buildBroadcastEmailHtml({
-      title: post.title || subject,
-      contentHtml,
-      postUrl: `${base}/blog/${encodeURIComponent(slug)}`,
-      eventsUrl: `${base}/events`,
-    });
+    const { post, subject, html } = await renderPostEmail(context, slug, input.subject);
 
     if (input.dryRun) {
-      return jsonResponse({ ok: true, dryRun: true, slug, subject, html: emailHtml });
+      return jsonResponse({ ok: true, dryRun: true, slug, subject, html });
     }
 
-    // Real send: never immediate. Require a valid, future scheduled time.
-    const scheduledAt = normalizeScheduledAt(input.scheduledAt);
-
-    const fetcher = context.fetch || fetch;
-    const config = resolveBroadcastConfig(env);
-
-    // Resolve the target audience BEFORE reserving the row. This is a read-only
-    // lookup that creates nothing at Resend, so doing it first means an audience
-    // misconfiguration (no/ambiguous audience) fails the request without leaving
-    // behind a 'pending' row — which would otherwise block every future retry on
-    // the idempotency key even after the config is fixed.
-    const audienceId = await resolveAudienceId({ env, fetcher });
-
-    // Reserve this blast before touching Resend. The UNIQUE idempotency key
-    // means a retry with the same slug + scheduled time collides here instead
-    // of creating a second broadcast.
-    const db = getDb(env);
-    const key = broadcastIdempotencyKey(slug, scheduledAt);
-    const reservedAt = new Date().toISOString();
-    try {
-      await db
-        .prepare(
-          `INSERT INTO blog_broadcast_sends (idempotency_key, slug, scheduled_at, status, created_at, updated_at)
-           VALUES (?, ?, ?, 'pending', ?, ?)`
-        )
-        .bind(key, slug, scheduledAt, reservedAt, reservedAt)
-        .run();
-    } catch {
-      const existing = await db
-        .prepare('SELECT broadcast_id, status FROM blog_broadcast_sends WHERE idempotency_key = ?')
-        .bind(key)
-        .first();
-      throw httpError(
-        `A blast for "${slug}" scheduled at ${scheduledAt} was already submitted (status: ${existing?.status || 'unknown'}).`,
-        409,
-        existing?.broadcast_id ? { broadcastId: existing.broadcast_id } : undefined,
-      );
-    }
-
-    let result;
-    try {
-      result = await createAndSendBroadcast({
-        env,
-        fetcher,
-        audienceId,
-        from: config.from,
-        subject,
-        name: `Blog: ${post.title || slug}`,
-        html: emailHtml,
-        scheduledAt,
-      });
-    } catch (err) {
-      const finishedAt = new Date().toISOString();
-      if (err && err.broadcastId) {
-        // Create succeeded, send/schedule failed: keep the reservation and the
-        // real broadcastId so the next attempt is blocked and recovery is exact.
-        await db
-          .prepare(
-            `UPDATE blog_broadcast_sends SET broadcast_id = ?, status = 'send_failed', error = ?, updated_at = ?
-             WHERE idempotency_key = ?`
-          )
-          .bind(err.broadcastId, String(err.message || err).slice(0, 500), finishedAt, key)
-          .run();
-      } else {
-        // Nothing was created at Resend: release the reservation so a clean retry
-        // is allowed.
-        await db.prepare('DELETE FROM blog_broadcast_sends WHERE idempotency_key = ?').bind(key).run();
-      }
-      throw err;
-    }
-
-    // Resend has only *accepted* the scheduled send — it hasn't gone out yet
-    // (and could still fail at send time). Record 'scheduled', not 'sent'; the
-    // reconcile cron advances this to sending/sent/canceled from Resend's real
-    // broadcast status. Writing 'sent' here would be a lie that never self-corrects.
-    await db
-      .prepare(
-        `UPDATE blog_broadcast_sends SET broadcast_id = ?, status = 'scheduled', updated_at = ? WHERE idempotency_key = ?`
-      )
-      .bind(result.id, new Date().toISOString(), key)
-      .run();
-
-    return jsonResponse({
-      ok: true,
+    const result = await scheduleBroadcast(getDb(context.env), {
       slug,
+      scheduledAt: input.scheduledAt,
       subject,
-      scheduledAt,
-      broadcastId: result.id,
-      scheduled: result.scheduled,
-      status: 'scheduled',
+      name: `Blog: ${post.title || slug}`,
+      html,
+      env: context.env,
+      fetcher: context.fetch || fetch,
     });
+
+    return jsonResponse({ ok: true, subject, ...result });
   });
 }
 
@@ -193,16 +120,8 @@ export async function onRequestPost(context) {
 export async function onRequestGet(context) {
   return handleErrors(async () => {
     await requireAdmin(context.request, context.env);
-    const db = getDb(context.env);
-    const query = await db
-      .prepare(
-        `SELECT slug, scheduled_at, broadcast_id, status, error, last_reconciled_at, created_at, updated_at
-         FROM blog_broadcast_sends
-         ORDER BY scheduled_at DESC
-         LIMIT 50`
-      )
-      .all();
-    return jsonResponse({ ok: true, sends: query?.results || [] });
+    const sends = await listRecentSends(getDb(context.env));
+    return jsonResponse({ ok: true, sends });
   });
 }
 

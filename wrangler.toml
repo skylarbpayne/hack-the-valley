@@ -8,9 +8,9 @@ binding = "ASSETS"
 run_worker_first = ["/api/*", "/events/*"]
 
 # Reconcile blog email-blast send-log rows against Resend's real broadcast
-# status (scheduled -> sending -> sent/canceled). See worker.js `scheduled`.
+# status (scheduled -> sending -> sent/canceled). Runs once daily; see worker.js `scheduled`.
 [triggers]
-crons = ["*/15 * * * *"]
+crons = ["0 15 * * *"]
 
 [vars]
 MAX_UPLOAD_MB = "100"

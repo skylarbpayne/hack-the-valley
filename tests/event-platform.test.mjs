@@ -1452,6 +1452,12 @@ test("wrangler runs the Worker before event page asset routing", () => {
   assert.match(config, /run_worker_first\s*=\s*\[[^\]]*"\/api\/\*"[^\]]*"\/events\/\*"[^\]]*\]/);
 });
 
+test("blog broadcast reconciliation cron runs once daily", () => {
+  const config = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
+  assert.match(config, /crons\s*=\s*\["0 15 \* \* \*"\]/);
+  assert.doesNotMatch(config, /\*\/15 \* \* \* \*/);
+});
+
 test("worker renders real per-event HTML from D1 for /events/<slug>", async () => {
   const fakeDb = {
     prepare(sql) {

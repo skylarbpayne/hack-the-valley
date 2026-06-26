@@ -2376,7 +2376,7 @@ export function renderEventPageHtml(event) {
 </head>
 <body data-event-detail-page="${slug}">
   <main class="wrap">
-    <nav class="nav" aria-label="Participant"><a class="brand" href="/">Hack the Valley</a><div data-participant-nav class="participant-nav"><a data-nav-link="events" href="/events" aria-current="page">Events</a><a data-nav-link="projects" href="/projects/">Projects</a><a data-nav-link="profile" href="/me/">Profile</a><a data-nav-link="leaderboard" href="/leaderboard/">Leaderboard</a></div></nav>
+    <nav class="nav" aria-label="Participant"><a class="brand" href="/">Hack the Valley</a><div data-participant-nav class="participant-nav"><a data-nav-link="events" href="/events" aria-current="page">Events</a><a data-nav-link="projects" href="/projects/">Projects</a><a data-nav-link="blog" href="/blog/">Blog</a><a data-nav-link="profile" href="/me/">Profile</a><a data-nav-link="leaderboard" href="/leaderboard/">Leaderboard</a></div></nav>
     <section class="hero">
       <div><p class="kicker">Event page</p><h1>${title}</h1><p class="lede">${description}</p></div>
       ${image}

@@ -690,6 +690,13 @@ test('handler returns 422 (not 404) when posts.json is malformed', async () => {
 
 const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
 
+test('blog list page loads posts and renders newest first', () => {
+  const html = readFileSync(`${publicDir}blog/index.html`, 'utf8');
+  assert.match(html, /fetch\("\/blog\/posts\.json"/);
+  assert.match(html, /String\(b\.date \|\| ""\)\.localeCompare\(String\(a\.date \|\| ""\)\)/);
+  assert.match(html, /href="\/blog\/\$\{encodeURIComponent\(post\.slug\)\}"/);
+});
+
 test('every post in the real posts.json is complete and loadable', () => {
   const manifest = JSON.parse(readFileSync(`${publicDir}blog/posts.json`, 'utf8'));
   assert.ok(Array.isArray(manifest.posts) && manifest.posts.length > 0, 'posts.json must list at least one post');

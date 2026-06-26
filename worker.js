@@ -301,6 +301,7 @@ function renderPublicProjectPageHtml({ eventSlug, projectSlug, origin }) {
         <div data-participant-nav class="flex flex-wrap items-center gap-2 text-sm font-bold">
           <a data-nav-link="events" href="/events" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Events</a>
           <a data-nav-link="projects" href="/projects/" aria-current="page" class="rounded-full bg-bc-cyan/15 px-3 py-2 text-bc-cyan ring-1 ring-bc-cyan/40">Projects</a>
+          <a data-nav-link="blog" href="/blog/" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Blog</a>
           <a data-nav-link="profile" href="/me/" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Profile</a>
           <a data-nav-link="leaderboard" href="/leaderboard/" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Leaderboard</a>
         </div>

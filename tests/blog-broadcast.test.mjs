@@ -10,13 +10,15 @@ import {
 import { BlogPost } from '../functions/_lib/domain/blog-post.js';
 import {
   broadcastIdempotencyKey,
-  createAndSendBroadcast,
+  createBroadcast,
   fetchBroadcastStatus,
   mapResendBroadcastStatus,
   normalizeScheduledAt,
   reconcileBroadcastSends,
   resolveAudienceId,
   resolveBroadcastConfig,
+  scheduleBroadcast,
+  sendBroadcast,
 } from '../functions/_lib/domain/blog-broadcast.js';
 import { onRequestPost, onRequestGet, onRequest } from '../functions/api/blog/broadcast.js';
 
@@ -207,26 +209,42 @@ test('resolveAudienceId errors when there are no audiences', async () => {
   await assert.rejects(resolveAudienceId({ env: { RESEND_API_KEY: 'k' }, fetcher: none }), (err) => err.status === 503);
 });
 
-test('createAndSendBroadcast creates then sends with the right payloads', async () => {
+test('createBroadcast posts the audience/from and returns the id', async () => {
   const calls = [];
-  const fetcher = mockFetch([{ status: 200, body: { id: 'bc_123' } }, { status: 200, body: { id: 'bc_123' } }], calls);
-  const result = await createAndSendBroadcast({
+  const fetcher = mockFetch([{ status: 200, body: { id: 'bc_123' } }], calls);
+  const id = await createBroadcast({
     env: { RESEND_API_KEY: 'k' }, fetcher,
     audienceId: 'aud_1', from: 'HTV <a@b.co>', subject: 'Hi', name: 'Blog: x', html: '<p>e</p>',
   });
-  assert.equal(result.id, 'bc_123');
-  assert.equal(calls.length, 2);
+  assert.equal(id, 'bc_123');
+  assert.equal(calls.length, 1);
   assert.equal(calls[0].url, 'https://api.resend.com/broadcasts');
   const createBody = JSON.parse(calls[0].init.body);
   assert.equal(createBody.audience_id, 'aud_1');
   assert.equal(createBody.from, 'HTV <a@b.co>');
-  assert.equal(calls[1].url, 'https://api.resend.com/broadcasts/bc_123/send');
 });
 
-test('createAndSendBroadcast throws 502 if create fails', async () => {
+test('createBroadcast throws 502 if create fails', async () => {
   const fetcher = mockFetch([{ status: 400, body: { message: 'bad' } }]);
   await assert.rejects(
-    createAndSendBroadcast({ env: { RESEND_API_KEY: 'k' }, fetcher, audienceId: 'a', from: 'f', subject: 's', html: 'h' }),
+    createBroadcast({ env: { RESEND_API_KEY: 'k' }, fetcher, audienceId: 'a', from: 'f', subject: 's', html: 'h' }),
+    (err) => err.status === 502,
+  );
+});
+
+test('sendBroadcast posts scheduled_at to the broadcast send endpoint', async () => {
+  const calls = [];
+  const fetcher = mockFetch([{ status: 200, body: {} }], calls);
+  const result = await sendBroadcast({ env: { RESEND_API_KEY: 'k' }, fetcher, broadcastId: 'bc_123', scheduledAt: '2026-07-01T00:00:00.000Z' });
+  assert.equal(result.scheduled, true);
+  assert.equal(calls[0].url, 'https://api.resend.com/broadcasts/bc_123/send');
+  assert.equal(JSON.parse(calls[0].init.body).scheduled_at, '2026-07-01T00:00:00.000Z');
+});
+
+test('sendBroadcast throws 502 if the send fails', async () => {
+  const fetcher = mockFetch([{ status: 500, body: { message: 'boom' } }]);
+  await assert.rejects(
+    sendBroadcast({ env: { RESEND_API_KEY: 'k' }, fetcher, broadcastId: 'bc_1', scheduledAt: '2026-07-01T00:00:00.000Z' }),
     (err) => err.status === 502,
   );
 });
@@ -382,15 +400,77 @@ test('broadcastIdempotencyKey is stable for the same slug + time', () => {
   assert.notEqual(a, c);
 });
 
-test('createAndSendBroadcast surfaces the broadcastId when create succeeds but send fails', async () => {
-  const fetcher = mockFetch([
-    { status: 200, body: { id: 'bc_partial' } }, // create OK
-    { status: 500, body: { message: 'send blew up' } }, // send fails
-  ]);
+// Routes Resend calls by URL so create can succeed while send fails/throws.
+function broadcastFetcher({ createId = 'bc_x', onSend } = {}, calls = []) {
+  return async (url) => {
+    const u = String(url);
+    calls.push(u);
+    if (u.endsWith('/broadcasts')) {
+      return new Response(JSON.stringify({ id: createId }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (u.includes('/send')) return onSend();
+    return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+}
+
+const SCHEDULED_ENV = { RESEND_API_KEY: 'k', RESEND_AUDIENCE_ID: 'aud_1', RESEND_BROADCAST_FROM: 'HTV <a@b.co>' };
+
+test('scheduleBroadcast persists broadcast_id before send, so a thrown send is recoverable (no duplicate on retry)', async () => {
+  const store = new Map();
+  const db = adminDb({ store });
+  const scheduledAt = futureIso();
+  const calls = [];
+  const fetcher = broadcastFetcher({ createId: 'bc_x', onSend: () => { throw new Error('network drop after create'); } }, calls);
+
   await assert.rejects(
-    createAndSendBroadcast({ env: { RESEND_API_KEY: 'k' }, fetcher, audienceId: 'a', from: 'f', subject: 's', html: 'h', scheduledAt: '2026-06-22T13:00:00.000Z' }),
-    (err) => err.status === 502 && err.broadcastId === 'bc_partial',
+    scheduleBroadcast(db, { slug: 'test-post', scheduledAt, subject: 's', name: 'Blog: x', html: '<p>e</p>', env: SCHEDULED_ENV, fetcher }),
+    (err) => err.broadcastId === 'bc_x',
   );
+  const row = [...store.values()][0];
+  assert.equal(row.status, 'send_failed', 'row kept, not deleted');
+  assert.equal(row.broadcast_id, 'bc_x', 'broadcast_id persisted before the send threw');
+  const creates = calls.filter((u) => u.endsWith('/broadcasts')).length;
+  assert.equal(creates, 1);
+
+  // Retry the same slug + time: must collide on the idempotency key and NOT
+  // create a second broadcast.
+  await assert.rejects(
+    scheduleBroadcast(db, { slug: 'test-post', scheduledAt, subject: 's', name: 'Blog: x', html: '<p>e</p>', env: SCHEDULED_ENV, fetcher }),
+    (err) => err.status === 409 && err.broadcastId === 'bc_x',
+  );
+  assert.equal(calls.filter((u) => u.endsWith('/broadcasts')).length, 1, 'retry must not create a duplicate broadcast');
+});
+
+test('scheduleBroadcast records send_failed with the broadcastId when the send returns non-2xx', async () => {
+  const store = new Map();
+  const db = adminDb({ store });
+  const fetcher = broadcastFetcher({
+    createId: 'bc_p',
+    onSend: () => new Response(JSON.stringify({ message: 'nope' }), { status: 500, headers: { 'content-type': 'application/json' } }),
+  });
+  await assert.rejects(
+    scheduleBroadcast(db, { slug: 'p', scheduledAt: futureIso(), subject: 's', name: 'n', html: 'h', env: SCHEDULED_ENV, fetcher }),
+    (err) => err.status === 502 && err.broadcastId === 'bc_p',
+  );
+  const row = [...store.values()][0];
+  assert.equal(row.status, 'send_failed');
+  assert.equal(row.broadcast_id, 'bc_p');
+});
+
+test('scheduleBroadcast releases the reservation when create fails (clean retry)', async () => {
+  const store = new Map();
+  const db = adminDb({ store });
+  const fetcher = async (url) => {
+    if (String(url).endsWith('/broadcasts')) {
+      return new Response(JSON.stringify({ message: 'down' }), { status: 500, headers: { 'content-type': 'application/json' } });
+    }
+    return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  await assert.rejects(
+    scheduleBroadcast(db, { slug: 'p', scheduledAt: futureIso(), subject: 's', name: 'n', html: 'h', env: SCHEDULED_ENV, fetcher }),
+    (err) => err.status === 502,
+  );
+  assert.equal(store.size, 0, 'create failure must leave no reservation behind');
 });
 
 test('handler refuses a duplicate blast for the same post + time (409)', async () => {
@@ -475,7 +555,7 @@ function reconcileDb(seedRows) {
         async all() {
           if (/SELECT[\s\S]*FROM blog_broadcast_sends/.test(sql)) {
             const results = [...byId.values()]
-              .filter((r) => (r.status === 'scheduled' || r.status === 'sending') && r.broadcast_id)
+              .filter((r) => ['scheduled', 'sending', 'send_failed'].includes(r.status) && r.broadcast_id)
               .map((r) => ({ id: r.id, broadcast_id: r.broadcast_id, status: r.status }));
             return { results };
           }
@@ -559,6 +639,22 @@ test('reconcileBroadcastSends leaves a row untouched on a transient error', asyn
   const summary = await reconcileBroadcastSends(db, {env: { RESEND_API_KEY: 'k' }, fetcher });
   assert.deepEqual(summary, { checked: 1, updated: 0, errors: 1 });
   assert.equal(db.rows.get(1).status, 'sending', 'transient failure must not change the status');
+});
+
+test('reconcileBroadcastSends self-heals a send_failed row when Resend shows it actually sent', async () => {
+  const db = reconcileDb([{ id: 1, broadcast_id: 'bc_a', status: 'send_failed' }]);
+  const fetcher = mockFetch([{ status: 200, body: { status: 'sent' } }]);
+  const summary = await reconcileBroadcastSends(db, { env: { RESEND_API_KEY: 'k' }, fetcher });
+  assert.equal(summary.updated, 1);
+  assert.equal(db.rows.get(1).status, 'sent', 'a lost send response is recovered, preventing a manual duplicate');
+});
+
+test('reconcileBroadcastSends leaves a send_failed row as send_failed when Resend still shows an unsent draft', async () => {
+  const db = reconcileDb([{ id: 1, broadcast_id: 'bc_a', status: 'send_failed' }]);
+  const fetcher = mockFetch([{ status: 200, body: { status: 'draft' } }]);
+  const summary = await reconcileBroadcastSends(db, { env: { RESEND_API_KEY: 'k' }, fetcher });
+  assert.equal(summary.updated, 0);
+  assert.equal(db.rows.get(1).status, 'send_failed', 'genuinely-unsent draft is not silently canceled');
 });
 
 test('reconcileBroadcastSends only touches non-terminal rows and no-ops without an API key', async () => {

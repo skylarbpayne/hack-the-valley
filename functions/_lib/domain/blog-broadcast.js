@@ -12,7 +12,16 @@
 //   sending     Resend is delivering it now            (Resend status: "queued")
 //   sent        Resend reports it actually sent (terminal)
 //   canceled    schedule canceled / broadcast deleted  (terminal)
-//   send_failed create succeeded but our send/schedule call failed (recoverable)
+//   send_failed broadcast created at Resend (broadcast_id stored) but the send is
+//               not confirmed — the send call returned non-2xx or threw. The
+//               reconciler re-checks these against Resend: if the send actually
+//               went through (lost response), it promotes the row to
+//               sending/scheduled/sent; one Resend still shows as an unsent draft
+//               stays send_failed for an operator to retry or cancel using the
+//               stored broadcast_id. NOT a terminal state.
+//
+// broadcast_id is persisted as soon as create succeeds, before the send is
+// attempted, so a thrown send can never create a duplicate on retry.
 
 import { stringOrNull } from './shared.js';
 
@@ -126,53 +135,40 @@ export async function resolveAudienceId({ env = {}, fetcher = fetch } = {}) {
   return audiences[0].id;
 }
 
-// Create a Resend broadcast targeting the configured audience, then send it.
-export async function createAndSendBroadcast({
-  env = {},
-  fetcher = fetch,
-  audienceId,
-  from,
-  subject,
-  name,
-  html,
-  scheduledAt = null,
-} = {}) {
+// Create a Resend broadcast (a draft targeting the audience) and return its id.
+// Deliberately separate from sending: the caller persists this id BEFORE it
+// attempts the send, so a send that throws can't strand a created-but-unrecorded
+// broadcast (which would otherwise be re-created on retry).
+export async function createBroadcast({ env = {}, fetcher = fetch, audienceId, from, subject, name, html } = {}) {
   const apiKey = String(env.RESEND_API_KEY || '').trim();
-  const headers = {
-    Authorization: `Bearer ${apiKey}`,
-    'Content-Type': 'application/json',
-  };
-
-  const createResponse = await fetcher('https://api.resend.com/broadcasts', {
+  const response = await fetcher('https://api.resend.com/broadcasts', {
     method: 'POST',
-    headers,
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ audience_id: audienceId, from, subject, name, html }),
   });
-  if (!createResponse.ok) {
-    throw httpError(`Resend broadcast create failed with HTTP ${createResponse.status}: ${await readResponseText(createResponse)}`, 502);
+  if (!response.ok) {
+    throw httpError(`Resend broadcast create failed with HTTP ${response.status}: ${await readResponseText(response)}`, 502);
   }
-  const created = await createResponse.json().catch(() => ({}));
+  const created = await response.json().catch(() => ({}));
   const broadcastId = created?.id || created?.data?.id;
   if (!broadcastId) {
     throw httpError('Resend broadcast create returned no id.', 502);
   }
+  return broadcastId;
+}
 
-  const sendResponse = await fetcher(`https://api.resend.com/broadcasts/${encodeURIComponent(broadcastId)}/send`, {
+// Send (or schedule) an already-created broadcast.
+export async function sendBroadcast({ env = {}, fetcher = fetch, broadcastId, scheduledAt = null } = {}) {
+  const apiKey = String(env.RESEND_API_KEY || '').trim();
+  const response = await fetcher(`https://api.resend.com/broadcasts/${encodeURIComponent(broadcastId)}/send`, {
     method: 'POST',
-    headers,
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(scheduledAt ? { scheduled_at: scheduledAt } : {}),
   });
-  if (!sendResponse.ok) {
-    // The broadcast was created but scheduling/sending failed. Surface the real
-    // broadcastId so recovery acts on it instead of guessing or re-creating.
-    throw httpError(
-      `Resend broadcast send failed with HTTP ${sendResponse.status}: ${await readResponseText(sendResponse)}`,
-      502,
-      { broadcastId },
-    );
+  if (!response.ok) {
+    throw httpError(`Resend broadcast send failed with HTTP ${response.status}: ${await readResponseText(response)}`, 502);
   }
-
-  return { id: broadcastId, scheduled: Boolean(scheduledAt) };
+  return { scheduled: Boolean(scheduledAt) };
 }
 
 // --- write side: schedule a blast ------------------------------------------
@@ -212,27 +208,40 @@ export async function scheduleBroadcast(db, { slug, scheduledAt, subject, name, 
     );
   }
 
-  let result;
+  // Create the broadcast first. If create fails, nothing was created at Resend —
+  // release the reservation so a clean retry is allowed.
+  let broadcastId;
   try {
-    result = await createAndSendBroadcast({ env, fetcher, audienceId, from, subject, name, html, scheduledAt: scheduledAtIso });
+    broadcastId = await createBroadcast({ env, fetcher, audienceId, from, subject, name, html });
   } catch (err) {
-    const finishedAt = new Date().toISOString();
-    if (err && err.broadcastId) {
-      // Create succeeded, send/schedule failed: keep the reservation and the
-      // real broadcastId so the next attempt is blocked and recovery is exact.
-      await db
-        .prepare(
-          `UPDATE blog_broadcast_sends SET broadcast_id = ?, status = 'send_failed', error = ?, updated_at = ?
-           WHERE idempotency_key = ?`
-        )
-        .bind(err.broadcastId, String(err.message || err).slice(0, 500), finishedAt, key)
-        .run();
-    } else {
-      // Nothing was created at Resend: release the reservation so a clean retry
-      // is allowed.
-      await db.prepare('DELETE FROM blog_broadcast_sends WHERE idempotency_key = ?').bind(key).run();
-    }
+    await db.prepare('DELETE FROM blog_broadcast_sends WHERE idempotency_key = ?').bind(key).run();
     throw err;
+  }
+
+  // Persist broadcast_id BEFORE attempting the send. This closes the gap where a
+  // send that *throws* (network drop, runtime error) — not just one that returns
+  // a non-2xx response — would leave a created broadcast with no recorded id: the
+  // reservation would look empty, get deleted, and a retry would create a
+  // duplicate. With the id stored (status 'send_failed' until the send is
+  // confirmed), a retry collides on the idempotency key (409 carrying the id) and
+  // the reconciler can recover the row against Resend.
+  await db
+    .prepare(
+      `UPDATE blog_broadcast_sends SET broadcast_id = ?, status = 'send_failed', updated_at = ? WHERE idempotency_key = ?`
+    )
+    .bind(broadcastId, new Date().toISOString(), key)
+    .run();
+
+  try {
+    await sendBroadcast({ env, fetcher, broadcastId, scheduledAt: scheduledAtIso });
+  } catch (err) {
+    // The row is already 'send_failed' with the real id; just record the reason.
+    // The reconciler re-checks send_failed rows against Resend's real status.
+    await db
+      .prepare('UPDATE blog_broadcast_sends SET error = ?, updated_at = ? WHERE idempotency_key = ?')
+      .bind(String(err.message || err).slice(0, 500), new Date().toISOString(), key)
+      .run();
+    throw Object.assign(err, { broadcastId });
   }
 
   // Resend has only *accepted* the scheduled send — it hasn't gone out yet (and
@@ -243,14 +252,14 @@ export async function scheduleBroadcast(db, { slug, scheduledAt, subject, name, 
     .prepare(
       `UPDATE blog_broadcast_sends SET broadcast_id = ?, status = 'scheduled', updated_at = ? WHERE idempotency_key = ?`
     )
-    .bind(result.id, new Date().toISOString(), key)
+    .bind(broadcastId, new Date().toISOString(), key)
     .run();
 
   return {
     slug: normalizedSlug,
     scheduledAt: scheduledAtIso,
-    broadcastId: result.id,
-    scheduled: result.scheduled,
+    broadcastId,
+    scheduled: Boolean(scheduledAtIso),
     status: BROADCAST_STATUS.SCHEDULED,
   };
 }
@@ -314,8 +323,17 @@ export async function fetchBroadcastStatus({ env = {}, fetcher = fetch, broadcas
 
 // Reconcile non-terminal send-log rows against Resend's real broadcast status.
 // Designed to be called from a scheduled (cron) handler: it polls each row that
-// is still scheduled/sending and advances it toward a terminal state. One row's
-// failure never aborts the batch — transient errors leave the row for next time.
+// is still scheduled/sending/send_failed and advances it toward a terminal
+// state. One row's failure never aborts the batch — transient errors leave the
+// row for next time.
+//
+// send_failed rows are included so the row self-heals when our send call failed
+// or threw but Resend actually accepted the send (a lost response): Resend then
+// reports it scheduled/queued/sent and we promote it — which is what makes the
+// "persist broadcast_id before send" safety net pay off. A send_failed row that
+// Resend still shows as an unsent draft is left send_failed for an operator to
+// retry or cancel (we don't auto-resend: its scheduled_at may now be in the
+// past, and the "never send immediately" rule must hold).
 export async function reconcileBroadcastSends(db, { env = {}, fetcher = fetch } = {}) {
   const apiKey = String(env.RESEND_API_KEY || '').trim();
   if (!apiKey) return { checked: 0, updated: 0, errors: 0, skipped: 'no-api-key' };
@@ -323,7 +341,7 @@ export async function reconcileBroadcastSends(db, { env = {}, fetcher = fetch } 
   const query = await db
     .prepare(
       `SELECT id, broadcast_id, status FROM blog_broadcast_sends
-       WHERE status IN ('scheduled', 'sending') AND broadcast_id IS NOT NULL`
+       WHERE status IN ('scheduled', 'sending', 'send_failed') AND broadcast_id IS NOT NULL`
     )
     .all();
   const rows = query?.results || [];
@@ -335,7 +353,14 @@ export async function reconcileBroadcastSends(db, { env = {}, fetcher = fetch } 
     checked += 1;
     try {
       const { found, status } = await fetchBroadcastStatus({ env, fetcher, broadcastId: row.broadcast_id });
-      const next = found ? mapResendBroadcastStatus(status) : BROADCAST_STATUS.CANCELED;
+      let next = found ? mapResendBroadcastStatus(status) : BROADCAST_STATUS.CANCELED;
+      // 'draft' maps to canceled for a row we believed scheduled/sending (its
+      // schedule was canceled). But a send_failed row that Resend still shows as
+      // draft was created and never sent — leave it for explicit retry/cancel
+      // rather than silently canceling it.
+      if (next === BROADCAST_STATUS.CANCELED && found && row.status === BROADCAST_STATUS.SEND_FAILED) {
+        next = null;
+      }
       const checkedAt = new Date().toISOString();
       if (next && next !== row.status) {
         await db

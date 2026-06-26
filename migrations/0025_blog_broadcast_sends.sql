@@ -2,7 +2,8 @@
 -- (post slug + scheduled time): the UNIQUE idempotency_key makes a retry that
 -- repeats the same slug + scheduled_at collide instead of creating a second
 -- Resend broadcast. broadcast_id is recorded as soon as Resend create succeeds
--- so a failed send/schedule can be recovered against a real id.
+-- (before the send is attempted) so a send that throws can't create a duplicate
+-- on retry and a failed send can be recovered against a real id.
 --
 -- status is a non-terminal/terminal state machine, NOT a claim that mail went
 -- out. A scheduled send is only *accepted* by Resend at request time; the real
@@ -12,7 +13,11 @@
 --   sending     Resend is delivering it now (Resend: "queued")
 --   sent        Resend reports it actually sent (terminal)
 --   canceled    the schedule was canceled / broadcast deleted (terminal)
---   send_failed create succeeded but our send/schedule call failed (recoverable)
+--   send_failed broadcast created (broadcast_id stored) but the send is not
+--               confirmed. NOT terminal: the reconciler promotes it if Resend
+--               shows it actually went through (lost response); one Resend still
+--               shows as an unsent draft stays here for an operator to retry or
+--               cancel via the stored broadcast_id.
 -- last_reconciled_at records the last time the cron polled Resend for this row.
 CREATE TABLE IF NOT EXISTS blog_broadcast_sends (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

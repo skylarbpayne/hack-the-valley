@@ -188,9 +188,22 @@ test("physical resource schema, migration, and admin UI are present without publ
 
   assert.match(adminHtml, /id="physical-resources-admin"/);
   assert.match(adminHtml, /Inventory ID/);
+  assert.match(adminHtml, /Stable resource URL/);
   assert.match(adminHtml, /name="photo_file"/);
+  assert.match(adminHtml, /capture="environment"/);
   assert.match(adminHtml, /\/api\/admin\/physical-resources/);
+  assert.match(adminHtml, /\/resources\//);
   assert.doesNotMatch(adminHtml, /\/api\/physical-resources/);
+});
+
+test("physical resource stable URL route preserves the resource id through admin login/create flow", async () => {
+  const response = await worker.fetch(request("/resources/pres_label_123456", { cookie: null }), {}, {});
+  assert.equal(response.status, 302);
+  const location = response.headers.get("location");
+  assert.ok(location);
+  assert.match(location, /^https:\/\/hackthevalley\.org\/admin\?/);
+  assert.match(location, /resource_id=pres_label_123456/);
+  assert.match(location, /#physical-resource-form$/);
 });
 
 test("physical resources API requires a signed-in admin session and rejects bootstrap-only access", async () => {
@@ -225,6 +238,7 @@ test("physical resources CRUD and checkouts use trusted admin actor provenance",
   const createdResponse = await worker.fetch(request("/api/admin/physical-resources", {
     method: "POST",
     body: {
+      id: "pres_label_123456",
       name: "HTV Projector",
       category: "AV",
       inventory_code: "HTV-INV-001",
@@ -235,6 +249,8 @@ test("physical resources CRUD and checkouts use trusted admin actor provenance",
   }), env, {});
   assert.equal(createdResponse.status, 201);
   const created = await json(createdResponse);
+  assert.equal(created.resource.id, "pres_label_123456");
+  assert.equal(created.resource.stableUrlPath, "/resources/pres_label_123456");
   assert.equal(created.resource.name, "HTV Projector");
   assert.equal(created.resource.inventoryCode, "HTV-INV-001");
   assert.equal(created.resource.createdByUserId, "usr_admin");
@@ -335,6 +351,22 @@ test("physical resources CRUD and checkouts use trusted admin actor provenance",
   const history = await json(historyResponse);
   assert.equal(history.count, 1);
   assert.equal(history.checkouts[0].returnNotes, "Back in case");
+
+  const duplicateCreate = await worker.fetch(request("/api/admin/physical-resources", {
+    method: "POST",
+    body: { id, name: "Duplicate label" }
+  }), env, {});
+  assert.equal(duplicateCreate.status, 200);
+  const duplicateResult = await json(duplicateCreate);
+  assert.equal(duplicateResult.existing, true);
+  assert.equal(duplicateResult.resource.id, id);
+  assert.equal(db.state.resources.length, 1);
+
+  const invalidIdCreate = await worker.fetch(request("/api/admin/physical-resources", {
+    method: "POST",
+    body: { id: "../../bad", name: "Bad label" }
+  }), env, {});
+  assert.equal(invalidIdCreate.status, 400);
 
   const retiredResponse = await worker.fetch(request(`/api/admin/physical-resources/${encodeURIComponent(id)}`, { method: "DELETE" }), env, {});
   assert.equal(retiredResponse.status, 200);

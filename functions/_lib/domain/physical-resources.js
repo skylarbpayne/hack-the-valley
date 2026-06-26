@@ -5,6 +5,7 @@ import {
 
 const RESOURCE_STATUSES = new Set(["available", "checked_out", "maintenance", "retired", "lost"]);
 const RESOURCE_CONDITIONS = new Set(["new", "good", "fair", "needs_repair", "retired", "lost", "unknown"]);
+const PHYSICAL_RESOURCE_ID_RE = /^pres_[a-z0-9][a-z0-9_-]{5,95}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function toPhysicalResource(row = {}) {
@@ -47,6 +48,7 @@ export function toPhysicalResource(row = {}) {
     updatedAt: stringOrNull(row.updated_at),
     createdByUserId: stringOrNull(row.created_by_user_id),
     updatedByUserId: stringOrNull(row.updated_by_user_id),
+    stableUrlPath: row.id ? physicalResourceStableUrlPath(row.id) : null,
     currentCheckout
   };
 }
@@ -207,12 +209,17 @@ export async function getPhysicalResource(db, id) {
 }
 
 export async function createPhysicalResource(db, input, { actorUserId = null } = {}) {
+  const requestedId = normalizePhysicalResourceId(input?.id ?? input?.resource_id ?? input?.resourceId);
   const resource = normalizePhysicalResourceInput(input);
   if (resource.status === "checked_out") {
     throw validationError("Use the checkout endpoint to mark a resource checked out so assignment history is recorded.");
   }
   const now = new Date().toISOString();
-  const id = generateId("pres");
+  const id = requestedId || generatePhysicalResourceId();
+  if (requestedId) {
+    const existing = await getPhysicalResource(db, requestedId);
+    if (existing) return existing;
+  }
   await db.prepare(`
     INSERT INTO physical_resources (
       id, name, category, inventory_code, asset_tag, serial_number, description, location, condition, status,
@@ -431,7 +438,35 @@ function sanitizePhotoFilename(value) {
 }
 
 function generatedInventoryCode(id) {
-  return String(id || generateId("pres")).replace(/^pres_/, "HTV-").slice(0, 80);
+  return String(id || generatePhysicalResourceId()).replace(/^pres_/, "HTV-").slice(0, 80);
+}
+
+export function normalizePhysicalResourceId(value) {
+  const id = stringOrNull(value)?.toLowerCase();
+  if (!id) return null;
+  if (!PHYSICAL_RESOURCE_ID_RE.test(id)) {
+    throw validationError("Physical resource id must be a stable URL id like pres_abc123 and may only contain lowercase letters, numbers, underscores, or hyphens.");
+  }
+  return id;
+}
+
+export function generatePhysicalResourceId() {
+  const cryptoObject = globalThis.crypto;
+  if (cryptoObject?.randomUUID) {
+    return `pres_${cryptoObject.randomUUID().replaceAll("-", "")}`;
+  }
+  const bytes = new Uint8Array(16);
+  if (cryptoObject?.getRandomValues) {
+    cryptoObject.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return `pres_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+export function physicalResourceStableUrlPath(id) {
+  const normalizedId = normalizePhysicalResourceId(id);
+  return `/resources/${encodeURIComponent(normalizedId)}`;
 }
 
 async function requirePhysicalResource(db, id) {

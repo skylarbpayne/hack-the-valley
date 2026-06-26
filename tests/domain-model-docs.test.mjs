@@ -13,6 +13,7 @@ const requiredConcepts = [
   "EventProjectSubmission",
   "Badge",
   "BadgeAward",
+  "PhysicalResource",
   "ContentItem",
   "Campaign",
   "AudienceSegment",

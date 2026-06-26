@@ -251,6 +251,11 @@
           <form id="physical-resource-form" class="bg-bc-dark border border-slate-700 rounded-2xl p-4 space-y-3">
             <h3 class="font-black text-lg">Create / update resource</h3>
             <input name="id" type="hidden">
+            <div class="rounded-xl border border-bc-cyan/40 bg-cyan-950/20 p-3">
+              <label class="block"><span class="text-sm font-semibold">Stable resource URL</span><input name="stable_url" readonly class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-cyan-100" placeholder="Available after you create or scan a label URL"></label>
+              <p id="physical-resource-stable-url-hint" class="mt-2 text-xs text-slate-400">The stable URL contains the physical resource ID. Encode this URL into a QR code elsewhere; inventory IDs and names can change without breaking the label.</p>
+              <button id="generate-physical-resource-id" type="button" class="mt-3 border border-bc-cyan text-bc-cyan px-3 py-2 rounded-lg text-sm font-black hover:bg-bc-cyan hover:text-bc-dark">Generate resource URL</button>
+            </div>
             <label class="block"><span class="text-sm font-semibold">Name *</span><input name="name" required class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="Projector, laptop, badge printer…"></label>
             <div class="grid sm:grid-cols-2 gap-3">
               <label class="block"><span class="text-sm font-semibold">Category</span><input name="category" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="AV, laptop, supplies"></label>
@@ -262,7 +267,7 @@
             </div>
             <div class="grid sm:grid-cols-2 gap-3">
               <label class="block"><span class="text-sm font-semibold">Location</span><input name="location" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="Storage closet, Mesh…"></label>
-              <label class="block"><span class="text-sm font-semibold">Resource photo</span><input name="photo_file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><span class="text-xs text-slate-500">Uploads after save; admin-only.</span></label>
+              <label class="block"><span class="text-sm font-semibold">Resource photo</span><input name="photo_file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" capture="environment" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><span class="text-xs text-slate-500">On phones this opens the camera; uploads after save; admin-only.</span></label>
             </div>
             <div class="grid sm:grid-cols-2 gap-3">
               <label class="block"><span class="text-sm font-semibold">Condition</span><select name="condition" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><option>new</option><option selected>good</option><option>fair</option><option>needs_repair</option><option>unknown</option><option>lost</option><option>retired</option></select></label>
@@ -356,7 +361,12 @@
     let currentPhysicalResources = [];
     let currentAdminSection = "dashboard";
     let checkinSearchTimer = null;
-    $("login-link").href = `/login/?next=${encodeURIComponent("/admin")}`;
+
+    function currentAdminReturnPath() {
+      return `${window.location.pathname}${window.location.search}${window.location.hash}` || "/admin";
+    }
+
+    $("login-link").href = `/login/?next=${encodeURIComponent(currentAdminReturnPath())}`;
 
     const ADMIN_SECTION_TARGETS = {
       "admin-dashboard": "dashboard",
@@ -481,7 +491,7 @@
     }
 
     function switchAccount() {
-      window.location.href = `/login/?next=${encodeURIComponent("/admin")}`;
+      window.location.href = `/login/?next=${encodeURIComponent(currentAdminReturnPath())}`;
     }
 
     function toIsoLocalValue(value) {
@@ -1050,13 +1060,59 @@
       $("physical-resources-status").textContent = message;
     }
 
+    function requestedPhysicalResourceId() {
+      return new URLSearchParams(window.location.search).get("resource_id")?.trim() || "";
+    }
+
+    function generatePhysicalResourceId() {
+      if (window.crypto?.randomUUID) return `pres_${window.crypto.randomUUID().replaceAll("-", "")}`;
+      const bytes = new Uint8Array(16);
+      if (window.crypto?.getRandomValues) window.crypto.getRandomValues(bytes);
+      else for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+      return `pres_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+    }
+
+    function physicalResourceStableUrl(resourceId) {
+      return resourceId ? new URL(`/resources/${encodeURIComponent(resourceId)}`, window.location.origin).href : "";
+    }
+
+    function setPhysicalResourceIdentity(form, resourceId, { createWithId = false } = {}) {
+      const id = resourceId || "";
+      form.elements.id.value = id;
+      form.dataset.createWithId = createWithId && id ? "1" : "0";
+      if (form.elements.stable_url) form.elements.stable_url.value = physicalResourceStableUrl(id);
+      const hint = $("physical-resource-stable-url-hint");
+      if (hint) {
+        hint.textContent = id
+          ? (createWithId ? "This stable URL contains a resource ID that does not exist yet. Save this form to create the resource at that URL." : "This stable URL contains the physical resource ID. Changing name, inventory ID, or location will not break the label.")
+          : "The stable URL contains the physical resource ID. Encode this URL into a QR code elsewhere; inventory IDs and names can change without breaking the label.";
+      }
+    }
+
+    function applyRequestedPhysicalResource(resources) {
+      const requestedId = requestedPhysicalResourceId();
+      if (!requestedId) return false;
+      const existing = resources.find((resource) => resource.id === requestedId);
+      if (existing) {
+        fillPhysicalResourceForm(requestedId);
+        loadPhysicalResourceHistory(requestedId).catch(() => {});
+        setPhysicalResourcesStatus(`Opened resource ${requestedId}.`);
+      } else {
+        resetPhysicalResourceForm({ resourceId: requestedId, createWithId: true, focus: true });
+        setPhysicalResourcesStatus(`Stable URL ${requestedId} does not have an item yet. Fill this form to create it.`);
+      }
+      return true;
+    }
+
     async function loadPhysicalResources() {
       try {
         setPhysicalResourcesStatus("Loading physical resources…");
         const data = await api("/api/admin/physical-resources?include_retired=1");
         currentPhysicalResources = data.resources || [];
         renderPhysicalResources(currentPhysicalResources);
-        setPhysicalResourcesStatus(`Loaded ${data.count ?? currentPhysicalResources.length} physical resource(s).`);
+        if (!applyRequestedPhysicalResource(currentPhysicalResources)) {
+          setPhysicalResourcesStatus(`Loaded ${data.count ?? currentPhysicalResources.length} physical resource(s).`);
+        }
         return currentPhysicalResources;
       } catch (error) {
         setPhysicalResourcesStatus(error.message, true);
@@ -1093,6 +1149,7 @@
                     <span class="rounded-full border px-2 py-0.5 text-xs font-black ${resourceStatusClass(resource.status)}">${escapeHtml(resource.status || "available")}</span>
                   </div>
                   <p class="text-bc-cyan font-black mt-1">ID ${escapeHtml(resource.inventoryCode || resource.assetTag || resource.id || "unassigned")}</p>
+                  <p class="text-xs text-cyan-200 mt-1">Stable URL <a href="${escapeHtml(physicalResourceStableUrl(resource.id))}" class="underline hover:text-cyan-100">${escapeHtml(resource.stableUrlPath || `/resources/${resource.id}`)}</a></p>
                   <p class="text-slate-400 mt-1">${escapeHtml(resource.category || "Uncategorized")}${resource.assetTag ? ` • tag ${escapeHtml(resource.assetTag)}` : ""}${resource.location ? ` • ${escapeHtml(resource.location)}` : ""}</p>
                   <p class="text-xs text-slate-500 mt-1">Condition: ${escapeHtml(resource.condition || "unknown")}${resource.serialNumber ? ` • Serial ${escapeHtml(resource.serialNumber)}` : ""}</p>
                   ${checkout ? `<p class="mt-2 text-amber-200">Checked out to ${escapeHtml(checkout.holderDisplayName || checkout.holderName || checkout.holderDisplayEmail || checkout.holderEmail || checkout.holderUserId || "holder")} since ${escapeHtml(checkout.checkedOutAt || "")}${checkout.dueAt ? ` • due ${escapeHtml(checkout.dueAt)}` : ""}</p>` : ""}
@@ -1117,6 +1174,7 @@
     function physicalResourceFormPayload(form) {
       const data = Object.fromEntries(new FormData(form).entries());
       delete data.photo_file;
+      delete data.stable_url;
       for (const key of Object.keys(data)) if (data[key] === "") data[key] = null;
       return data;
     }
@@ -1125,7 +1183,7 @@
       const resource = currentPhysicalResources.find((item) => item.id === resourceId);
       if (!resource) return;
       const form = $("physical-resource-form");
-      form.elements.id.value = resource.id || "";
+      setPhysicalResourceIdentity(form, resource.id || "", { createWithId: false });
       form.elements.name.value = resource.name || "";
       form.elements.category.value = resource.category || "";
       form.elements.inventory_code.value = resource.inventoryCode || "";
@@ -1140,10 +1198,11 @@
       form.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
-    function resetPhysicalResourceForm() {
+    function resetPhysicalResourceForm({ resourceId = "", createWithId = false, focus = false } = {}) {
       const form = $("physical-resource-form");
       form.reset();
-      form.elements.id.value = "";
+      setPhysicalResourceIdentity(form, resourceId, { createWithId });
+      if (focus) showAdminSection("resources", { focusTarget: "physical-resource-form", updateHash: true });
     }
 
     async function savePhysicalResource(event) {
@@ -1151,11 +1210,12 @@
       const form = event.currentTarget;
       const payload = physicalResourceFormPayload(form);
       const id = payload.id;
-      delete payload.id;
+      const createWithId = form.dataset.createWithId === "1" && id;
+      if (!createWithId) delete payload.id;
       try {
-        setPhysicalResourcesStatus(id ? "Updating physical resource…" : "Creating physical resource…");
-        const saved = await api(id ? `/api/admin/physical-resources/${encodeURIComponent(id)}` : "/api/admin/physical-resources", {
-          method: id ? "PATCH" : "POST",
+        setPhysicalResourcesStatus(id && !createWithId ? "Updating physical resource…" : "Creating physical resource…");
+        const saved = await api(id && !createWithId ? `/api/admin/physical-resources/${encodeURIComponent(id)}` : "/api/admin/physical-resources", {
+          method: id && !createWithId ? "PATCH" : "POST",
           body: JSON.stringify(payload)
         });
         const savedId = saved.resource?.id || id;
@@ -1638,7 +1698,8 @@
     $("load-helper-interests").addEventListener("click", () => loadHelperInterests().catch(() => {}));
     $("load-physical-resources").addEventListener("click", () => loadPhysicalResources().catch(() => {}));
     $("physical-resource-form").addEventListener("submit", savePhysicalResource);
-    $("new-physical-resource").addEventListener("click", resetPhysicalResourceForm);
+    $("new-physical-resource").addEventListener("click", () => resetPhysicalResourceForm());
+    $("generate-physical-resource-id").addEventListener("click", () => resetPhysicalResourceForm({ resourceId: generatePhysicalResourceId(), createWithId: true, focus: true }));
     $("load-admin-roles").addEventListener("click", () => loadAdminRoles().catch(() => {}));
     $("admin-role-form").addEventListener("submit", applyAdminRoleChange);
     $("load-events").addEventListener("click", () => loadEvents().catch(() => {}));

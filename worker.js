@@ -254,6 +254,20 @@ function isPublicProjectPagePath(pathname) {
   return /^\/projects\/[^/.][^/]*\/[^/.][^/]*\/?$/.test(pathname);
 }
 
+function isPhysicalResourceQrPath(pathname) {
+  return /^\/resources\/[^/.][^/]*\/?$/.test(pathname);
+}
+
+function redirectPhysicalResourceQr(request) {
+  const url = new URL(request.url);
+  const resourceId = decodeURIComponent(url.pathname.match(/^\/resources\/([^/]+)\/?$/)?.[1] || "").trim();
+  if (!resourceId) return new Response("Resource id required", { status: 400 });
+  const destination = new URL("/admin", url);
+  destination.searchParams.set("resource_id", resourceId);
+  destination.hash = "physical-resource-form";
+  return Response.redirect(destination, 302);
+}
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
 }
@@ -387,6 +401,10 @@ export default {
 
     if (isEventPagePath(url.pathname)) {
       return renderEventPage(request, env);
+    }
+
+    if (isPhysicalResourceQrPath(url.pathname)) {
+      return redirectPhysicalResourceQr(request);
     }
 
     if (isPublicProjectPagePath(url.pathname)) {

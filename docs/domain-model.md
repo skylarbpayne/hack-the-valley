@@ -1,6 +1,6 @@
 # Hack the Valley Domain Model
 
-Last updated: 2026-06-23
+Last updated: 2026-06-25
 
 This document is the Milestone 0 domain-vocabulary baseline for the Hack the Valley community platform. It records the current truth before refactoring so later work can improve the implementation without drifting route behavior or production data.
 
@@ -38,6 +38,7 @@ Everything in the model should support that loop.
 | `EventProjectSubmission` | A `Project`'s relationship with a specific event series or instance. | Submitted/demoed/showcased/hidden/winner state, judging/showcase visibility, and link back to a legacy submission when needed. This is not the project itself. | `event_project_submissions`, project review/showcase routes, event project routes. |
 | `Badge` | A durable community achievement or progression signal. | Badge catalog metadata and explicit derivation/manual-award rules. Badges encode useful community state, not decoration. | `badges`, badge catalog migrations, user badge admin/profile APIs. |
 | `BadgeAward` | The fact that a `Person` earned or was granted a `Badge`, optionally in an event/project context. | Awarded person, badge, source, awarded timestamp, optional event instance/project context, and who/what awarded it. Award facts must not be inferred from display labels alone. | `user_badges`; some award-style badge eligibility is derived from `event_project_awards`, `event_participant_events`, or `project_members`. |
+| `PhysicalResource` | A tangible Hack the Valley-owned item such as a projector, laptop, badge printer, cable kit, or consumable bin. | Stable resource URL, mutable inventory labels/details, condition/status, location, admin photo, and checkout/return history. The `/resources/:id` URL contains the physical resource id; QR codes are just external labels that encode that URL. | `physical_resources`, `physical_resource_checkouts`, admin inventory UI/API, and `/resources/:id` stable URL route. |
 | `ContentItem` | Editorial or public presentation content such as event pages, recap pages, static pages, blog-style posts, and announcements. | Public wording, page body, media references, publish state, and safe references to events/projects/people. Content may reference facts but must not become the source of truth for attendance, submissions, or awards. | `events.page_content`, static files under `public/`, public data JSON, event/project pages. No dedicated content table yet. |
 | `Campaign` | A planned outbound communication effort, such as an event announcement, reminder, or follow-up. | Purpose, audience intent, draft/message association, approval state, and send plan. Sending remains human approval-gated. | Not first-class in D1 yet; represented by organizer workflow, Resend configuration, `/api/subscribe`, signup mailing-list sync, cockpit/follow-up helpers. |
 | `AudienceSegment` | A computable audience definition for a `Campaign`. | Segment criteria derived from people, participation, project, badge, and opt-in facts. It should not duplicate core facts. | External Resend segment IDs/config plus derived filters from `users`, `signups`, `event_participant_events`, `project_members`, and `badges`. No dedicated segment table yet. |
@@ -59,6 +60,7 @@ This table maps the domain language above to the current tables, files, and rout
 | `EventProjectSubmission` | `event_project_submissions`; `/api/events/:slug/projects`, `/api/events/:slug/instances/:instanceId/projects`, `/api/events/:slug/projects/:projectId` | Represented today as project-event relationship; status language is compatible with showcase/review flows. |
 | `Badge` | `badges`; `migrations/0015_community_badge_catalog.sql`; `/api/users/:id/badges`, profile/community state helpers | Catalog represented today; keep explicit rule metadata and avoid a generalized rules engine in Milestone 0. |
 | `BadgeAward` | `user_badges`; derived award eligibility from `event_project_awards`, `event_participant_events`, and `project_members` | Manual/derived awards are compatible; future helper can make derivation explicit without changing current tables. |
+| `PhysicalResource` | `physical_resources`, `physical_resource_checkouts`; `functions/_lib/domain/physical-resources.js`; `/api/admin/physical-resources`; `/resources/:id`; `public/admin.html` | Represented today as admin-only inventory with stable resource URLs. The physical-resource id is embedded in the URL; inventory codes and asset tags are mutable attributes. |
 | `ContentItem` | `events.page_content`, `public/`, `public/data/*.json`, public event/project pages | Partially represented through event/static content; no dedicated content storage in Milestone 0. |
 | `Campaign` | Resend configuration/env, `functions/_shared/mailing-list.js`, `/api/subscribe`, event follow-up/cockpit helpers | Not first-class in current storage; keep sends approval-gated and avoid adding campaign tables in Milestone 0. |
 | `AudienceSegment` | Resend segment config plus filters over `users`, `signups`, `event_participant_events`, `project_members`, `badges` | External/derived today; do not duplicate facts into new segment storage in Milestone 0. |
@@ -92,6 +94,7 @@ This table maps the domain language above to the current tables, files, and rout
 - If it answers “where was this project shown/submitted?” it belongs to `EventProjectSubmission`.
 - If it answers “what achievement exists?” it belongs to `Badge`.
 - If it answers “who earned which badge, when, and why?” it belongs to `BadgeAward`.
+- If it answers “what physical item does this `/resources/:id` URL point to?” it belongs to `PhysicalResource`.
 - If it answers “what appears publicly?” it belongs to `ContentItem` or a safe public projection.
 - If it answers “who should hear from us?” it belongs to `AudienceSegment`.
 - If it answers “what communication are we planning?” it belongs to `Campaign`.

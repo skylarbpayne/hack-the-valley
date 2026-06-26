@@ -29,6 +29,8 @@ import * as register from './functions/api/register.js';
 import * as submissions from './functions/api/submissions.js';
 import * as subscribe from './functions/api/subscribe.js';
 import * as helperInterest from './functions/api/helper-interest.js';
+import * as blogBroadcast from './functions/api/blog/broadcast.js';
+import { reconcileBroadcastSends } from './functions/_lib/domain/blog-broadcast.js';
 import { getDb, getEvent, handleErrors, renderEventPageHtml } from './functions/_lib/event-platform.js';
 import * as upload from './functions/api/upload.js';
 import * as users from './functions/api/users/index.js';
@@ -47,6 +49,7 @@ const API_ROUTES = {
   '/api/submissions': submissions,
   '/api/subscribe': subscribe,
   '/api/helper-interest': helperInterest,
+  '/api/blog/broadcast': blogBroadcast,
   '/api/upload': upload,
   '/api/users': users,
 };
@@ -416,5 +419,21 @@ export default {
     }
 
     return new Response('Not found', { status: 404 });
+  },
+
+  // Cron (see wrangler.toml [triggers]): reconcile blog email-blast send-log
+  // rows against Resend's real broadcast status so a scheduled send advances to
+  // sending/sent/canceled instead of being assumed "sent" the moment it's queued.
+  async scheduled(event, env = {}, ctx = {}) {
+    // The runtime keeps the invocation alive until this returned promise
+    // settles, so we just await the reconcile directly. Errors are swallowed
+    // (logged) so a transient Resend hiccup never fails the cron tick.
+    try {
+      const db = getDb(env);
+      const summary = await reconcileBroadcastSends(db, { env });
+      console.log('blog broadcast reconcile', summary);
+    } catch (err) {
+      console.error('blog broadcast reconcile failed', err);
+    }
   },
 };

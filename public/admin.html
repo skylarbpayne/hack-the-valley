@@ -42,12 +42,13 @@
       </div>
 
       <nav id="admin-section-nav" aria-label="Admin sections" class="sticky top-3 z-20 mb-8 rounded-3xl border border-slate-700 bg-slate-950/90 p-3 shadow-2xl shadow-slate-950/30 backdrop-blur">
-        <div class="grid sm:grid-cols-2 lg:grid-cols-6 gap-2 text-sm font-black">
+        <div class="grid sm:grid-cols-2 lg:grid-cols-7 gap-2 text-sm font-black">
           <button type="button" data-admin-nav="dashboard" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Dashboard</button>
           <button type="button" data-admin-nav="live-ops" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Live ops</button>
           <button type="button" data-admin-nav="events" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Events</button>
           <button type="button" data-admin-nav="people" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">People</button>
           <button type="button" data-admin-nav="resources" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Resources</button>
+          <button type="button" data-admin-nav="blog" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Blog</button>
           <button id="access-admin-nav" type="button" data-admin-nav="access" class="hidden rounded-2xl border border-violet-500/50 px-4 py-3 text-left text-violet-200 hover:border-violet-300">Access</button>
         </div>
       </nav>
@@ -144,6 +145,11 @@
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Resources</div>
           <h2 class="text-xl font-black mt-2">Physical inventory</h2>
           <p class="text-slate-400 text-sm mt-2">Track equipment, supplies, checkouts, returns, photos, and assignment history.</p>
+        </a>
+        <a href="#blog-blast" data-admin-nav="blog" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
+          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Blog</div>
+          <h2 class="text-xl font-black mt-2">Email blast a post</h2>
+          <p class="text-slate-400 text-sm mt-2">Send a published blog post to the Hack the Valley email list via Resend.</p>
         </a>
         <a id="super-admin-card" href="#role-admin" data-admin-nav="access" class="hidden bg-bc-navy border border-violet-500/60 rounded-2xl p-5 hover:border-violet-300 transition">
           <div class="text-xs uppercase tracking-[0.2em] text-violet-300 font-semibold">Sensitive access</div>
@@ -339,6 +345,46 @@
         </form>
         <div id="admin-role-list" class="overflow-x-auto text-sm text-slate-300"></div>
       </section>
+
+      <section id="blog-blast" data-admin-section="blog" class="hidden bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
+        <div class="mb-4">
+          <h2 class="text-2xl font-black">Blog email blast</h2>
+          <p class="text-sm text-slate-400 mt-1">Schedule a published post to go out to the Hack the Valley email list via Resend. Preview first — blasts are always scheduled for a future time, never sent immediately.</p>
+        </div>
+        <div class="grid lg:grid-cols-[1fr_1.2fr] gap-6">
+          <div class="space-y-4">
+            <label class="block"><span class="text-sm font-semibold">Post</span>
+              <select id="blog-post-select" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white"></select>
+            </label>
+            <label class="block"><span class="text-sm font-semibold">Subject line <span class="text-slate-500 font-normal">optional</span></span>
+              <input id="blog-subject" placeholder="(defaults to the post title)" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white">
+            </label>
+            <label class="block"><span class="text-sm font-semibold">Send time</span>
+              <input id="blog-schedule" type="datetime-local" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white">
+              <span class="text-xs text-slate-500">Must be at least 10 minutes from now.</span>
+            </label>
+            <div class="flex flex-wrap gap-3">
+              <button id="blog-preview" type="button" class="border border-bc-cyan text-bc-cyan px-5 py-3 rounded-lg font-bold hover:bg-bc-cyan hover:text-bc-dark">Preview email</button>
+              <button id="blog-send" type="button" class="bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400 disabled:opacity-50">Schedule email blast</button>
+            </div>
+            <p id="blog-blast-status" class="text-sm text-slate-300"></p>
+          </div>
+          <div>
+            <p class="text-sm font-semibold text-slate-300 mb-2">Preview</p>
+            <iframe id="blog-preview-frame" class="w-full h-[520px] rounded-2xl border border-slate-700 bg-white" title="Email preview"></iframe>
+          </div>
+        </div>
+        <div class="mt-8 border-t border-slate-700 pt-6">
+          <div class="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h3 class="text-lg font-black">Recent blasts</h3>
+              <p class="text-xs text-slate-500 mt-1">Status is reconciled from Resend (every ~15 min): scheduled → sending → sent. A scheduled send only means Resend accepted it — not that mail has gone out yet.</p>
+            </div>
+            <button id="blog-sends-refresh" type="button" class="border border-slate-600 text-slate-200 px-4 py-2 rounded-lg text-sm font-bold hover:border-bc-cyan hover:text-bc-cyan">Refresh</button>
+          </div>
+          <div id="blog-sends-list" class="overflow-x-auto text-sm text-slate-300"></div>
+        </div>
+      </section>
     </section>
   </main>
 
@@ -381,6 +427,7 @@
       "helper-interest-admin": "people",
       "physical-resources-admin": "resources",
       "physical-resource-form": "resources",
+      "blog-blast": "blog",
       "role-admin": "access"
     };
 
@@ -422,7 +469,7 @@
 
     function adminSectionFromHash(hash = window.location.hash) {
       const target = String(hash || "").replace(/^#/, "");
-      return ADMIN_SECTION_TARGETS[target] || (["dashboard", "live-ops", "events", "people", "resources", "access"].includes(target) ? target : "dashboard");
+      return ADMIN_SECTION_TARGETS[target] || (["dashboard", "live-ops", "events", "people", "resources", "blog", "access"].includes(target) ? target : "dashboard");
     }
 
     function setAdminNavState(section) {
@@ -483,6 +530,7 @@
         await loadWorkflows();
         await loadEvents();
         await loadUsers();
+        await loadBlogPosts();
         await loadHelperInterests();
         await loadPhysicalResources();
         if (hasSuperAdminRole(me.roles || [])) await loadAdminRoles();
@@ -1705,6 +1753,136 @@
     $("load-events").addEventListener("click", () => loadEvents().catch(() => {}));
     $("new-event").addEventListener("click", resetForm);
     $("logout").addEventListener("click", switchAccount);
+    $("blog-preview").addEventListener("click", () => previewBlogBlast());
+    $("blog-send").addEventListener("click", () => sendBlogBlast());
+    $("blog-sends-refresh").addEventListener("click", () => loadBlogSends());
+
+    function setBlogStatus(message, error = false) {
+      $("blog-blast-status").className = `text-sm ${error ? "text-red-300" : "text-slate-300"}`;
+      $("blog-blast-status").textContent = message;
+    }
+
+    async function loadBlogPosts() {
+      try {
+        const response = await fetch("/blog/posts.json", { headers: { Accept: "application/json" } });
+        const data = response.ok ? await response.json() : { posts: [] };
+        const posts = Array.isArray(data.posts) ? data.posts : [];
+        $("blog-post-select").innerHTML = posts.map((post) => `<option value="${escapeHtml(post.slug)}">${escapeHtml(post.title || post.slug)}</option>`).join("");
+        if (!posts.length) setBlogStatus("No published posts found in /blog/posts.json.", true);
+      } catch {
+        setBlogStatus("Could not load /blog/posts.json.", true);
+      }
+      await loadBlogSends();
+    }
+
+    function blogStatusBadge(status) {
+      const s = String(status || "").toLowerCase();
+      const styles = {
+        sent: "bg-emerald-500/15 text-emerald-200 border-emerald-500/40",
+        sending: "bg-cyan-500/15 text-cyan-200 border-cyan-500/40",
+        scheduled: "bg-blue-500/15 text-blue-200 border-blue-500/40",
+        pending: "bg-amber-500/15 text-amber-200 border-amber-500/40",
+        canceled: "bg-slate-700 text-slate-300 border-slate-600",
+        send_failed: "bg-red-500/15 text-red-200 border-red-500/40",
+      };
+      const cls = styles[s] || "bg-slate-800 text-slate-300 border-slate-700";
+      return `<span class="rounded-full ${cls} border px-2 py-0.5 text-[0.68rem] uppercase tracking-[0.12em]">${escapeHtml(s || "unknown")}</span>`;
+    }
+
+    function renderBlogSends(sends) {
+      const container = $("blog-sends-list");
+      if (!container) return;
+      if (!sends.length) {
+        container.innerHTML = `<p class="text-sm text-slate-500">No blasts have been scheduled yet.</p>`;
+        return;
+      }
+      const fmt = (value) => {
+        if (!value) return "—";
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
+      };
+      const rows = sends.map((send) => `
+        <tr class="border-t border-slate-800">
+          <td class="py-2 pr-4 font-semibold text-slate-200">${escapeHtml(send.slug)}</td>
+          <td class="py-2 pr-4 whitespace-nowrap">${fmt(send.scheduledAt)}</td>
+          <td class="py-2 pr-4">${blogStatusBadge(send.status)}${send.error ? `<span class="block text-xs text-red-300 mt-1">${escapeHtml(send.error)}</span>` : ""}</td>
+          <td class="py-2 pr-4 whitespace-nowrap text-slate-500">${fmt(send.lastReconciledAt)}</td>
+          <td class="py-2 text-slate-500 font-mono text-xs">${send.broadcastId ? escapeHtml(send.broadcastId) : "—"}</td>
+        </tr>`).join("");
+      container.innerHTML = `
+        <table class="min-w-full text-left">
+          <thead class="text-xs uppercase tracking-[0.12em] text-slate-500">
+            <tr>
+              <th class="py-2 pr-4 font-semibold">Post</th>
+              <th class="py-2 pr-4 font-semibold">Scheduled for</th>
+              <th class="py-2 pr-4 font-semibold">Status</th>
+              <th class="py-2 pr-4 font-semibold">Last checked</th>
+              <th class="py-2 font-semibold">Broadcast ID</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    async function loadBlogSends() {
+      const container = $("blog-sends-list");
+      if (!container) return;
+      try {
+        const data = await api("/api/blog/broadcast");
+        renderBlogSends(data.sends || []);
+      } catch (error) {
+        container.innerHTML = `<p class="text-sm text-red-300">${escapeHtml(error.message)}</p>`;
+      }
+    }
+
+    function blogBlastPayload(extra = {}) {
+      const slug = $("blog-post-select").value;
+      const subject = $("blog-subject").value.trim();
+      return JSON.stringify({ slug, ...(subject ? { subject } : {}), ...extra });
+    }
+
+    async function previewBlogBlast() {
+      setBlogStatus("Rendering preview…");
+      try {
+        const data = await api("/api/blog/broadcast", { method: "POST", body: blogBlastPayload({ dryRun: true }) });
+        $("blog-preview-frame").srcdoc = data.html;
+        setBlogStatus(`Preview ready — subject: "${data.subject}". Nothing has been sent.`);
+      } catch (error) {
+        setBlogStatus(error.message, true);
+      }
+    }
+
+    async function sendBlogBlast() {
+      const slug = $("blog-post-select").value;
+      if (!slug) return;
+      const localValue = $("blog-schedule").value;
+      if (!localValue) {
+        setBlogStatus("Pick a send time at least 10 minutes from now.", true);
+        return;
+      }
+      const when = new Date(localValue);
+      if (Number.isNaN(when.getTime())) {
+        setBlogStatus("That send time is not valid.", true);
+        return;
+      }
+      if (when.getTime() < Date.now() + 10 * 60 * 1000) {
+        setBlogStatus("Send time must be at least 10 minutes in the future.", true);
+        return;
+      }
+      const scheduledAt = when.toISOString();
+      if (!confirm(`Schedule "${slug}" to go out to the entire Hack the Valley email list at ${when.toLocaleString()}?`)) return;
+      $("blog-send").disabled = true;
+      setBlogStatus("Scheduling…");
+      try {
+        const data = await api("/api/blog/broadcast", { method: "POST", body: blogBlastPayload({ scheduledAt }) });
+        setBlogStatus(`Scheduled! Resend broadcast ${data.broadcastId} for "${data.subject}" at ${new Date(data.scheduledAt).toLocaleString()}. It will show as "sent" once Resend confirms delivery.`);
+        await loadBlogSends();
+      } catch (error) {
+        setBlogStatus(error.message, true);
+      } finally {
+        $("blog-send").disabled = false;
+      }
+    }
 
     function escapeHtml(value) {
       return String(value ?? "")

@@ -1061,7 +1061,7 @@
     }
 
     function requestedPhysicalResourceId() {
-      return new URLSearchParams(window.location.search).get("resource_id")?.trim() || "";
+      return new URLSearchParams(window.location.search).get("resource_id")?.trim().toLowerCase() || "";
     }
 
     function generatePhysicalResourceId() {
@@ -1077,7 +1077,7 @@
     }
 
     function setPhysicalResourceIdentity(form, resourceId, { createWithId = false } = {}) {
-      const id = resourceId || "";
+      const id = resourceId ? String(resourceId).trim().toLowerCase() : "";
       form.elements.id.value = id;
       form.dataset.createWithId = createWithId && id ? "1" : "0";
       if (form.elements.stable_url) form.elements.stable_url.value = physicalResourceStableUrl(id);

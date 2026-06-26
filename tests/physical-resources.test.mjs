@@ -206,6 +206,19 @@ test("physical resource stable URL route preserves the resource id through admin
   assert.match(location, /#physical-resource-form$/);
 });
 
+test("physical resource creation accepts caller-generated URL-safe ids without app-specific prefixes", async () => {
+  const db = createPhysicalResourceDb();
+  const env = { HTV_DB: db };
+  const response = await worker.fetch(request("/api/admin/physical-resources", {
+    method: "POST",
+    body: { id: "HTV-Projector-Label-001", name: "HTV Projector" }
+  }), env, {});
+  assert.equal(response.status, 201);
+  const created = await json(response);
+  assert.equal(created.resource.id, "htv-projector-label-001");
+  assert.equal(created.resource.stableUrlPath, "/resources/htv-projector-label-001");
+});
+
 test("physical resources API requires a signed-in admin session and rejects bootstrap-only access", async () => {
   const noSession = await worker.fetch(request("/api/admin/physical-resources", { cookie: null }), { HTV_DB: createPhysicalResourceDb() }, {});
   assert.equal(noSession.status, 401);

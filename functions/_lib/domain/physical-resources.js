@@ -5,7 +5,7 @@ import {
 
 const RESOURCE_STATUSES = new Set(["available", "checked_out", "maintenance", "retired", "lost"]);
 const RESOURCE_CONDITIONS = new Set(["new", "good", "fair", "needs_repair", "retired", "lost", "unknown"]);
-const PHYSICAL_RESOURCE_ID_RE = /^pres_[a-z0-9][a-z0-9_-]{5,95}$/;
+const PHYSICAL_RESOURCE_ID_RE = /^[a-z0-9][a-z0-9_-]{5,95}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function toPhysicalResource(row = {}) {
@@ -445,7 +445,7 @@ export function normalizePhysicalResourceId(value) {
   const id = stringOrNull(value)?.toLowerCase();
   if (!id) return null;
   if (!PHYSICAL_RESOURCE_ID_RE.test(id)) {
-    throw validationError("Physical resource id must be a stable URL id like pres_abc123 and may only contain lowercase letters, numbers, underscores, or hyphens.");
+    throw validationError("Physical resource id must be a URL-safe id 6-96 characters long using letters, numbers, underscores, or hyphens.");
   }
   return id;
 }

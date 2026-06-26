@@ -58,18 +58,20 @@
           <img src="/images/HackTheValleyLogo.PNG" alt="Hack the Valley logo" class="w-12 h-12 object-contain rounded-full">
           <span class="font-bold text-lg sm:text-xl truncate">Hack the Valley</span>
         </a>
-        <div class="hidden md:flex items-center gap-6 text-sm font-medium">
-          <a href="/" class="text-slate-300 hover:text-white transition">Home</a>
-          <a href="/events" class="text-slate-300 hover:text-white transition">Events</a>
-          <a href="/blog/" class="text-slate-300 hover:text-white transition">Blog</a>
-          <a href="/login/" class="text-bc-cyan hover:text-cyan-300 transition font-bold">Log in</a>
+        <div data-participant-nav class="hidden md:flex items-center gap-2 text-sm font-bold">
+          <a data-nav-link="events" href="/events" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Events</a>
+          <a data-nav-link="projects" href="/projects/" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Projects</a>
+          <a data-nav-link="blog" href="/blog/" aria-current="page" class="rounded-full bg-bc-cyan/15 px-3 py-2 text-bc-cyan ring-1 ring-bc-cyan/40">Blog</a>
+          <a data-nav-link="profile" href="/me/" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Profile</a>
+          <a data-nav-link="leaderboard" href="/leaderboard/" class="rounded-full px-3 py-2 text-slate-300 hover:bg-slate-800 hover:text-bc-cyan transition">Leaderboard</a>
         </div>
       </div>
-      <div class="pb-3 md:hidden flex gap-4 overflow-x-auto text-sm whitespace-nowrap">
-        <a href="/" class="text-slate-300">Home</a>
-        <a href="/events" class="text-slate-300">Events</a>
-        <a href="/blog/" class="text-slate-300">Blog</a>
-        <a href="/login/" class="text-bc-cyan font-bold">Log in</a>
+      <div class="pb-3 md:hidden flex gap-3 overflow-x-auto text-sm whitespace-nowrap font-bold">
+        <a href="/events" class="rounded-full px-3 py-2 text-slate-300">Events</a>
+        <a href="/projects/" class="rounded-full px-3 py-2 text-slate-300">Projects</a>
+        <a href="/blog/" aria-current="page" class="rounded-full bg-bc-cyan/15 px-3 py-2 text-bc-cyan ring-1 ring-bc-cyan/40">Blog</a>
+        <a href="/me/" class="rounded-full px-3 py-2 text-slate-300">Profile</a>
+        <a href="/leaderboard/" class="rounded-full px-3 py-2 text-slate-300">Leaderboard</a>
       </div>
     </div>
   </nav>

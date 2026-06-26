@@ -2,14 +2,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-const expectedOrder = ["events", "projects", "profile", "leaderboard"];
-const expectedLabels = ["Events", "Projects", "Profile", "Leaderboard"];
+const expectedOrder = ["events", "projects", "blog", "profile", "leaderboard"];
+const expectedLabels = ["Events", "Projects", "Blog", "Profile", "Leaderboard"];
 
 const pages = [
   { name: "home", path: "../public/index.html", active: null, private: false },
   { name: "events", path: "../public/events/index.html", active: "events", private: false },
   { name: "event detail", path: "../public/events/hack-the-valley-2026/index.html", active: "events", private: false },
   { name: "projects", path: "../public/projects/index.html", active: "projects", private: false },
+  { name: "blog list", path: "../public/blog/index.html", active: "blog", private: false },
+  { name: "blog post", path: "../public/blog/project-spotlight-continuum/index.html", active: "blog", private: false },
   { name: "profile", path: "../public/me/index.html", active: "profile", private: true },
   { name: "project workspace", path: "../public/me/projects/index.html", active: "projects", private: true },
   { name: "leaderboard", path: "../public/leaderboard/index.html", active: "leaderboard", private: false },
@@ -55,6 +57,7 @@ test("participant nav uses participant-safe destinations and does not leak admin
     assert.equal(links.find((link) => link.key === "events")?.href, "/events", `${page.name} events href`);
     assert.ok(["/projects/", "/me/projects/"].includes(links.find((link) => link.key === "projects")?.href), `${page.name} projects href`);
     assert.equal(links.find((link) => link.key === "leaderboard")?.href, "/leaderboard/", `${page.name} leaderboard href`);
+    assert.equal(links.find((link) => link.key === "blog")?.href, "/blog/", `${page.name} blog href`);
 
     assert.equal(links.find((link) => link.key === "profile")?.href, "/me/", `${page.name} profile href opens the signed-in profile directly`);
 

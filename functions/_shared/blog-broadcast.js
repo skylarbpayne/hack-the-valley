@@ -1,29 +1,8 @@
-// Pure presentation helpers for turning a published blog post into the HTML of a
-// Resend email blast. These have no database, no Resend calls, and no lifecycle
-// — they just transform strings. The blast lifecycle, persistence, and Resend
-// orchestration live in the domain module: functions/_lib/domain/blog-broadcast.js.
-
-const POST_START = '<!-- POST:START -->';
-const POST_END = '<!-- POST:END -->';
-
-function httpError(message, status, extra) {
-  return Object.assign(new Error(message), { status }, extra || {});
-}
-
-// Pull the article body out of a post page, using the markers every post carries.
-export function extractPostContent(html) {
-  const source = String(html || '');
-  const startIdx = source.indexOf(POST_START);
-  const endIdx = source.indexOf(POST_END);
-  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) {
-    throw httpError('Post is missing its <!-- POST:START -->/<!-- POST:END --> markers.', 422);
-  }
-  const content = source.slice(startIdx + POST_START.length, endIdx).trim();
-  if (!content) {
-    throw httpError('Post content between the markers is empty.', 422);
-  }
-  return content;
-}
+// Pure email-rendering helpers: string transforms that turn already-extracted
+// post content into the HTML of a Resend email blast. No database, no Resend
+// calls, no lifecycle, and no knowledge of how a post is stored. Used privately
+// by the BlogPost domain object (functions/_lib/domain/blog-post.js); the blast
+// lifecycle lives in functions/_lib/domain/blog-broadcast.js.
 
 // Rewrite root-relative src/href ("/images/...") to absolute URLs so they
 // resolve in an email client. Leaves protocol-relative and absolute URLs alone.

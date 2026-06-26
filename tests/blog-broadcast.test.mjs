@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import {
   absolutizeUrls,
   buildBroadcastEmailHtml,
-  extractPostContent,
 } from '../functions/_shared/blog-broadcast.js';
+import { BlogPost } from '../functions/_lib/domain/blog-post.js';
 import {
   broadcastIdempotencyKey,
   createAndSendBroadcast,
@@ -141,15 +141,15 @@ function assets() {
 
 // --- pure helpers ----------------------------------------------------------
 
-test('extractPostContent returns the body between the markers', () => {
-  const content = extractPostContent(POST_HTML);
+test('BlogPost.body returns the content between the markers (mechanism stays hidden)', () => {
+  const content = new BlogPost({ slug: 'test-post', rawHtml: POST_HTML }).body();
   assert.match(content, /Hello world/);
   assert.doesNotMatch(content, /CTA chrome/);
   assert.doesNotMatch(content, /<title>/);
 });
 
-test('extractPostContent throws 422 when markers are missing', () => {
-  assert.throws(() => extractPostContent('<p>no markers</p>'), (err) => err.status === 422);
+test('BlogPost.body throws 422 when the post has no body markers', () => {
+  assert.throws(() => new BlogPost({ slug: 'x', rawHtml: '<p>no markers</p>' }).body(), (err) => err.status === 422);
 });
 
 test('absolutizeUrls rewrites root-relative URLs and leaves absolute ones', () => {
@@ -609,8 +609,8 @@ test('every post in the real posts.json is complete and loadable', () => {
     assert.ok(existsSync(pagePath), `post "${post.slug}" has no index.html`);
     const html = readFileSync(pagePath, 'utf8');
 
-    // markers + non-empty body, proven through the real extractor the email uses
-    const body = extractPostContent(html);
+    // non-empty body, proven through the real BlogPost the email uses
+    const body = new BlogPost({ slug: post.slug, title: post.title, rawHtml: html }).body();
     assert.ok(body.length > 0, `post "${post.slug}" extracted to an empty body`);
 
     // every post carries the events CTA

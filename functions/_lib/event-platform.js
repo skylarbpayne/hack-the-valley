@@ -2079,13 +2079,15 @@ export async function checkInAttendee(db, event, input, { eventInstance = null, 
     });
   }
 
-  const readiness = await resolveParticipationReadiness(db, { personId: savedSignup.user_id, eventInstanceId: resolvedInstance.id });
-  if (!readiness.ready) {
-    throw Object.assign(new Error("Emergency contact is required before check-in."), {
-      status: 400,
-      code: "missing_emergency_contact",
-      errors: readiness.missing_safety_fields || []
-    });
+  if (!existingUser) {
+    const readiness = await resolveParticipationReadiness(db, { personId: savedSignup.user_id, eventInstanceId: resolvedInstance.id });
+    if (!readiness.ready) {
+      throw Object.assign(new Error("Emergency contact is required before check-in."), {
+        status: 400,
+        code: "missing_emergency_contact",
+        errors: readiness.missing_safety_fields || []
+      });
+    }
   }
 
   const checkin = await checkInParticipant(db, {

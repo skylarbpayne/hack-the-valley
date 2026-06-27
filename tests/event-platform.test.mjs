@@ -1073,7 +1073,7 @@ test("manual attendee check-in can create/signup/check in through Participation 
   assert.match(participationSource, /eventInstanceId/);
 });
 
-test("admin check-in route blocks selected existing users without emergency contact readiness", async () => {
+test("admin check-in route allows selected existing users without emergency contact readiness", async () => {
   const db = participationRouteDb({ currentUser: { id: "usr_admin", email: "admin@example.com", name: "Admin User", metadata_json: null } });
   const response = await postEventCheckin({
     request: new Request("https://hackthevalley.org/api/events/demo-hours/checkins?instance_id=inst_demo_current", {
@@ -1091,14 +1091,42 @@ test("admin check-in route blocks selected existing users without emergency cont
     params: { slug: "demo-hours" }
   });
 
-  assert.equal(response.status, 400);
+  assert.equal(response.status, 201);
   const body = await response.json();
-  assert.match(body.error, /Emergency contact is required before check-in/);
+  assert.equal(body.success, true);
+  assert.equal(body.signup.user_id, "usr_existing");
+  assert.equal(body.signup.event_instance_id, "inst_demo_selected");
+  assert.equal(body.signup.email, "selected@example.com");
   assert.equal(db.signups.length, 1);
   assert.equal(db.signups[0].user_id, "usr_existing");
   assert.equal(db.signups[0].event_instance_id, "inst_demo_selected");
   assert.equal(db.signups[0].email, undefined);
   assert.equal(db.emergencyContacts.length, 0);
+  const checkedIn = db.participantEvents.find((event) => event.event_type === "checked_in");
+  assert.ok(checkedIn);
+  assert.equal(checkedIn.user_id, "usr_existing");
+  assert.equal(checkedIn.actor, "usr_admin");
+});
+
+test("admin check-in route still rejects brand-new manual attendees without emergency contact", async () => {
+  const db = participationRouteDb({ currentUser: { id: "usr_admin", email: "admin@example.com", name: "Admin User", metadata_json: null } });
+  const response = await postEventCheckin({
+    request: new Request("https://hackthevalley.org/api/events/demo-hours/checkins?instance_id=inst_demo_current", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie: "htv_session=admin-session" },
+      body: JSON.stringify({
+        event_instance_id: "inst_demo_selected",
+        name: "No Contact",
+        email: "new@example.com"
+      })
+    }),
+    env: { HTV_DB: db },
+    params: { slug: "demo-hours" }
+  });
+
+  assert.equal(response.status, 400);
+  const body = await response.json();
+  assert.match(body.error, /emergency contact name is required/);
   assert.equal(db.participantEvents.some((event) => event.event_type === "checked_in"), false);
 });
 

@@ -96,16 +96,19 @@ export function broadcastIdempotencyKey(slug, scheduledAtIso) {
 // required value is missing, matching how the mailing-list sync behaves.
 // Note: the audience is resolved separately (see resolveAudienceId) so the
 // common "send to my one list" case needs no audience config.
+// Blog broadcasts also carry a reply-to address because the email template asks
+// recipients to reply with projects/stories to feature on the blog.
 export function resolveBroadcastConfig(env = {}) {
   const apiKey = String(env.RESEND_API_KEY || '').trim();
   const from = String(env.RESEND_BROADCAST_FROM || env.RESEND_FROM || env.RESEND_FROM_EMAIL || '').trim();
+  const replyTo = String(env.RESEND_BROADCAST_REPLY_TO || env.RESEND_REPLY_TO || env.HTV_CONTACT_EMAIL || 'contact@hackthevalley.org').trim();
   const missing = [];
   if (!apiKey) missing.push('RESEND_API_KEY');
   if (!from) missing.push('RESEND_BROADCAST_FROM');
   if (missing.length) {
     throw httpError(`Email blasts are not configured. Missing: ${missing.join(', ')}.`, 503);
   }
-  return { apiKey, from };
+  return { apiKey, from, replyTo };
 }
 
 // Resolve which Resend audience (email list) the broadcast goes to. Prefer an
@@ -139,12 +142,14 @@ export async function resolveAudienceId({ env = {}, fetcher = fetch } = {}) {
 // Deliberately separate from sending: the caller persists this id BEFORE it
 // attempts the send, so a send that throws can't strand a created-but-unrecorded
 // broadcast (which would otherwise be re-created on retry).
-export async function createBroadcast({ env = {}, fetcher = fetch, audienceId, from, subject, name, html } = {}) {
+export async function createBroadcast({ env = {}, fetcher = fetch, audienceId, from, replyTo, subject, name, html } = {}) {
   const apiKey = String(env.RESEND_API_KEY || '').trim();
+  const body = { audience_id: audienceId, from, subject, name, html };
+  if (replyTo) body.reply_to = [replyTo];
   const response = await fetcher('https://api.resend.com/broadcasts', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ audience_id: audienceId, from, subject, name, html }),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
     throw httpError(`Resend broadcast create failed with HTTP ${response.status}: ${await readResponseText(response)}`, 502);
@@ -183,7 +188,7 @@ export async function scheduleBroadcast(db, { slug, scheduledAt, subject, name, 
   if (!normalizedSlug) throw httpError('A post slug is required.', 400);
 
   const scheduledAtIso = normalizeScheduledAt(scheduledAt);
-  const { from } = resolveBroadcastConfig(env);
+  const { from, replyTo } = resolveBroadcastConfig(env);
   const audienceId = await resolveAudienceId({ env, fetcher });
 
   const key = broadcastIdempotencyKey(normalizedSlug, scheduledAtIso);
@@ -212,7 +217,7 @@ export async function scheduleBroadcast(db, { slug, scheduledAt, subject, name, 
   // release the reservation so a clean retry is allowed.
   let broadcastId;
   try {
-    broadcastId = await createBroadcast({ env, fetcher, audienceId, from, subject, name, html });
+    broadcastId = await createBroadcast({ env, fetcher, audienceId, from, replyTo, subject, name, html });
   } catch (err) {
     await db.prepare('DELETE FROM blog_broadcast_sends WHERE idempotency_key = ?').bind(key).run();
     throw err;

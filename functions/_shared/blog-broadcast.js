@@ -27,11 +27,16 @@ export function styleContentForEmail(html) {
     );
 }
 
+export const DEFAULT_BLOG_SUBMISSION_PROMPT = 'Want to highlight something on the Hack the Valley blog? Reply to this email with the project, demo, or story we should feature.';
+
 // Build an email-friendly HTML document. Email clients ignore <style>/Tailwind,
 // so the chrome uses inline styles; the post body keeps its semantic tags.
-export function buildBroadcastEmailHtml({ title, contentHtml, postUrl, eventsUrl } = {}) {
+// The CTA block is platform-owned on purpose: every blog-post blast gets the
+// same event + submission prompts even if the source article forgets them.
+export function buildBroadcastEmailHtml({ title, contentHtml, postUrl, eventsUrl, submissionPrompt = DEFAULT_BLOG_SUBMISSION_PROMPT } = {}) {
   const safeTitle = escapeHtml(title || 'Hack the Valley');
   const body = styleContentForEmail(contentHtml);
+  const safeSubmissionPrompt = escapeHtml(submissionPrompt || DEFAULT_BLOG_SUBMISSION_PROMPT);
   const wrapperStyle = 'font-family:Arial,Helvetica,sans-serif;color:#0f172a;line-height:1.6;';
   return `<!DOCTYPE html>
 <html lang="en">
@@ -45,9 +50,12 @@ export function buildBroadcastEmailHtml({ title, contentHtml, postUrl, eventsUrl
     <div style="font-size:16px;color:#334155;">
       ${body}
     </div>
-    <div style="margin:32px 0;padding:24px;background:#0f172a;border-radius:12px;text-align:center;">
-      <p style="margin:0 0 14px;color:#e2e8f0;font-size:16px;">Don't miss the next one.</p>
-      <a href="${escapeAttr(eventsUrl || '#')}" style="display:inline-block;background:#06b6d4;color:#0f172a;font-weight:bold;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:16px;">Sign up for our next event</a>
+    <div style="margin:32px 0;padding:24px;background:#0f172a;border-radius:12px;">
+      <p style="margin:0 0 14px;color:#e2e8f0;font-size:16px;text-align:center;">Don't miss the next one.</p>
+      <p style="margin:0 0 18px;text-align:center;"><a href="${escapeAttr(eventsUrl || '#')}" style="display:inline-block;background:#06b6d4;color:#0f172a;font-weight:bold;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:16px;">See upcoming events</a></p>
+      <div style="border-top:1px solid #334155;margin-top:18px;padding-top:18px;">
+        <p style="margin:0;color:#e2e8f0;font-size:15px;text-align:center;"><strong>Have something to share?</strong><br>${safeSubmissionPrompt}</p>
+      </div>
     </div>
     <p style="font-size:13px;color:#64748b;">
       ${postUrl ? `Read this on the web: <a href="${escapeAttr(postUrl)}" style="color:#2563eb;">${escapeHtml(postUrl)}</a><br>` : ''}

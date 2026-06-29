@@ -161,7 +161,7 @@ test('absolutizeUrls rewrites root-relative URLs and leaves absolute ones', () =
   assert.match(out, /src="\/\/cdn\/y"/);
 });
 
-test('buildBroadcastEmailHtml includes title, CTA to events, and unsubscribe token', () => {
+test('buildBroadcastEmailHtml includes title, upcoming-events CTA, submission CTA, and unsubscribe token', () => {
   const html = buildBroadcastEmailHtml({
     title: 'My Post',
     contentHtml: '<p>body</p>',
@@ -170,8 +170,9 @@ test('buildBroadcastEmailHtml includes title, CTA to events, and unsubscribe tok
   });
   assert.match(html, /My Post/);
   assert.match(html, /<p>body<\/p>/);
-  assert.match(html, /Sign up for our next event/);
+  assert.match(html, /See upcoming events/);
   assert.match(html, /href="https:\/\/hackthevalley\.org\/events"/);
+  assert.match(html, /Want to highlight something on the Hack the Valley blog\? Reply to this email/);
   assert.match(html, /\{\{\{RESEND_UNSUBSCRIBE_URL\}\}\}/);
 });
 
@@ -191,6 +192,9 @@ test('resolveBroadcastConfig requires an API key and sender', () => {
   });
   const config = resolveBroadcastConfig({ RESEND_API_KEY: 'k', RESEND_BROADCAST_FROM: 'HTV <a@b.co>' });
   assert.equal(config.from, 'HTV <a@b.co>');
+  assert.equal(config.replyTo, 'contact@hackthevalley.org');
+  const custom = resolveBroadcastConfig({ RESEND_API_KEY: 'k', RESEND_BROADCAST_FROM: 'HTV <a@b.co>', RESEND_BROADCAST_REPLY_TO: 'blog@hackthevalley.org' });
+  assert.equal(custom.replyTo, 'blog@hackthevalley.org');
 });
 
 test('resolveAudienceId prefers an explicit id, else auto-discovers a single audience', async () => {
@@ -214,7 +218,7 @@ test('createBroadcast posts the audience/from and returns the id', async () => {
   const fetcher = mockFetch([{ status: 200, body: { id: 'bc_123' } }], calls);
   const id = await createBroadcast({
     env: { RESEND_API_KEY: 'k' }, fetcher,
-    audienceId: 'aud_1', from: 'HTV <a@b.co>', subject: 'Hi', name: 'Blog: x', html: '<p>e</p>',
+    audienceId: 'aud_1', from: 'HTV <a@b.co>', replyTo: 'contact@hackthevalley.org', subject: 'Hi', name: 'Blog: x', html: '<p>e</p>',
   });
   assert.equal(id, 'bc_123');
   assert.equal(calls.length, 1);
@@ -222,6 +226,7 @@ test('createBroadcast posts the audience/from and returns the id', async () => {
   const createBody = JSON.parse(calls[0].init.body);
   assert.equal(createBody.audience_id, 'aud_1');
   assert.equal(createBody.from, 'HTV <a@b.co>');
+  assert.deepEqual(createBody.reply_to, ['contact@hackthevalley.org']);
 });
 
 test('createBroadcast throws 502 if create fails', async () => {
@@ -271,6 +276,8 @@ test('handler dry run returns rendered email without calling Resend', async () =
   assert.equal(body.dryRun, true);
   assert.equal(body.subject, 'Test Post');
   assert.match(body.html, /Hello world/);
+  assert.match(body.html, /See upcoming events/);
+  assert.match(body.html, /Want to highlight something on the Hack the Valley blog\? Reply to this email/);
   // image rewritten to absolute for email clients
   assert.match(body.html, /src="https:\/\/hackthevalley\.org\/images\/blog\/x\.png"/);
   assert.equal(calls.length, 0, 'dry run must not hit Resend');
@@ -296,6 +303,10 @@ test('handler schedules a broadcast for an admin', async () => {
   // accepted by Resend != delivered: the row is 'scheduled', reconciled later
   assert.equal(body.status, 'scheduled');
   assert.equal(calls.length, 2);
+  const createBody = JSON.parse(calls[0].init.body);
+  assert.match(createBody.html, /See upcoming events/);
+  assert.match(createBody.html, /Want to highlight something on the Hack the Valley blog\? Reply to this email/);
+  assert.deepEqual(createBody.reply_to, ['contact@hackthevalley.org']);
   // the schedule is forwarded to Resend's send call
   assert.equal(JSON.parse(calls[1].init.body).scheduled_at, scheduledAt);
 });

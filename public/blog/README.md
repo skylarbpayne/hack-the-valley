@@ -41,5 +41,9 @@ The blog is a manual list of static HTML pages. No build step, no database.
   pulling in the nav, footer, or CTA chrome.
 - `<!-- CTA:START -->` … `<!-- CTA:END -->` mark the "next event" call to action that
   every post must carry.
+- Blog email blasts add their own platform-owned CTA block automatically. The email
+  renderer always appends an upcoming-events button plus: "Want to highlight
+  something on the Hack the Valley blog? Reply to this email..." so authors do not
+  have to remember this per post.
 
 Preview locally with `npm run dev`, then visit `/blog/`.

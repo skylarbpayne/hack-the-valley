@@ -818,6 +818,20 @@ test("admin page lists event instances as flat rows without dropdowns", () => {
   assert.doesNotMatch(html, /signup\.notes/);
 });
 
+test("admin page exposes blog blast scheduling and explicit send controls", () => {
+  const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
+  assert.match(html, /Blog email blast/);
+  assert.match(html, /id="blog-schedule-date" type="date"/);
+  assert.match(html, /id="blog-schedule-time" type="time"/);
+  assert.match(html, /Schedule send/);
+  assert.match(html, /Send now/);
+  assert.match(html, /scheduledAtFromInputs/);
+  assert.match(html, /blogBlastPayload\(scheduledAt \? \{ scheduledAt \} : \{\}\)/);
+  assert.match(html, /sendBlogBlast\(\{ scheduled: true \}\)/);
+  assert.match(html, /sendBlogBlast\(\{ scheduled: false \}\)/);
+  assert.doesNotMatch(html, /id="blog-send"/);
+});
+
 test("public event signup form skips profile fields for signed-in users and keeps anonymous form fields", () => {
   const html = readFileSync(new URL("../public/events/index.html", import.meta.url), "utf8");
   assert.match(html, /name="name"/);

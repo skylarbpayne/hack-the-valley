@@ -47,6 +47,7 @@ export async function onRequestPost(context) {
     const result = await scheduleBroadcast(getDb(env), {
       slug: post.slug,
       scheduledAt: input.scheduledAt,
+      sendNow: !input.scheduledAt,
       subject,
       name: post.broadcastName(),
       html,

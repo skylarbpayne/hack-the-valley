@@ -63,9 +63,9 @@ export function toBroadcastSend(row = {}) {
 
 // --- domain rules ----------------------------------------------------------
 
-// Email blasts must never go out immediately: a stray click would email the
-// whole list with no take-back. Require a future send time with a buffer so an
-// accidental "now" is impossible. Returns the normalized ISO timestamp.
+// Scheduled email blasts need a future send time with a buffer so an accidental
+// "schedule for now" is impossible. Explicit send-now requests bypass this and
+// are recorded as `sending` until Resend reconciliation confirms delivery.
 export const SCHEDULE_BUFFER_MS = 10 * 60 * 1000;
 
 export function normalizeScheduledAt(scheduledAt, { now = Date.now(), bufferMs = SCHEDULE_BUFFER_MS } = {}) {
@@ -112,9 +112,8 @@ export function resolveBroadcastConfig(env = {}) {
 }
 
 // Resolve which Resend audience (email list) the broadcast goes to. Prefer an
-// explicit RESEND_AUDIENCE_ID; otherwise auto-discover when the account has
-// exactly one audience, so "send to the whole list" needs no extra config.
-// Refuse to guess when several audiences exist, to avoid emailing the wrong one.
+// explicit RESEND_AUDIENCE_ID; otherwise auto-discover the single audience or,
+// when several exist, choose the whole-list audience named "All"/"General".
 export async function resolveAudienceId({ env = {}, fetcher = fetch } = {}) {
   const explicit = String(env.RESEND_AUDIENCE_ID || '').trim();
   if (explicit) return explicit;
@@ -131,11 +130,21 @@ export async function resolveAudienceId({ env = {}, fetcher = fetch } = {}) {
   if (!audiences.length) {
     throw httpError('No Resend audience found to send to. Create one in Resend, or set RESEND_AUDIENCE_ID.', 503);
   }
-  if (audiences.length > 1) {
-    const names = audiences.map((audience) => audience.name || audience.id).join(', ');
-    throw httpError(`Multiple Resend audiences exist (${names}). Set RESEND_AUDIENCE_ID to choose which list to email.`, 409);
+  if (audiences.length === 1) {
+    return audiences[0].id;
   }
-  return audiences[0].id;
+
+  const wholeListAudience = audiences.find((audience) => {
+    const name = String(audience?.name || '').trim().toLowerCase();
+    const id = String(audience?.id || '').trim().toLowerCase();
+    return name === 'all' || name === 'general' || id === 'all' || id === 'general';
+  });
+  if (wholeListAudience?.id) {
+    return wholeListAudience.id;
+  }
+
+  const names = audiences.map((audience) => audience.name || audience.id).join(', ');
+  throw httpError(`Multiple Resend audiences exist (${names}). Set RESEND_AUDIENCE_ID to choose which list to email.`, 409);
 }
 
 // Create a Resend broadcast (a draft targeting the audience) and return its id.
@@ -183,11 +192,11 @@ export async function sendBroadcast({ env = {}, fetcher = fetch, broadcastId, sc
 // lifecycle: validate -> resolve audience (read-only) -> reserve row -> hand to
 // Resend -> record the truthful status. Audience is resolved BEFORE the row is
 // reserved so a misconfiguration can't orphan a forever-'pending' row.
-export async function scheduleBroadcast(db, { slug, scheduledAt, subject, name, html, env = {}, fetcher = fetch } = {}) {
+export async function scheduleBroadcast(db, { slug, scheduledAt, sendNow = false, subject, name, html, env = {}, fetcher = fetch } = {}) {
   const normalizedSlug = String(slug || '').trim();
   if (!normalizedSlug) throw httpError('A post slug is required.', 400);
 
-  const scheduledAtIso = normalizeScheduledAt(scheduledAt);
+  const scheduledAtIso = sendNow ? new Date().toISOString() : normalizeScheduledAt(scheduledAt);
   const { from, replyTo } = resolveBroadcastConfig(env);
   const audienceId = await resolveAudienceId({ env, fetcher });
 
@@ -238,7 +247,7 @@ export async function scheduleBroadcast(db, { slug, scheduledAt, subject, name, 
     .run();
 
   try {
-    await sendBroadcast({ env, fetcher, broadcastId, scheduledAt: scheduledAtIso });
+    await sendBroadcast({ env, fetcher, broadcastId, scheduledAt: sendNow ? null : scheduledAtIso });
   } catch (err) {
     // The row is already 'send_failed' with the real id; just record the reason.
     // The reconciler re-checks send_failed rows against Resend's real status.
@@ -249,23 +258,23 @@ export async function scheduleBroadcast(db, { slug, scheduledAt, subject, name, 
     throw Object.assign(err, { broadcastId });
   }
 
-  // Resend has only *accepted* the scheduled send — it hasn't gone out yet (and
-  // could still fail at send time). Record 'scheduled', not 'sent'; the reconcile
-  // cron advances this from Resend's real status. Writing 'sent' here would be a
-  // lie that never self-corrects.
+  // Resend has only *accepted* the handoff — scheduled blasts are not sent yet,
+  // and immediate blasts move into Resend's queue. Record the truthful
+  // non-terminal state; the reconcile cron advances it to sent/canceled later.
+  const acceptedStatus = sendNow ? BROADCAST_STATUS.SENDING : BROADCAST_STATUS.SCHEDULED;
   await db
     .prepare(
-      `UPDATE blog_broadcast_sends SET broadcast_id = ?, status = 'scheduled', updated_at = ? WHERE idempotency_key = ?`
+      `UPDATE blog_broadcast_sends SET broadcast_id = ?, status = ?, updated_at = ? WHERE idempotency_key = ?`
     )
-    .bind(broadcastId, new Date().toISOString(), key)
+    .bind(broadcastId, acceptedStatus, new Date().toISOString(), key)
     .run();
 
   return {
     slug: normalizedSlug,
     scheduledAt: scheduledAtIso,
     broadcastId,
-    scheduled: Boolean(scheduledAtIso),
-    status: BROADCAST_STATUS.SCHEDULED,
+    scheduled: !sendNow,
+    status: acceptedStatus,
   };
 }
 

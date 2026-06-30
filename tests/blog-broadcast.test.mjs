@@ -197,16 +197,30 @@ test('resolveBroadcastConfig requires an API key and sender', () => {
   assert.equal(custom.replyTo, 'blog@hackthevalley.org');
 });
 
-test('resolveAudienceId prefers explicit id, auto-discovers one audience, or chooses the whole-list audience', async () => {
+test('resolveAudienceId prefers explicit id, auto-discovers one audience, and skips empty whole-list placeholders', async () => {
   assert.equal(await resolveAudienceId({ env: { RESEND_AUDIENCE_ID: 'aud_x' } }), 'aud_x');
   const oneAudience = mockFetch([{ status: 200, body: { data: [{ id: 'aud_solo', name: 'HTV list' }] } }]);
   assert.equal(await resolveAudienceId({ env: { RESEND_API_KEY: 'k' }, fetcher: oneAudience }), 'aud_solo');
-  const manyWithGeneral = mockFetch([{ status: 200, body: { data: [{ id: 'aud_event', name: 'Hack the Valley 2026' }, { id: 'aud_general', name: 'General' }] } }]);
-  assert.equal(await resolveAudienceId({ env: { RESEND_API_KEY: 'k' }, fetcher: manyWithGeneral }), 'aud_general');
+  const emptyGeneral = mockFetch([
+    { status: 200, body: { data: [{ id: 'aud_event', name: 'Hack the Valley 2026' }, { id: 'aud_general', name: 'General' }] } },
+    { status: 200, body: { data: [{ id: 'contact_1' }] } },
+    { status: 200, body: { data: [] } },
+  ]);
+  assert.equal(await resolveAudienceId({ env: { RESEND_API_KEY: 'k' }, fetcher: emptyGeneral }), 'aud_event');
+  const populatedGeneral = mockFetch([
+    { status: 200, body: { data: [{ id: 'aud_event', name: 'Hack the Valley 2026' }, { id: 'aud_general', name: 'General' }] } },
+    { status: 200, body: { data: [] } },
+    { status: 200, body: { data: [{ id: 'contact_1' }] } },
+  ]);
+  assert.equal(await resolveAudienceId({ env: { RESEND_API_KEY: 'k' }, fetcher: populatedGeneral }), 'aud_general');
 });
 
-test('resolveAudienceId refuses to guess when multiple audiences have no whole-list audience', async () => {
-  const many = mockFetch([{ status: 200, body: { data: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] } }]);
+test('resolveAudienceId refuses to guess when multiple populated audiences have no whole-list audience', async () => {
+  const many = mockFetch([
+    { status: 200, body: { data: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] } },
+    { status: 200, body: { data: [{ id: 'contact_a' }] } },
+    { status: 200, body: { data: [{ id: 'contact_b' }] } },
+  ]);
   await assert.rejects(resolveAudienceId({ env: { RESEND_API_KEY: 'k' }, fetcher: many }), (err) => err.status === 409);
 });
 
@@ -313,7 +327,7 @@ test('handler schedules a broadcast for an admin', async () => {
   assert.equal(JSON.parse(calls[1].init.body).scheduled_at, scheduledAt);
 });
 
-test('handler auto-discovers the General audience when multiple audiences exist', async () => {
+test('handler auto-discovers the only populated audience when General exists but is empty', async () => {
   const calls = [];
   const response = await onRequestPost({
     request: broadcastRequest({ slug: 'test-post', scheduledAt: futureIso() }, { cookie: 'htv_session=tok' }),
@@ -323,14 +337,18 @@ test('handler auto-discovers the General audience when multiple audiences exist'
     },
     fetch: mockFetch([
       { status: 200, body: { data: [{ id: 'aud_event', name: 'Hack the Valley 2026' }, { id: 'aud_general', name: 'General' }] } }, // GET /audiences
+      { status: 200, body: { data: [{ id: 'contact_1' }] } }, // GET /audiences/aud_event/contacts
+      { status: 200, body: { data: [] } }, // GET /audiences/aud_general/contacts
       { status: 200, body: { id: 'bc_1' } }, // POST /broadcasts
       { status: 200, body: { id: 'bc_1' } }, // POST /broadcasts/:id/send
     ], calls),
   });
   assert.equal(response.status, 200);
   assert.equal(calls[0].url, 'https://api.resend.com/audiences');
-  const createBody = JSON.parse(calls[1].init.body);
-  assert.equal(createBody.audience_id, 'aud_general');
+  assert.equal(calls[1].url, 'https://api.resend.com/audiences/aud_event/contacts');
+  assert.equal(calls[2].url, 'https://api.resend.com/audiences/aud_general/contacts');
+  const createBody = JSON.parse(calls[3].init.body);
+  assert.equal(createBody.audience_id, 'aud_event');
 });
 
 test('handler returns 404 for an unknown slug', async () => {
@@ -544,7 +562,11 @@ test('handler does not orphan a pending row when audience resolution fails', asy
   const ambiguous = await onRequestPost({
     request: broadcastRequest({ slug: 'test-post', scheduledAt }, { cookie: 'htv_session=tok' }),
     env: { HTV_DB: db, ASSETS: assets(), RESEND_API_KEY: 'k', RESEND_BROADCAST_FROM: 'HTV <a@b.co>' },
-    fetch: mockFetch([{ status: 200, body: { data: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] } }]),
+    fetch: mockFetch([
+      { status: 200, body: { data: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] } },
+      { status: 200, body: { data: [{ id: 'contact_a' }] } },
+      { status: 200, body: { data: [{ id: 'contact_b' }] } },
+    ]),
   });
   assert.equal(ambiguous.status, 409);
   assert.equal(store.size, 0, 'a failed audience lookup must not leave a pending row behind');

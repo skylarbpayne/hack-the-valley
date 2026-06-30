@@ -111,9 +111,30 @@ export function resolveBroadcastConfig(env = {}) {
   return { apiKey, from, replyTo };
 }
 
+function isWholeListAudience(audience) {
+  const name = String(audience?.name || '').trim().toLowerCase();
+  const id = String(audience?.id || '').trim().toLowerCase();
+  return name === 'all' || name === 'general' || id === 'all' || id === 'general';
+}
+
+async function audienceContactCount({ apiKey, fetcher, audienceId }) {
+  const response = await fetcher(`https://api.resend.com/audiences/${encodeURIComponent(audienceId)}/contacts`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!response.ok) {
+    throw httpError(`Could not inspect Resend audience contacts (HTTP ${response.status}). Set RESEND_AUDIENCE_ID to target a list.`, 502);
+  }
+  const payload = await response.json().catch(() => ({}));
+  const contacts = payload?.data || payload?.contacts || [];
+  return Array.isArray(contacts) ? contacts.length : 0;
+}
+
 // Resolve which Resend audience (email list) the broadcast goes to. Prefer an
-// explicit RESEND_AUDIENCE_ID; otherwise auto-discover the single audience or,
-// when several exist, choose the whole-list audience named "All"/"General".
+// explicit RESEND_AUDIENCE_ID; otherwise auto-discover the single audience. If
+// several audiences exist, avoid empty "all/general" placeholders by inspecting
+// contacts and choosing the only non-empty whole-list audience, or the only
+// non-empty audience in the account. This prevents Resend's 422 empty-audience
+// failure from surfacing after the operator clicks Send.
 export async function resolveAudienceId({ env = {}, fetcher = fetch } = {}) {
   const explicit = String(env.RESEND_AUDIENCE_ID || '').trim();
   if (explicit) return explicit;
@@ -134,17 +155,32 @@ export async function resolveAudienceId({ env = {}, fetcher = fetch } = {}) {
     return audiences[0].id;
   }
 
-  const wholeListAudience = audiences.find((audience) => {
-    const name = String(audience?.name || '').trim().toLowerCase();
-    const id = String(audience?.id || '').trim().toLowerCase();
-    return name === 'all' || name === 'general' || id === 'all' || id === 'general';
-  });
-  if (wholeListAudience?.id) {
-    return wholeListAudience.id;
+  const inspected = [];
+  for (const audience of audiences) {
+    if (!audience?.id) continue;
+    inspected.push({
+      audience,
+      contactCount: await audienceContactCount({ apiKey, fetcher, audienceId: audience.id }),
+    });
+  }
+
+  const nonEmptyWholeListAudiences = inspected.filter(({ audience, contactCount }) => isWholeListAudience(audience) && contactCount > 0);
+  if (nonEmptyWholeListAudiences.length === 1) {
+    return nonEmptyWholeListAudiences[0].audience.id;
+  }
+
+  const nonEmptyAudiences = inspected.filter(({ contactCount }) => contactCount > 0);
+  if (nonEmptyAudiences.length === 1) {
+    return nonEmptyAudiences[0].audience.id;
+  }
+
+  if (inspected.length && nonEmptyAudiences.length === 0) {
+    const names = audiences.map((audience) => audience.name || audience.id).join(', ');
+    throw httpError(`No Resend audience has contacts (${names}). Add contacts or set RESEND_AUDIENCE_ID to a populated list.`, 409);
   }
 
   const names = audiences.map((audience) => audience.name || audience.id).join(', ');
-  throw httpError(`Multiple Resend audiences exist (${names}). Set RESEND_AUDIENCE_ID to choose which list to email.`, 409);
+  throw httpError(`Multiple populated Resend audiences exist (${names}). Set RESEND_AUDIENCE_ID to choose which list to email.`, 409);
 }
 
 // Create a Resend broadcast (a draft targeting the audience) and return its id.

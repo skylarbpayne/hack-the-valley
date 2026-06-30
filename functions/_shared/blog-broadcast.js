@@ -115,9 +115,8 @@ export function resolveBroadcastConfig(env = {}) {
 }
 
 // Resolve which Resend audience (email list) the broadcast goes to. Prefer an
-// explicit RESEND_AUDIENCE_ID; otherwise auto-discover when the account has
-// exactly one audience, so "send to the whole list" needs no extra config.
-// Refuse to guess when several audiences exist, to avoid emailing the wrong one.
+// explicit RESEND_AUDIENCE_ID; otherwise auto-discover the single audience or,
+// when several exist, choose the whole-list audience named "All"/"General".
 export async function resolveAudienceId({ env = {}, fetcher = fetch } = {}) {
   const explicit = String(env.RESEND_AUDIENCE_ID || '').trim();
   if (explicit) return explicit;
@@ -134,11 +133,21 @@ export async function resolveAudienceId({ env = {}, fetcher = fetch } = {}) {
   if (!audiences.length) {
     throw httpError('No Resend audience found to send to. Create one in Resend, or set RESEND_AUDIENCE_ID.', 503);
   }
-  if (audiences.length > 1) {
-    const names = audiences.map((audience) => audience.name || audience.id).join(', ');
-    throw httpError(`Multiple Resend audiences exist (${names}). Set RESEND_AUDIENCE_ID to choose which list to email.`, 409);
+  if (audiences.length === 1) {
+    return audiences[0].id;
   }
-  return audiences[0].id;
+
+  const wholeListAudience = audiences.find((audience) => {
+    const name = String(audience?.name || '').trim().toLowerCase();
+    const id = String(audience?.id || '').trim().toLowerCase();
+    return name === 'all' || name === 'general' || id === 'all' || id === 'general';
+  });
+  if (wholeListAudience?.id) {
+    return wholeListAudience.id;
+  }
+
+  const names = audiences.map((audience) => audience.name || audience.id).join(', ');
+  throw httpError(`Multiple Resend audiences exist (${names}). Set RESEND_AUDIENCE_ID to choose which list to email.`, 409);
 }
 
 // Create a Resend broadcast targeting the configured audience, then send it.

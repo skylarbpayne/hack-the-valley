@@ -137,13 +137,15 @@ test('resolveBroadcastConfig requires an API key and sender', () => {
   assert.equal(config.from, 'HTV <a@b.co>');
 });
 
-test('resolveAudienceId prefers an explicit id, else auto-discovers a single audience', async () => {
+test('resolveAudienceId prefers explicit id, auto-discovers one audience, or chooses the whole-list audience', async () => {
   assert.equal(await resolveAudienceId({ env: { RESEND_AUDIENCE_ID: 'aud_x' } }), 'aud_x');
   const oneAudience = mockFetch([{ status: 200, body: { data: [{ id: 'aud_solo', name: 'HTV list' }] } }]);
   assert.equal(await resolveAudienceId({ env: { RESEND_API_KEY: 'k' }, fetcher: oneAudience }), 'aud_solo');
+  const manyWithGeneral = mockFetch([{ status: 200, body: { data: [{ id: 'aud_event', name: 'Hack the Valley 2026' }, { id: 'aud_general', name: 'General' }] } }]);
+  assert.equal(await resolveAudienceId({ env: { RESEND_API_KEY: 'k' }, fetcher: manyWithGeneral }), 'aud_general');
 });
 
-test('resolveAudienceId refuses to guess when multiple audiences exist', async () => {
+test('resolveAudienceId refuses to guess when multiple audiences have no whole-list audience', async () => {
   const many = mockFetch([{ status: 200, body: { data: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] } }]);
   await assert.rejects(resolveAudienceId({ env: { RESEND_API_KEY: 'k' }, fetcher: many }), (err) => err.status === 409);
 });
@@ -219,10 +221,30 @@ test('handler sends a broadcast for an admin', async () => {
   assert.equal(body.ok, true);
   assert.equal(body.broadcastId, 'bc_9');
   assert.equal(body.subject, 'Custom subject');
+  assert.equal(body.scheduled, false);
   assert.equal(calls.length, 2);
 });
 
-test('handler auto-discovers the single audience when none is configured', async () => {
+test('handler schedules a broadcast when scheduledAt is provided', async () => {
+  const calls = [];
+  const scheduledAt = '2026-07-04T18:30:00.000Z';
+  const response = await onRequestPost({
+    request: broadcastRequest({ slug: 'test-post', scheduledAt }, { cookie: 'htv_session=tok' }),
+    env: {
+      HTV_DB: adminDb(), ASSETS: assets(),
+      RESEND_API_KEY: 'k', RESEND_AUDIENCE_ID: 'aud_1', RESEND_BROADCAST_FROM: 'HTV <a@b.co>',
+    },
+    fetch: mockFetch([{ status: 200, body: { id: 'bc_scheduled' } }, { status: 200, body: { id: 'bc_scheduled' } }], calls),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.scheduled, true);
+  assert.equal(body.broadcastId, 'bc_scheduled');
+  assert.equal(calls.length, 2);
+  assert.deepEqual(JSON.parse(calls[1].init.body), { scheduled_at: scheduledAt });
+});
+
+test('handler auto-discovers the General audience when multiple audiences exist', async () => {
   const calls = [];
   const response = await onRequestPost({
     request: broadcastRequest({ slug: 'test-post' }, { cookie: 'htv_session=tok' }),
@@ -231,7 +253,7 @@ test('handler auto-discovers the single audience when none is configured', async
       RESEND_API_KEY: 'k', RESEND_BROADCAST_FROM: 'HTV <a@b.co>', // no RESEND_AUDIENCE_ID
     },
     fetch: mockFetch([
-      { status: 200, body: { data: [{ id: 'aud_solo', name: 'HTV list' }] } }, // GET /audiences
+      { status: 200, body: { data: [{ id: 'aud_event', name: 'Hack the Valley 2026' }, { id: 'aud_general', name: 'General' }] } }, // GET /audiences
       { status: 200, body: { id: 'bc_1' } }, // POST /broadcasts
       { status: 200, body: { id: 'bc_1' } }, // POST /broadcasts/:id/send
     ], calls),
@@ -239,7 +261,7 @@ test('handler auto-discovers the single audience when none is configured', async
   assert.equal(response.status, 200);
   assert.equal(calls[0].url, 'https://api.resend.com/audiences');
   const createBody = JSON.parse(calls[1].init.body);
-  assert.equal(createBody.audience_id, 'aud_solo');
+  assert.equal(createBody.audience_id, 'aud_general');
 });
 
 test('handler returns 404 for an unknown slug', async () => {

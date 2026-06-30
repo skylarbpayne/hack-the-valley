@@ -111,76 +111,96 @@ export function resolveBroadcastConfig(env = {}) {
   return { apiKey, from, replyTo };
 }
 
-function isWholeListAudience(audience) {
-  const name = String(audience?.name || '').trim().toLowerCase();
-  const id = String(audience?.id || '').trim().toLowerCase();
-  return name === 'all' || name === 'general' || id === 'all' || id === 'general';
+function isAllContactsSegment(segment) {
+  const name = String(segment?.name || '').trim().toLowerCase();
+  const id = String(segment?.id || '').trim().toLowerCase();
+  return name === 'all' || name === 'all contacts' || name === 'general' || id === 'all' || id === 'all-contacts';
 }
 
-async function audienceContactCount({ apiKey, fetcher, audienceId }) {
-  const response = await fetcher(`https://api.resend.com/audiences/${encodeURIComponent(audienceId)}/contacts`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
-  if (!response.ok) {
-    throw httpError(`Could not inspect Resend audience contacts (HTTP ${response.status}). Set RESEND_AUDIENCE_ID to target a list.`, 502);
+async function fetchResendList({ apiKey, fetcher, path }) {
+  const items = [];
+  let after = '';
+  for (let page = 0; page < 50; page += 1) {
+    const url = new URL(path, 'https://api.resend.com');
+    url.searchParams.set('limit', '100');
+    if (after) url.searchParams.set('after', after);
+    const response = await fetcher(url.toString(), {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!response.ok) {
+      throw httpError(`Could not inspect Resend list ${path} (HTTP ${response.status}).`, 502);
+    }
+    const payload = await response.json().catch(() => ({}));
+    const data = payload?.data || payload?.contacts || payload?.segments || [];
+    if (Array.isArray(data)) items.push(...data);
+    if (!payload?.has_more || !Array.isArray(data) || data.length === 0) break;
+    after = data[data.length - 1]?.id;
+    if (!after) break;
   }
-  const payload = await response.json().catch(() => ({}));
-  const contacts = payload?.data || payload?.contacts || [];
-  return Array.isArray(contacts) ? contacts.length : 0;
+  return items;
 }
 
-// Resolve which Resend audience (email list) the broadcast goes to. Prefer an
-// explicit RESEND_AUDIENCE_ID; otherwise auto-discover the single audience. If
-// several audiences exist, avoid empty "all/general" placeholders by inspecting
-// contacts and choosing the only non-empty whole-list audience, or the only
-// non-empty audience in the account. This prevents Resend's 422 empty-audience
-// failure from surfacing after the operator clicks Send.
+async function segmentContactCount({ apiKey, fetcher, segmentId }) {
+  return (await fetchResendList({ apiKey, fetcher, path: `/segments/${encodeURIComponent(segmentId)}/contacts` })).length;
+}
+
+// Resend Broadcasts require a segment_id. Product-wise, HTV email blasts are
+// never segmented: every blast must target the one segment that contains all
+// Resend Contacts. Do not fall back to an event-specific populated segment.
 export async function resolveAudienceId({ env = {}, fetcher = fetch } = {}) {
-  const explicit = String(env.RESEND_AUDIENCE_ID || '').trim();
-  if (explicit) return explicit;
-
   const apiKey = String(env.RESEND_API_KEY || '').trim();
-  const response = await fetcher('https://api.resend.com/audiences', {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
-  if (!response.ok) {
-    throw httpError(`Could not list Resend audiences (HTTP ${response.status}). Set RESEND_AUDIENCE_ID to target a list.`, 502);
+  const explicit = String(
+    env.RESEND_ALL_CONTACTS_SEGMENT_ID ||
+      env.RESEND_SEGMENT_ID ||
+      env.RESEND_AUDIENCE_ID ||
+      ''
+  ).trim();
+
+  const allContacts = await fetchResendList({ apiKey, fetcher, path: '/contacts' });
+  const allContactCount = allContacts.length;
+  if (allContactCount === 0) {
+    throw httpError('Resend has zero contacts. Email blasts would send to nobody.', 409);
   }
-  const payload = await response.json().catch(() => ({}));
-  const audiences = payload?.data || payload?.audiences || [];
-  if (!audiences.length) {
-    throw httpError('No Resend audience found to send to. Create one in Resend, or set RESEND_AUDIENCE_ID.', 503);
+
+  if (explicit) {
+    const explicitCount = await segmentContactCount({ apiKey, fetcher, segmentId: explicit });
+    if (explicitCount !== allContactCount) {
+      throw httpError(
+        `Configured Resend all-contacts segment has ${explicitCount} contacts, but Resend has ${allContactCount} total contacts. Refusing to send a segmented blast.`,
+        409,
+      );
+    }
+    return explicit;
   }
-  if (audiences.length === 1) {
-    return audiences[0].id;
+
+  const segments = await fetchResendList({ apiKey, fetcher, path: '/segments' });
+  if (!segments.length) {
+    throw httpError('Resend Broadcasts require a segment_id. Create an All Contacts segment containing every contact, then set RESEND_ALL_CONTACTS_SEGMENT_ID.', 503);
   }
 
   const inspected = [];
-  for (const audience of audiences) {
-    if (!audience?.id) continue;
+  for (const segment of segments) {
+    if (!segment?.id) continue;
     inspected.push({
-      audience,
-      contactCount: await audienceContactCount({ apiKey, fetcher, audienceId: audience.id }),
+      segment,
+      contactCount: await segmentContactCount({ apiKey, fetcher, segmentId: segment.id }),
     });
   }
 
-  const nonEmptyWholeListAudiences = inspected.filter(({ audience, contactCount }) => isWholeListAudience(audience) && contactCount > 0);
-  if (nonEmptyWholeListAudiences.length === 1) {
-    return nonEmptyWholeListAudiences[0].audience.id;
+  const allCountSegments = inspected.filter(({ contactCount }) => contactCount === allContactCount);
+  const namedAllCountSegments = allCountSegments.filter(({ segment }) => isAllContactsSegment(segment));
+  if (namedAllCountSegments.length === 1) {
+    return namedAllCountSegments[0].segment.id;
+  }
+  if (allCountSegments.length === 1 && inspected.length === 1) {
+    return allCountSegments[0].segment.id;
   }
 
-  const nonEmptyAudiences = inspected.filter(({ contactCount }) => contactCount > 0);
-  if (nonEmptyAudiences.length === 1) {
-    return nonEmptyAudiences[0].audience.id;
-  }
-
-  if (inspected.length && nonEmptyAudiences.length === 0) {
-    const names = audiences.map((audience) => audience.name || audience.id).join(', ');
-    throw httpError(`No Resend audience has contacts (${names}). Add contacts or set RESEND_AUDIENCE_ID to a populated list.`, 409);
-  }
-
-  const names = audiences.map((audience) => audience.name || audience.id).join(', ');
-  throw httpError(`Multiple populated Resend audiences exist (${names}). Set RESEND_AUDIENCE_ID to choose which list to email.`, 409);
+  const summary = inspected.map(({ segment, contactCount }) => `${segment.name || segment.id}: ${contactCount}/${allContactCount}`).join(', ');
+  throw httpError(
+    `No single Resend segment is verified to contain all contacts (${summary}). Create/use one All Contacts segment and set RESEND_ALL_CONTACTS_SEGMENT_ID.`,
+    409,
+  );
 }
 
 // Create a Resend broadcast (a draft targeting the audience) and return its id.
@@ -189,7 +209,7 @@ export async function resolveAudienceId({ env = {}, fetcher = fetch } = {}) {
 // broadcast (which would otherwise be re-created on retry).
 export async function createBroadcast({ env = {}, fetcher = fetch, audienceId, from, replyTo, subject, name, html } = {}) {
   const apiKey = String(env.RESEND_API_KEY || '').trim();
-  const body = { audience_id: audienceId, from, subject, name, html };
+  const body = { segment_id: audienceId, from, subject, name, html };
   if (replyTo) body.reply_to = [replyTo];
   const response = await fetcher('https://api.resend.com/broadcasts', {
     method: 'POST',

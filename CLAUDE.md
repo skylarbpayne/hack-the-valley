@@ -49,7 +49,7 @@ The blog is a manual list of static HTML pages under `public/blog/` (no database
 - The index at `/blog/` renders cards from `public/blog/posts.json`.
 - Each post is `public/blog/<slug>/index.html`, served at `/blog/<slug>`. Article bodies are wrapped in `<!-- POST:START -->`/`<!-- POST:END -->` markers, and every post carries a "Sign up for our next event" CTA linking to `/events`.
 - "Publishing" a post as an email blast goes through `POST /api/blog/broadcast` (admin session + roles required), which reuses the post content to create and send a Resend broadcast. The control lives in the "Blog email blast" section of the `/admin` organizer page. Pass `{ dryRun: true }` to preview the rendered email without sending.
-- Broadcast env vars: `RESEND_API_KEY` (shared with the mailing list) and `RESEND_BROADCAST_FROM` (a verified sender). The audience is auto-discovered when the Resend account has exactly one audience; set `RESEND_AUDIENCE_ID` only to disambiguate when there are several. Optional `SITE_BASE_URL` makes in-email links/images absolute (defaults to the request origin).
+- Broadcast env vars: `RESEND_API_KEY` (shared with the mailing list) and `RESEND_BROADCAST_FROM` (a verified sender). The audience is auto-discovered when the Resend account has exactly one audience; if there are several, the whole-list audience named `All` or `General` is used. Set `RESEND_AUDIENCE_ID` only to override that default. Optional `SITE_BASE_URL` makes in-email links/images absolute (defaults to the request origin).
 
 ## Architecture
 

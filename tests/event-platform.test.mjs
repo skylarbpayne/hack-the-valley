@@ -818,18 +818,19 @@ test("admin page lists event instances as flat rows without dropdowns", () => {
   assert.doesNotMatch(html, /signup\.notes/);
 });
 
-test("admin page exposes blog blast scheduling and explicit send controls", () => {
+test("admin page exposes blog draft-only controls", () => {
   const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
-  assert.match(html, /Blog email blast/);
-  assert.match(html, /id="blog-schedule-date" type="date"/);
-  assert.match(html, /id="blog-schedule-time" type="time"/);
-  assert.match(html, /Schedule send/);
-  assert.match(html, /Send now/);
-  assert.match(html, /scheduledAtFromInputs/);
-  assert.match(html, /blogBlastPayload\(scheduledAt \? \{ scheduledAt \} : \{\}\)/);
-  assert.match(html, /sendBlogBlast\(\{ scheduled: true \}\)/);
-  assert.match(html, /sendBlogBlast\(\{ scheduled: false \}\)/);
-  assert.doesNotMatch(html, /id="blog-send"/);
+  assert.match(html, /Blog email draft/);
+  assert.match(html, /Create Resend draft/);
+  assert.match(html, /id="blog-create-draft"/);
+  assert.match(html, /blogBlastPayload\(\)/);
+  assert.match(html, /Nothing will be sent or scheduled from HTV admin/);
+  assert.doesNotMatch(html, /createDraft: true/);
+  assert.doesNotMatch(html, /id="blog-schedule-date" type="date"/);
+  assert.doesNotMatch(html, /id="blog-schedule-time" type="time"/);
+  assert.doesNotMatch(html, /Schedule send/);
+  assert.doesNotMatch(html, /Send now/);
+  assert.doesNotMatch(html, /sendBlogBlast/);
 });
 
 test("public event signup form skips profile fields for signed-in users and keeps anonymous form fields", () => {

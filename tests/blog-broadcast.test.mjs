@@ -11,11 +11,13 @@ import { BlogPost } from '../functions/_lib/domain/blog-post.js';
 import {
   broadcastIdempotencyKey,
   createBroadcast,
+  createDraftBroadcast,
   fetchBroadcastStatus,
   mapResendBroadcastStatus,
   normalizeScheduledAt,
   reconcileBroadcastSends,
   resolveAudienceId,
+  resolveDraftSegmentId,
   resolveBroadcastConfig,
   scheduleBroadcast,
   sendBroadcast,
@@ -239,6 +241,30 @@ test('resolveAudienceId errors when Resend has no all-contacts segment', async (
   await assert.rejects(resolveAudienceId({ env: { RESEND_API_KEY: 'k' }, fetcher: none }), (err) => err.status === 503);
 });
 
+
+test('resolveDraftSegmentId uses an existing safe placeholder and does not inspect contacts', async () => {
+  const calls = [];
+  const fetcher = mockFetch([
+    { status: 200, body: { data: [{ id: 'seg_event', name: 'Hack the Valley 2026' }, { id: 'seg_general', name: 'General' }] } },
+  ], calls);
+  const draft = await resolveDraftSegmentId({ env: { RESEND_API_KEY: 'k' }, fetcher });
+  assert.deepEqual(draft, { segmentId: 'seg_general', segmentName: 'General', source: 'auto-discovered-placeholder' });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api.resend.com/segments?limit=100');
+});
+
+test('resolveDraftSegmentId refuses to auto-pick an unsafe populated-looking segment', async () => {
+  const calls = [];
+  const fetcher = mockFetch([
+    { status: 200, body: { data: [{ id: 'seg_htv_2026', name: 'Hack the Valley 2026' }], has_more: false } },
+  ], calls);
+
+  await assert.rejects(
+    resolveDraftSegmentId({ env: { RESEND_API_KEY: 'rk_test' }, fetcher }),
+    /safe placeholder segment/,
+  );
+});
+
 test('createBroadcast posts the Resend segment/from and returns the id', async () => {
   const calls = [];
   const fetcher = mockFetch([{ status: 200, body: { id: 'bc_123' } }], calls);
@@ -309,19 +335,16 @@ test('handler dry run returns rendered email without calling Resend', async () =
   assert.equal(calls.length, 0, 'dry run must not hit Resend');
 });
 
-test('handler schedules a broadcast for an admin', async () => {
+test('handler creates a Resend draft for an admin and never calls send', async () => {
   const calls = [];
-  const scheduledAt = futureIso();
   const response = await onRequestPost({
-    request: broadcastRequest({ slug: 'test-post', subject: 'Custom subject', scheduledAt }, { cookie: 'htv_session=tok' }),
+    request: broadcastRequest({ slug: 'test-post', subject: 'Custom subject' }, { cookie: 'htv_session=tok' }),
     env: {
       HTV_DB: adminDb(), ASSETS: assets(),
-      RESEND_API_KEY: 'k', RESEND_ALL_CONTACTS_SEGMENT_ID: 'seg_all', RESEND_BROADCAST_FROM: 'HTV <a@b.co>',
+      RESEND_API_KEY: 'k', RESEND_BROADCAST_FROM: 'HTV <a@b.co>',
     },
     fetch: mockFetch([
-      { status: 200, body: { data: [{ id: 'contact_1' }] } },
-      { status: 200, body: { data: [{ id: 'contact_1' }] } },
-      { status: 200, body: { id: 'bc_9' } },
+      { status: 200, body: { data: [{ id: 'seg_general', name: 'General' }] } },
       { status: 200, body: { id: 'bc_9' } },
     ], calls),
   });
@@ -330,42 +353,38 @@ test('handler schedules a broadcast for an admin', async () => {
   assert.equal(body.ok, true);
   assert.equal(body.broadcastId, 'bc_9');
   assert.equal(body.subject, 'Custom subject');
-  assert.equal(body.scheduledAt, scheduledAt);
-  // accepted by Resend != delivered: the row is 'scheduled', reconciled later
-  assert.equal(body.status, 'scheduled');
-  assert.equal(calls.length, 4);
-  const createBody = JSON.parse(calls[2].init.body);
+  assert.equal(body.status, 'draft');
+  assert.equal(body.scheduled, false);
+  assert.equal(body.needsRecipientReview, true);
+  assert.equal(body.segmentName, 'General');
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, 'https://api.resend.com/segments?limit=100');
+  assert.equal(calls[1].url, 'https://api.resend.com/broadcasts');
+  assert.ok(!calls.some((call) => String(call.url).includes('/send')), 'draft creation must never call Resend /send');
+  const createBody = JSON.parse(calls[1].init.body);
+  assert.equal(createBody.segment_id, 'seg_general');
   assert.match(createBody.html, /See upcoming events/);
   assert.match(createBody.html, /Want to highlight something on the Hack the Valley blog\? Reply to this email/);
   assert.deepEqual(createBody.reply_to, ['contact@hackthevalley.org']);
-  // the schedule is forwarded to Resend's send call
-  assert.equal(JSON.parse(calls[3].init.body).scheduled_at, scheduledAt);
 });
 
-test('handler auto-discovers only a verified all-contacts segment', async () => {
+test('handler ignores legacy schedule fields and still only creates a draft', async () => {
   const calls = [];
   const response = await onRequestPost({
     request: broadcastRequest({ slug: 'test-post', scheduledAt: futureIso() }, { cookie: 'htv_session=tok' }),
     env: {
       HTV_DB: adminDb(), ASSETS: assets(),
-      RESEND_API_KEY: 'k', RESEND_BROADCAST_FROM: 'HTV <a@b.co>', // no configured segment id
+      RESEND_API_KEY: 'k', RESEND_BROADCAST_FROM: 'HTV <a@b.co>',
     },
     fetch: mockFetch([
-      { status: 200, body: { data: [{ id: 'contact_1' }, { id: 'contact_2' }] } }, // GET /contacts
-      { status: 200, body: { data: [{ id: 'seg_event', name: 'Hack the Valley 2026' }, { id: 'seg_general', name: 'General' }] } }, // GET /segments
-      { status: 200, body: { data: [{ id: 'contact_1' }] } }, // GET /segments/seg_event/contacts
-      { status: 200, body: { data: [{ id: 'contact_1' }, { id: 'contact_2' }] } }, // GET /segments/seg_general/contacts
-      { status: 200, body: { id: 'bc_1' } }, // POST /broadcasts
-      { status: 200, body: { id: 'bc_1' } }, // POST /broadcasts/:id/send
+      { status: 200, body: { data: [{ id: 'seg_general', name: 'General' }] } },
+      { status: 200, body: { id: 'bc_legacy_fields' } },
     ], calls),
   });
   assert.equal(response.status, 200);
-  assert.equal(calls[0].url, 'https://api.resend.com/contacts?limit=100');
-  assert.equal(calls[1].url, 'https://api.resend.com/segments?limit=100');
-  assert.equal(calls[2].url, 'https://api.resend.com/segments/seg_event/contacts?limit=100');
-  assert.equal(calls[3].url, 'https://api.resend.com/segments/seg_general/contacts?limit=100');
-  const createBody = JSON.parse(calls[4].init.body);
-  assert.equal(createBody.segment_id, 'seg_general');
+  const body = await response.json();
+  assert.equal(body.broadcastId, 'bc_legacy_fields');
+  assert.ok(!calls.some((call) => String(call.url).includes('/send')), 'legacy schedule fields must not call Resend /send');
 });
 
 test('handler returns 404 for an unknown slug', async () => {
@@ -377,16 +396,14 @@ test('handler returns 404 for an unknown slug', async () => {
   assert.equal(response.status, 404);
 });
 
-test('handler returns 503 when Resend is not configured', async () => {
+test('handler returns 503 when Resend is not configured for draft creation', async () => {
   const response = await onRequestPost({
-    request: broadcastRequest({ slug: 'test-post', scheduledAt: futureIso() }, { cookie: 'htv_session=tok' }),
+    request: broadcastRequest({ slug: 'test-post' }, { cookie: 'htv_session=tok' }),
     env: { HTV_DB: adminDb(), ASSETS: assets() },
     fetch: mockFetch([]),
   });
   assert.equal(response.status, 503);
 });
-
-// --- schedule validation ---------------------------------------------------
 
 test('normalizeScheduledAt requires a value', () => {
   assert.throws(() => normalizeScheduledAt(''), (err) => err.status === 422);
@@ -412,44 +429,25 @@ test('normalizeScheduledAt accepts a sufficiently future time and returns ISO', 
   assert.equal(out, '2026-06-22T13:00:00.000Z');
 });
 
-test('handler sends immediately when no scheduled time is provided', async () => {
+test('handler creates a draft by default, not a send-now blast', async () => {
   const calls = [];
   const response = await onRequestPost({
     request: broadcastRequest({ slug: 'test-post' }, { cookie: 'htv_session=tok' }),
     env: {
       HTV_DB: adminDb(), ASSETS: assets(),
-      RESEND_API_KEY: 'k', RESEND_ALL_CONTACTS_SEGMENT_ID: 'seg_all', RESEND_BROADCAST_FROM: 'HTV <a@b.co>',
+      RESEND_API_KEY: 'k', RESEND_BROADCAST_FROM: 'HTV <a@b.co>',
     },
     fetch: mockFetch([
-      { status: 200, body: { data: [{ id: 'contact_1' }] } },
-      { status: 200, body: { data: [{ id: 'contact_1' }] } },
-      { status: 200, body: { id: 'bc_now' } },
-      { status: 200, body: { id: 'bc_now' } },
+      { status: 200, body: { data: [{ id: 'seg_general', name: 'General' }] } },
+      { status: 200, body: { id: 'bc_default_draft' } },
     ], calls),
   });
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.equal(body.broadcastId, 'bc_now');
-  assert.equal(body.scheduled, false);
-  assert.equal(body.status, 'sending');
-  assert.deepEqual(JSON.parse(calls[3].init.body), {});
+  assert.equal(body.status, 'draft');
+  assert.equal(body.broadcastId, 'bc_default_draft');
+  assert.ok(!calls.some((call) => String(call.url).includes('/send')));
 });
-
-test('handler rejects a past scheduled time before touching Resend (422)', async () => {
-  const calls = [];
-  const response = await onRequestPost({
-    request: broadcastRequest({ slug: 'test-post', scheduledAt: '2020-01-01T00:00:00.000Z' }, { cookie: 'htv_session=tok' }),
-    env: {
-      HTV_DB: adminDb(), ASSETS: assets(),
-      RESEND_API_KEY: 'k', RESEND_ALL_CONTACTS_SEGMENT_ID: 'seg_all', RESEND_BROADCAST_FROM: 'HTV <a@b.co>',
-    },
-    fetch: mockFetch([], calls),
-  });
-  assert.equal(response.status, 422);
-  assert.equal(calls.length, 0, 'must not call Resend for an invalid schedule');
-});
-
-// --- idempotency -----------------------------------------------------------
 
 test('broadcastIdempotencyKey is stable for the same slug + time', () => {
   const a = broadcastIdempotencyKey('post', '2026-06-22T13:00:00.000Z');
@@ -539,103 +537,65 @@ test('scheduleBroadcast releases the reservation when create fails (clean retry)
   assert.equal(store.size, 0, 'create failure must leave no reservation behind');
 });
 
-test('handler refuses a duplicate blast for the same post + time (409)', async () => {
-  const env = {
-    HTV_DB: adminDb(), ASSETS: assets(),
-    RESEND_API_KEY: 'k', RESEND_ALL_CONTACTS_SEGMENT_ID: 'seg_all', RESEND_BROADCAST_FROM: 'HTV <a@b.co>',
-  };
-  const scheduledAt = futureIso();
-  const first = await onRequestPost({
-    request: broadcastRequest({ slug: 'test-post', scheduledAt }, { cookie: 'htv_session=tok' }),
-    env,
-    fetch: mockFetch([
-      { status: 200, body: { data: [{ id: 'contact_1' }] } },
-      { status: 200, body: { data: [{ id: 'contact_1' }] } },
-      { status: 200, body: { id: 'bc_1' } },
-      { status: 200, body: { id: 'bc_1' } },
-    ]),
+test('createDraftBroadcast creates a draft without using the send-log idempotency path', async () => {
+  const calls = [];
+  const result = await createDraftBroadcast({
+    slug: 'test-post', subject: 's', name: 'Blog: x', html: '<p>e</p>',
+    env: { RESEND_API_KEY: 'k', RESEND_BROADCAST_FROM: 'HTV <a@b.co>' },
+    fetcher: mockFetch([
+      { status: 200, body: { data: [{ id: 'seg_general', name: 'General' }] } },
+      { status: 200, body: { id: 'bc_draft' } },
+    ], calls),
   });
-  assert.equal(first.status, 200);
-
-  const second = await onRequestPost({
-    request: broadcastRequest({ slug: 'test-post', scheduledAt }, { cookie: 'htv_session=tok' }),
-    env, // same in-memory store -> idempotency key collides
-    fetch: mockFetch([
-      { status: 200, body: { data: [{ id: 'contact_1' }] } },
-      { status: 200, body: { data: [{ id: 'contact_1' }] } },
-      { status: 200, body: { id: 'bc_2' } },
-      { status: 200, body: { id: 'bc_2' } },
-    ]),
-  });
-  assert.equal(second.status, 409);
+  assert.equal(result.broadcastId, 'bc_draft');
+  assert.equal(result.status, 'draft');
+  assert.equal(calls.length, 2);
+  assert.ok(!calls.some((call) => String(call.url).includes('/send')));
 });
 
-test('handler allows a clean retry after a create failure (reservation released)', async () => {
+test('handler allows a clean draft retry after a Resend create failure', async () => {
   const env = {
     HTV_DB: adminDb(), ASSETS: assets(),
-    RESEND_API_KEY: 'k', RESEND_ALL_CONTACTS_SEGMENT_ID: 'seg_all', RESEND_BROADCAST_FROM: 'HTV <a@b.co>',
+    RESEND_API_KEY: 'k', RESEND_BROADCAST_FROM: 'HTV <a@b.co>',
   };
-  const scheduledAt = futureIso();
   const failed = await onRequestPost({
-    request: broadcastRequest({ slug: 'test-post', scheduledAt }, { cookie: 'htv_session=tok' }),
+    request: broadcastRequest({ slug: 'test-post' }, { cookie: 'htv_session=tok' }),
     env,
     fetch: mockFetch([
-      { status: 200, body: { data: [{ id: 'contact_1' }] } },
-      { status: 200, body: { data: [{ id: 'contact_1' }] } },
+      { status: 200, body: { data: [{ id: 'seg_general', name: 'General' }] } },
       { status: 500, body: { message: 'create down' } },
-    ]), // create fails -> nothing at Resend
+    ]),
   });
   assert.equal(failed.status, 502);
 
   const retry = await onRequestPost({
-    request: broadcastRequest({ slug: 'test-post', scheduledAt }, { cookie: 'htv_session=tok' }),
-    env, // reservation should have been released
+    request: broadcastRequest({ slug: 'test-post' }, { cookie: 'htv_session=tok' }),
+    env,
     fetch: mockFetch([
-      { status: 200, body: { data: [{ id: 'contact_1' }] } },
-      { status: 200, body: { data: [{ id: 'contact_1' }] } },
-      { status: 200, body: { id: 'bc_ok' } },
+      { status: 200, body: { data: [{ id: 'seg_general', name: 'General' }] } },
       { status: 200, body: { id: 'bc_ok' } },
     ]),
   });
   assert.equal(retry.status, 200);
+  const body = await retry.json();
+  assert.equal(body.broadcastId, 'bc_ok');
 });
 
-test('handler does not orphan a pending row when all-contacts segment resolution fails', async () => {
-  const store = new Map();
-  const db = adminDb({ store });
-  const scheduledAt = futureIso();
-
-  // Resend docs require a segment_id for broadcasts. If no segment contains all
-  // contacts, resolveAudienceId throws before anything is reserved.
-  const ambiguous = await onRequestPost({
-    request: broadcastRequest({ slug: 'test-post', scheduledAt }, { cookie: 'htv_session=tok' }),
-    env: { HTV_DB: db, ASSETS: assets(), RESEND_API_KEY: 'k', RESEND_BROADCAST_FROM: 'HTV <a@b.co>' },
+test('handler returns 409 when no safe draft placeholder segment exists', async () => {
+  const calls = [];
+  const response = await onRequestPost({
+    request: broadcastRequest({ slug: 'test-post' }, { cookie: 'htv_session=tok' }),
+    env: { HTV_DB: adminDb(), ASSETS: assets(), RESEND_API_KEY: 'k', RESEND_BROADCAST_FROM: 'HTV <a@b.co>' },
     fetch: mockFetch([
-      { status: 200, body: { data: [{ id: 'contact_a' }, { id: 'contact_b' }] } },
-      { status: 200, body: { data: [{ id: 'seg_a', name: 'A' }, { id: 'seg_b', name: 'B' }] } },
-      { status: 200, body: { data: [{ id: 'contact_a' }] } },
-      { status: 200, body: { data: [{ id: 'contact_b' }] } },
-    ]),
+      { status: 200, body: { data: [{ id: 'seg_event', name: 'Hack the Valley 2026' }, { id: 'seg_alumni', name: 'Alumni' }] } },
+    ], calls),
   });
-  assert.equal(ambiguous.status, 409);
-  assert.equal(store.size, 0, 'a failed segment lookup must not leave a pending row behind');
-
-  // Once the all-contacts segment is configured, the same slug + time can still
-  // be sent (no forever-pending row blocks it on the idempotency key).
-  const retry = await onRequestPost({
-    request: broadcastRequest({ slug: 'test-post', scheduledAt }, { cookie: 'htv_session=tok' }),
-    env: { HTV_DB: db, ASSETS: assets(), RESEND_API_KEY: 'k', RESEND_ALL_CONTACTS_SEGMENT_ID: 'seg_all', RESEND_BROADCAST_FROM: 'HTV <a@b.co>' },
-    fetch: mockFetch([
-      { status: 200, body: { data: [{ id: 'contact_1' }] } },
-      { status: 200, body: { data: [{ id: 'contact_1' }] } },
-      { status: 200, body: { id: 'bc_ok' } },
-      { status: 200, body: { id: 'bc_ok' } },
-    ]),
-  });
-  assert.equal(retry.status, 200);
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.match(body.error, /requires segment_id even to create a draft/);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api.resend.com/segments?limit=100');
 });
-
-// --- reconciliation (cron) -------------------------------------------------
 
 // In-memory DB for the reconcile cron: serves the non-terminal SELECT and
 // applies status / last_reconciled_at UPDATEs by row id.

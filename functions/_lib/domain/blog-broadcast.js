@@ -32,6 +32,7 @@ export const BROADCAST_STATUS = Object.freeze({
   SENT: 'sent',
   CANCELED: 'canceled',
   SEND_FAILED: 'send_failed',
+  DRAFT: 'draft',
 });
 
 function httpError(message, status, extra) {
@@ -117,6 +118,12 @@ function isAllContactsSegment(segment) {
   return name === 'all' || name === 'all contacts' || name === 'general' || id === 'all' || id === 'all-contacts';
 }
 
+function isDraftPlaceholderSegment(segment) {
+  const name = String(segment?.name || '').trim().toLowerCase();
+  const id = String(segment?.id || '').trim().toLowerCase();
+  return ['general', 'draft', 'drafts', 'preview', 'test'].includes(name) || ['general', 'draft', 'drafts', 'preview', 'test'].includes(id);
+}
+
 async function fetchResendList({ apiKey, fetcher, path }) {
   const items = [];
   let after = '';
@@ -147,6 +154,36 @@ async function segmentContactCount({ apiKey, fetcher, segmentId }) {
 // Resend Broadcasts require a segment_id. Product-wise, HTV email blasts are
 // never segmented: every blast must target the one segment that contains all
 // Resend Contacts. Do not fall back to an event-specific populated segment.
+
+// Resend's API requires segment_id even when creating a draft. For draft-only
+// workflows, do NOT verify or create an all-contacts segment. Use an explicitly
+// configured safe placeholder, or auto-pick an existing placeholder-like segment
+// such as "General". The operator must review/change recipients inside Resend
+// before sending.
+export async function resolveDraftSegmentId({ env = {}, fetcher = fetch } = {}) {
+  const apiKey = String(env.RESEND_API_KEY || '').trim();
+  const explicit = String(
+    env.RESEND_BROADCAST_DRAFT_SEGMENT_ID ||
+      env.RESEND_DRAFT_SEGMENT_ID ||
+      ''
+  ).trim();
+  if (explicit) {
+    return { segmentId: explicit, segmentName: null, source: 'configured' };
+  }
+
+  const segments = await fetchResendList({ apiKey, fetcher, path: '/segments' });
+  const candidates = segments.filter((segment) => segment?.id && isDraftPlaceholderSegment(segment));
+  if (candidates.length === 1) {
+    return { segmentId: candidates[0].id, segmentName: candidates[0].name || null, source: 'auto-discovered-placeholder' };
+  }
+
+  const names = segments.map((segment) => segment.name || segment.id).filter(Boolean).join(', ') || 'none';
+  throw httpError(
+    `Resend requires segment_id even to create a draft broadcast. Set RESEND_BROADCAST_DRAFT_SEGMENT_ID to an existing safe placeholder segment. Available segments: ${names}.`,
+    409,
+  );
+}
+
 export async function resolveAudienceId({ env = {}, fetcher = fetch } = {}) {
   const apiKey = String(env.RESEND_API_KEY || '').trim();
   const explicit = String(
@@ -225,6 +262,36 @@ export async function createBroadcast({ env = {}, fetcher = fetch, audienceId, f
     throw httpError('Resend broadcast create returned no id.', 502);
   }
   return broadcastId;
+}
+
+// Create a Resend draft only. This intentionally does not call /send and does
+// not write a send-log row, because no mail has been accepted for delivery.
+export async function createDraftBroadcast({ slug, subject, name, html, env = {}, fetcher = fetch } = {}) {
+  const normalizedSlug = String(slug || '').trim();
+  if (!normalizedSlug) throw httpError('A post slug is required.', 400);
+  const { from, replyTo } = resolveBroadcastConfig(env);
+  const draftSegment = await resolveDraftSegmentId({ env, fetcher });
+  const broadcastId = await createBroadcast({
+    env,
+    fetcher,
+    audienceId: draftSegment.segmentId,
+    from,
+    replyTo,
+    subject,
+    name,
+    html,
+  });
+  return {
+    slug: normalizedSlug,
+    broadcastId,
+    status: BROADCAST_STATUS.DRAFT,
+    scheduled: false,
+    segmentId: draftSegment.segmentId,
+    segmentName: draftSegment.segmentName,
+    segmentSource: draftSegment.source,
+    needsRecipientReview: true,
+    warning: 'Created a Resend draft only. No send or schedule call was made; review/change recipients in Resend before sending.',
+  };
 }
 
 // Send (or schedule) an already-created broadcast.

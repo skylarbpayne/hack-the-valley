@@ -8,8 +8,8 @@ import {
 } from '../../_lib/event-platform.js';
 import { loadBlogPost } from '../../_lib/domain/blog-post.js';
 import {
+  createDraftBroadcast,
   listRecentSends,
-  scheduleBroadcast,
 } from '../../_lib/domain/blog-broadcast.js';
 
 function httpError(message, status, extra) {
@@ -20,10 +20,9 @@ function baseUrl(request, env) {
   return String(env.SITE_BASE_URL || new URL(request.url).origin).replace(/\/+$/, '');
 }
 
-// POST /api/blog/broadcast  { slug, subject?, scheduledAt?, dryRun? }
-// Admin-only. Loads the published post, asks it to render itself as email, and
-// hands that to the Blog Broadcast domain to schedule. Pass dryRun:true to get
-// the rendered email back without sending.
+// POST /api/blog/broadcast  { slug, subject?, dryRun? }
+// Admin-only. Loads the published post, renders the email, and creates a Resend
+// draft. This route deliberately has no send/schedule mode.
 export async function onRequestPost(context) {
   return handleErrors(async () => {
     await requireAdmin(context.request, context.env);
@@ -44,10 +43,8 @@ export async function onRequestPost(context) {
       return jsonResponse({ ok: true, dryRun: true, slug: post.slug, subject, html });
     }
 
-    const result = await scheduleBroadcast(getDb(env), {
+    const result = await createDraftBroadcast({
       slug: post.slug,
-      scheduledAt: input.scheduledAt,
-      sendNow: !input.scheduledAt,
       subject,
       name: post.broadcastName(),
       html,

@@ -148,8 +148,8 @@
         </a>
         <a href="#blog-blast" data-admin-nav="blog" class="block bg-bc-navy border border-slate-700 rounded-2xl p-5 hover:border-bc-cyan transition">
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Blog</div>
-          <h2 class="text-xl font-black mt-2">Email blast a post</h2>
-          <p class="text-slate-400 text-sm mt-2">Send a published blog post to the Hack the Valley email list via Resend.</p>
+          <h2 class="text-xl font-black mt-2">Draft a post email</h2>
+          <p class="text-slate-400 text-sm mt-2">Create a Resend draft for a published blog post.</p>
         </a>
         <a id="super-admin-card" href="#role-admin" data-admin-nav="access" class="hidden bg-bc-navy border border-violet-500/60 rounded-2xl p-5 hover:border-violet-300 transition">
           <div class="text-xs uppercase tracking-[0.2em] text-violet-300 font-semibold">Sensitive access</div>
@@ -348,8 +348,8 @@
 
       <section id="blog-blast" data-admin-section="blog" class="hidden bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
         <div class="mb-4">
-          <h2 class="text-2xl font-black">Blog email blast</h2>
-          <p class="text-sm text-slate-400 mt-1">Send or schedule a published post to the Hack the Valley email list via Resend. Preview first — nothing sends until you confirm. The email renderer automatically adds upcoming-events and blog-highlight reply CTAs.</p>
+          <h2 class="text-2xl font-black">Blog email draft</h2>
+          <p class="text-sm text-slate-400 mt-1">Pick a published post, preview the email, then create a Resend draft. Sending happens in Resend, not here.</p>
         </div>
         <div class="grid lg:grid-cols-[1fr_1.2fr] gap-6">
           <div class="space-y-4">
@@ -359,25 +359,13 @@
             <label class="block"><span class="text-sm font-semibold">Subject line <span class="text-slate-500 font-normal">optional</span></span>
               <input id="blog-subject" placeholder="(defaults to the post title)" class="mt-1 w-full rounded-lg bg-bc-dark border border-slate-600 px-4 py-3 text-white">
             </label>
-            <div class="rounded-2xl border border-slate-700 bg-bc-dark/70 p-4 space-y-3">
-              <div>
-                <p class="text-sm font-black text-white">Schedule</p>
-                <p class="text-xs text-slate-400 mt-1">Pick a local date and time, or skip it and send immediately.</p>
-              </div>
-              <div class="grid sm:grid-cols-2 gap-3">
-                <label class="block"><span class="text-sm font-semibold">Send date</span>
-                  <input id="blog-schedule-date" type="date" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white [color-scheme:dark]">
-                </label>
-                <label class="block"><span class="text-sm font-semibold">Send time</span>
-                  <input id="blog-schedule-time" type="time" step="300" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white [color-scheme:dark]">
-                </label>
-              </div>
-              <p id="blog-schedule-help" class="text-xs text-slate-500">Scheduled sends must be at least 10 minutes out and use your browser timezone.</p>
+            <div class="rounded-2xl border border-slate-700 bg-bc-dark/70 p-4 space-y-2">
+              <p class="text-sm font-black text-white">Draft-only</p>
+              <p class="text-xs text-slate-400">This screen only creates the draft. Review recipients and send from Resend.</p>
             </div>
             <div class="flex flex-wrap gap-3">
               <button id="blog-preview" type="button" class="border border-bc-cyan text-bc-cyan px-5 py-3 rounded-lg font-bold hover:bg-bc-cyan hover:text-bc-dark">Preview email</button>
-              <button id="blog-schedule-send" type="button" class="border border-amber-300 text-amber-200 px-5 py-3 rounded-lg font-bold hover:bg-amber-300 hover:text-bc-dark disabled:opacity-50">Schedule send</button>
-              <button id="blog-send-now" type="button" class="bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400 disabled:opacity-50">Send now</button>
+              <button id="blog-create-draft" type="button" class="bg-bc-cyan text-bc-dark px-5 py-3 rounded-lg font-bold hover:bg-cyan-400 disabled:opacity-50">Create Resend draft</button>
             </div>
             <p id="blog-blast-status" class="text-sm text-slate-300"></p>
           </div>
@@ -389,8 +377,8 @@
         <div class="mt-8 border-t border-slate-700 pt-6">
           <div class="flex items-center justify-between gap-3 mb-3">
             <div>
-              <h3 class="text-lg font-black">Recent blasts</h3>
-              <p class="text-xs text-slate-500 mt-1">Status is reconciled from Resend once daily: scheduled → sending → sent. A scheduled send only means Resend accepted it — not that mail has gone out yet.</p>
+              <h3 class="text-lg font-black">Past sends</h3>
+              <p class="text-xs text-slate-500 mt-1">Historical send-log only. New drafts live in Resend.</p>
             </div>
             <button id="blog-sends-refresh" type="button" class="border border-slate-600 text-slate-200 px-4 py-2 rounded-lg text-sm font-bold hover:border-bc-cyan hover:text-bc-cyan">Refresh</button>
           </div>
@@ -1766,8 +1754,7 @@
     $("new-event").addEventListener("click", resetForm);
     $("logout").addEventListener("click", switchAccount);
     $("blog-preview").addEventListener("click", () => previewBlogBlast());
-    $("blog-schedule-send").addEventListener("click", () => sendBlogBlast({ scheduled: true }));
-    $("blog-send-now").addEventListener("click", () => sendBlogBlast({ scheduled: false }));
+    $("blog-create-draft").addEventListener("click", () => createBlogDraft());
     $("blog-sends-refresh").addEventListener("click", () => loadBlogSends());
 
     function setBlogStatus(message, error = false) {
@@ -1854,33 +1841,8 @@
       return JSON.stringify({ slug, ...(subject ? { subject } : {}), ...extra });
     }
 
-    function scheduledAtFromInputs() {
-      const date = $("blog-schedule-date").value;
-      const time = $("blog-schedule-time").value;
-      if (!date && !time) return null;
-      if (!date || !time) {
-        throw new Error("Pick both a send date and send time, or use Send now.");
-      }
-      const scheduledAt = new Date(`${date}T${time}`);
-      if (Number.isNaN(scheduledAt.getTime())) {
-        throw new Error("That send date/time is invalid.");
-      }
-      if (scheduledAt.getTime() < Date.now() + 10 * 60 * 1000) {
-        throw new Error("Scheduled send time must be at least 10 minutes in the future.");
-      }
-      return scheduledAt.toISOString();
-    }
-
     function setBlogSending(disabled) {
-      $("blog-schedule-send").disabled = disabled;
-      $("blog-send-now").disabled = disabled;
-    }
-
-    function formatScheduledAt(isoString) {
-      return new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(new Date(isoString));
+      $("blog-create-draft").disabled = disabled;
     }
 
     async function previewBlogBlast() {
@@ -1894,37 +1856,21 @@
       }
     }
 
-    async function sendBlogBlast({ scheduled = false } = {}) {
+    async function createBlogDraft() {
       const slug = $("blog-post-select").value;
       if (!slug) return;
 
-      let scheduledAt = null;
-      try {
-        scheduledAt = scheduled ? scheduledAtFromInputs() : null;
-        if (scheduled && !scheduledAt) {
-          throw new Error("Pick a send date and time before scheduling.");
-        }
-      } catch (error) {
-        setBlogStatus(error.message, true);
-        return;
-      }
-
-      const actionLabel = scheduledAt ? `schedule "${slug}" for ${formatScheduledAt(scheduledAt)}` : `send "${slug}" now`;
-      if (!confirm(`Really ${actionLabel} to the entire Hack the Valley email list? This cannot be undone.`)) return;
+      if (!confirm(`Create a Resend draft for "${slug}"? Nothing will be sent or scheduled from HTV admin.`)) return;
 
       setBlogSending(true);
-      setBlogStatus(scheduledAt ? `Scheduling send for ${formatScheduledAt(scheduledAt)}…` : "Sending now…");
+      setBlogStatus("Creating Resend draft…");
       try {
         const data = await api("/api/blog/broadcast", {
           method: "POST",
-          body: blogBlastPayload(scheduledAt ? { scheduledAt } : {}),
+          body: blogBlastPayload(),
         });
-        if (data.scheduled) {
-          setBlogStatus(`Scheduled "${data.subject}" for ${formatScheduledAt(data.scheduledAt || scheduledAt)}. Resend broadcast ${data.broadcastId} created.`);
-        } else {
-          setBlogStatus(`Sent "${data.subject}" now. Resend broadcast ${data.broadcastId} created.`);
-        }
-        await loadBlogSends();
+        const segment = data.segmentName || data.segmentId || "placeholder segment";
+        setBlogStatus(`Draft created for "${data.subject}". Resend broadcast ${data.broadcastId}. Recipient placeholder: ${segment}. Review/change recipients in Resend before sending.`);
       } catch (error) {
         setBlogStatus(error.message, true);
       } finally {

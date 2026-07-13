@@ -72,6 +72,15 @@ function defaultWranglerBin() {
   return existsSync(localWrangler) ? localWrangler : executable;
 }
 
+function spawnWrangler(wranglerBin, args, options) {
+  if (process.platform === "win32" && /\.cmd$/i.test(wranglerBin)) {
+    // npm's Windows shim is not directly spawnable, and `shell: true` corrupts
+    // multiline SQL passed through --command. Invoke Wrangler's JS entrypoint.
+    return spawnSync(process.execPath, [join(repoRoot, "node_modules", "wrangler", "bin", "wrangler.js"), ...args], options);
+  }
+  return spawnSync(wranglerBin, args, options);
+}
+
 function runMigrations(options) {
   const createdTempDir = !options.persistTo;
   const persistTo = options.persistTo
@@ -184,7 +193,7 @@ function verifyDataIntegrityFixtures(wranglerBin, options, persistTo) {
 }
 
 function runWranglerJson(wranglerBin, options, persistTo, executionArgs, label) {
-  const result = spawnSync(wranglerBin, [
+  const result = spawnWrangler(wranglerBin, [
     "d1",
     "execute",
     options.database,
@@ -224,7 +233,7 @@ function runWrangler(wranglerBin, options, persistTo, executionArgs, label) {
     "--json",
     ...executionArgs
   ];
-  const result = spawnSync(wranglerBin, args, {
+  const result = spawnWrangler(wranglerBin, args, {
     cwd: repoRoot,
     env: {
       ...process.env,

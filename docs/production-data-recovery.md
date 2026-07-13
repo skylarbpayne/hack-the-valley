@@ -113,8 +113,7 @@ Require:
 
 - `npm run check`
 - `npm test`
-- `sqlite3 :memory: < schema.sql` or equivalent schema validation
-- sequential migration apply against a fresh temporary SQLite DB when migrations changed
+- `npm run db:migrations:check` to apply every migration sequentially against a fresh temporary local D1 store and run integrity fixtures
 - PR body states whether production D1 will be mutated on merge
 - post-merge deploy workflow produced a backup artifact before migrations
 - scheduled snapshot workflow is still enabled on `main`

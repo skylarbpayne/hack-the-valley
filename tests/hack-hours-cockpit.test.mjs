@@ -690,24 +690,19 @@ test("/api/me/projects/<id>/media requires a signed-in project owner and records
   assert.match(insert.args[11], /"uploaderEmail":"maya@example.com"/);
 });
 
-test("schema and migrations add passwordless user login sessions without passwords", () => {
-  const schema = read("schema.sql");
+test("migrations add passwordless user login sessions without passwords", () => {
   const migration = read("migrations/0010_passwordless_login.sql");
-  for (const text of [schema, migration]) {
-    assert.match(text, /CREATE TABLE IF NOT EXISTS auth_login_codes/);
-    assert.match(text, /code_hash TEXT NOT NULL/);
-    assert.match(text, /expires_at TEXT NOT NULL/);
-    assert.match(text, /consumed_at TEXT/);
-    assert.match(text, /CREATE TABLE IF NOT EXISTS user_sessions/);
-    assert.match(text, /token_hash TEXT NOT NULL UNIQUE/);
-    assert.match(text, /expires_at TEXT NOT NULL/);
-    assert.doesNotMatch(text, /password_hash|oauth_secret|refresh_token/i);
-  }
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS auth_login_codes/);
+  assert.match(migration, /code_hash TEXT NOT NULL/);
+  assert.match(migration, /expires_at TEXT NOT NULL/);
+  assert.match(migration, /consumed_at TEXT/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS user_sessions/);
+  assert.match(migration, /token_hash TEXT NOT NULL UNIQUE/);
+  assert.match(migration, /expires_at TEXT NOT NULL/);
+  assert.doesNotMatch(migration, /password_hash|oauth_secret|refresh_token/i);
   const magicMigration = read("migrations/0011_magic_login_links.sql");
-  for (const text of [schema, magicMigration]) {
-    assert.match(text, /magic_token_hash TEXT/);
-    assert.match(text, /idx_auth_login_codes_magic_token/);
-  }
+  assert.match(magicMigration, /magic_token_hash TEXT/);
+  assert.match(magicMigration, /idx_auth_login_codes_magic_token/);
 });
 
 test("passwordless login creates a code, verifies it, and resolves current user from a session", async () => {
@@ -1061,23 +1056,19 @@ test("community state derives requested profile badges from attendance, projects
   assert.ok(state.badges.every((badge) => /\/images\/badges\/.+\.svg$/.test(badge.icon_url)));
 });
 
-test("schema and migrations add project submission links and badge awards", () => {
-  const schema = read("schema.sql");
+test("migrations add project submission links and badge awards", () => {
   const migration = read("migrations/0009_projects_and_badges.sql");
-  for (const text of [schema, migration]) {
-    assert.match(text, /CREATE TABLE IF NOT EXISTS projects/);
-    assert.match(text, /canonical_submission_id TEXT REFERENCES submissions\(id\)/);
-    assert.match(text, /CREATE TABLE IF NOT EXISTS project_members/);
-    assert.match(text, /CREATE TABLE IF NOT EXISTS event_project_submissions/);
-    assert.match(text, /event_instance_id TEXT REFERENCES event_instances\(id\)/);
-    assert.match(text, /submission_id TEXT REFERENCES submissions\(id\)/);
-    assert.match(text, /CREATE TABLE IF NOT EXISTS badges/);
-    assert.match(text, /CREATE TABLE IF NOT EXISTS user_badges/);
-    assert.match(text, /UNIQUE\(user_id, badge_id, event_instance_id\)/);
-  }
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS projects/);
+  assert.match(migration, /canonical_submission_id TEXT REFERENCES submissions\(id\)/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS project_members/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS event_project_submissions/);
+  assert.match(migration, /event_instance_id TEXT REFERENCES event_instances\(id\)/);
+  assert.match(migration, /submission_id TEXT REFERENCES submissions\(id\)/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS badges/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS user_badges/);
+  assert.match(migration, /UNIQUE\(user_id, badge_id, event_instance_id\)/);
   const badgeCatalog = read("migrations/0015_community_badge_catalog.sql");
   for (const slug of ["attended-htv-2026", "won-prize-htv-2026", "won-overall-htv-2026", "submitted-project", "attended-hack-hours"]) {
-    assert.match(schema, new RegExp(slug));
     assert.match(badgeCatalog, new RegExp(slug));
   }
 });
@@ -1231,24 +1222,21 @@ test("listEventProjectSubmissions returns event-linked projects without private 
   assert.equal(Object.hasOwn(projects[0], "contact_email"), false);
 });
 
-test("schema and migration add Hack Hours cockpit tables without scope creep", () => {
-  const schema = read("schema.sql");
+test("migration adds Hack Hours cockpit tables without scope creep", () => {
   const migration = read("migrations/0008_hack_hours_event_cockpit_v0.sql");
-  for (const text of [schema, migration]) {
-    assert.match(text, /CREATE TABLE IF NOT EXISTS emergency_contacts/);
-    assert.match(text, /event_instance_id TEXT NOT NULL REFERENCES event_instances\(id\)/);
-    assert.match(text, /UNIQUE\(event_instance_id, user_id\)/);
-    assert.match(text, /CREATE TABLE IF NOT EXISTS event_photos/);
-    assert.match(text, /kind TEXT NOT NULL CHECK \(kind IN \('photo', 'video'\)\)/);
-    assert.match(text, /storage_key TEXT NOT NULL UNIQUE/);
-    assert.match(text, /CREATE TABLE IF NOT EXISTS roles/);
-    assert.match(text, /scope_id TEXT NOT NULL DEFAULT '\*'/);
-    assert.match(text, /WHERE revoked_at IS NULL/);
-    const eventPhotosTable = text.match(/CREATE TABLE IF NOT EXISTS event_photos \([\s\S]*?\n\);/)?.[0] || "";
-    assert.doesNotMatch(eventPhotosTable, /project_id/);
-    assert.doesNotMatch(eventPhotosTable, /submission_id/);
-    assert.doesNotMatch(eventPhotosTable, /participant_user_id/);
-  }
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS emergency_contacts/);
+  assert.match(migration, /event_instance_id TEXT NOT NULL REFERENCES event_instances\(id\)/);
+  assert.match(migration, /UNIQUE\(event_instance_id, user_id\)/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS event_photos/);
+  assert.match(migration, /kind TEXT NOT NULL CHECK \(kind IN \('photo', 'video'\)\)/);
+  assert.match(migration, /storage_key TEXT NOT NULL UNIQUE/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS roles/);
+  assert.match(migration, /scope_id TEXT NOT NULL DEFAULT '\*'/);
+  assert.match(migration, /WHERE revoked_at IS NULL/);
+  const eventPhotosTable = migration.match(/CREATE TABLE IF NOT EXISTS event_photos \([\s\S]*?\n\);/)?.[0] || "";
+  assert.doesNotMatch(eventPhotosTable, /project_id/);
+  assert.doesNotMatch(eventPhotosTable, /submission_id/);
+  assert.doesNotMatch(eventPhotosTable, /participant_user_id/);
 });
 
 test("package check script covers all event cockpit route modules", () => {
@@ -1703,14 +1691,11 @@ test("public project media endpoint serves only media attached to a public proje
   assert.equal(await response.arrayBuffer().then((buffer) => new Uint8Array(buffer)[1]), 80);
 });
 
-test("schema and migrations add public project awards table", () => {
-  const schema = read("schema.sql");
+test("migration adds public project awards table", () => {
   const migration = read("migrations/0013_event_project_awards.sql");
-  for (const text of [schema, migration]) {
-    assert.match(text, /CREATE TABLE IF NOT EXISTS event_project_awards/);
-    assert.match(text, /UNIQUE\(event_slug, project_id, award_slug\)/);
-    assert.match(text, /idx_event_project_awards_event/);
-  }
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS event_project_awards/);
+  assert.match(migration, /UNIQUE\(event_slug, project_id, award_slug\)/);
+  assert.match(migration, /idx_event_project_awards_event/);
 });
 
 test("worker routes user state and badge award APIs behind admin auth", async () => {

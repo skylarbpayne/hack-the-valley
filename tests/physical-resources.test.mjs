@@ -171,20 +171,17 @@ async function json(response) {
   return await response.json();
 }
 
-test("physical resource schema, migration, and admin UI are present without public exposure", () => {
-  const schema = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
+test("physical resource migration and admin UI are present without public exposure", () => {
   const migration = readFileSync(new URL("../migrations/0024_physical_resources_inventory.sql", import.meta.url), "utf8");
   const adminHtml = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
 
-  for (const sql of [schema, migration]) {
-    assert.match(sql, /CREATE TABLE IF NOT EXISTS physical_resources/);
-    assert.match(sql, /inventory_code TEXT UNIQUE/);
-    assert.match(sql, /photo_storage_key TEXT/);
-    assert.match(sql, /photo_url TEXT/);
-    assert.match(sql, /CREATE TABLE IF NOT EXISTS physical_resource_checkouts/);
-    assert.match(sql, /idx_physical_resource_checkouts_one_active/);
-    assert.match(sql, /WHERE returned_at IS NULL/);
-  }
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS physical_resources/);
+  assert.match(migration, /inventory_code TEXT UNIQUE/);
+  assert.match(migration, /photo_storage_key TEXT/);
+  assert.match(migration, /photo_url TEXT/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS physical_resource_checkouts/);
+  assert.match(migration, /idx_physical_resource_checkouts_one_active/);
+  assert.match(migration, /WHERE returned_at IS NULL/);
 
   assert.match(adminHtml, /id="physical-resources-admin"/);
   assert.match(adminHtml, /Inventory ID/);

@@ -14,23 +14,37 @@ Professional landing page for Hack the Valley 2026, a 1-day student innovation e
 
 ## Development
 
-**Prerequisites:**
-- Node.js & npm
-- Cloudflare account (for deployment)
+**Prerequisites:** Node.js and npm. A Cloudflare account is needed for deployment, not local development.
 
-**Install + tests:**
+From a clean checkout:
+
 ```bash
-npm install
+npm ci
 npm test
 npm run check
-```
-
-**Local Development:**
-```bash
+npm run db:migrations:check
+cp .dev.vars.example .dev.vars
+npm run db:bootstrap:local
 npm run dev
 ```
 
-Visit: http://localhost:8788
+Visit <http://localhost:8788>. Wrangler stores the local D1 database under the ignored `.wrangler/` directory; these commands do not touch production.
+
+Use `db:bootstrap:local` for a fresh local database rather than plain `wrangler d1 migrations apply --local`. The bootstrap applies the ordered migrations into Wrangler's normal local state and adds compatibility fixtures needed by historical data migrations. Run it once per clean local state; if `.wrangler/state` already exists, keep using it or intentionally remove that ignored local directory before rebuilding.
+
+To test signed-in admin routes without Resend:
+
+1. Open <http://localhost:8788/login/?next=/admin> and request a code for `dev@example.com`. The local-only code appears on the page because `.dev.vars.example` enables development auth.
+2. In another terminal, grant that local user a role:
+
+   ```bash
+   HTV_SUPER_ADMIN_EMAIL=dev@example.com \
+     npm run roles:seed-admin -- --local --apply
+   ```
+
+3. Enter the displayed code, then test `/admin`.
+
+See [`AGENTS.md`](AGENTS.md) for the canonical local-testing checklist and database rules. Do not use `--remote` for local acceptance.
 
 **Deployment:**
 ```bash
@@ -49,7 +63,7 @@ This repo includes a Cloudflare Worker + Assets/D1/R2 submission portal:
 Setup/deploy instructions live in [`SUBMISSIONS-DEPLOYMENT.md`](SUBMISSIONS-DEPLOYMENT.md). The quick path is:
 
 ```bash
-npm install
+npm ci
 cp .cloudflare.env.example .cloudflare.env
 # fill CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN locally; do not commit it
 ./scripts/check-cloudflare-auth.sh

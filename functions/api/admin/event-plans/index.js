@@ -5,7 +5,8 @@ import {
   createPlanItem,
   createTimelineTemplateVersion,
   getEventPlanTimeline,
-  instantiateEventPlan
+  instantiateEventPlan,
+  updateEventInstanceById
 } from "../../../_lib/domain/event-planning.js";
 
 function requireSessionAdmin(access) {
@@ -38,6 +39,7 @@ export async function onRequestPost(context) {
     const input = await readJson(context.request);
     const action = String(input.action || "").trim();
     if (action === "create_draft_event") return jsonResponse({ ok: true, eventInstance: await createDraftEventInstance(db, input, actor(access)) }, { status: 201 });
+    if (action === "update_event_instance") return jsonResponse({ ok: true, eventInstance: await updateEventInstanceById(db, input.event_instance_id ?? input.eventInstanceId, input, actor(access)) });
     if (action === "create_template_version") return jsonResponse({ ok: true, templateVersion: await createTimelineTemplateVersion(db, input, actor(access)) }, { status: 201 });
     if (action === "instantiate") return jsonResponse({ ok: true, timeline: await instantiateEventPlan(db, input.event_instance_id ?? input.eventInstanceId, input.template_version_id ?? input.templateVersionId, actor(access)) }, { status: 201 });
     if (action === "create_anchor") return jsonResponse({ ok: true, anchor: await createPlanAnchor(db, input.event_plan_id ?? input.eventPlanId, input, actor(access)) }, { status: 201 });

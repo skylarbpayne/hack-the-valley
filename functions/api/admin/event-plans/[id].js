@@ -11,6 +11,13 @@ function requireSessionAdmin(access) {
 }
 function actor(access) { return { userId: access.user.id }; }
 
+async function requirePlanItem(db, planId, itemId) {
+  if (!itemId) throw Object.assign(new Error("item_id is required"), { status: 400 });
+  const item = await db.prepare("SELECT id FROM event_plan_items WHERE id = ? AND event_plan_id = ?").bind(itemId, planId).first();
+  if (!item) throw Object.assign(new Error("Plan item not found in this event plan"), { status: 404 });
+  return item;
+}
+
 export async function onRequestGet(context) {
   return handleErrors(async () => {
     requireSessionAdmin(await requireAdmin(context.request, context.env));
@@ -30,6 +37,8 @@ export async function onRequestPatch(context) {
     if (action === "preview_anchor_shift") return jsonResponse({ ok: true, preview: await previewAnchorShift(db, planId, input) });
     if (action === "apply_anchor_shift") return jsonResponse({ ok: true, result: await applyAnchorShift(db, planId, input, actor(access)) });
     const itemId = input.item_id ?? input.itemId;
+    await requirePlanItem(db, planId, itemId);
+    if (action === "add_dependency" || action === "remove_dependency") await requirePlanItem(db, planId, input.depends_on_item_id ?? input.dependsOnItemId);
     if (action === "assign") await assignPlanItem(db, itemId, input, actor(access));
     else if (action === "reschedule") await reschedulePlanItem(db, itemId, input, actor(access));
     else if (action === "complete") await completePlanItem(db, itemId, actor(access));

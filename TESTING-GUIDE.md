@@ -1,24 +1,19 @@
 # Signup Form Testing Guide
 
-Quick reference for testing the Hack the Valley signup form.
+Quick reference for the legacy homepage signup form. The current app and organizer workflows use the canonical setup in [`AGENTS.md`](AGENTS.md) and [`README.md`](README.md); do not use old hardcoded checkout paths, Tailscale URLs, or production data from this guide.
 
 ## Quick Start
 
-### 1. Start Dev Server
+From the repository root, complete the local bootstrap first:
+
 ```bash
-cd ~/palmer/workspace/hack-the-valley
-npx wrangler dev --port 8788
+npm ci
+cp .dev.vars.example .dev.vars
+npm run db:bootstrap:local
+npm run dev
 ```
 
-### 2. Access Locally
-**URL:** http://localhost:8788/#signup
-
-### 3. Enable Remote Access
-```bash
-tailscale serve --bg --https=8789 http://localhost:8788
-```
-
-**Remote URL:** https://skylars-mac-mini.taile4d789.ts.net:8789/#signup
+Open <http://localhost:8788/events> for the current signup flow. Run `npm test`, `npm run check`, and `npm run db:migrations:check` before claiming a change is ready.
 
 ## Test Cases
 

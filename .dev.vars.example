@@ -1,0 +1,8 @@
+# Local-only passwordless login. The login page displays the generated code.
+HTV_AUTH_DEV_MODE=local
+HTV_AUTH_DEV_CODES=1
+HTV_PUBLIC_BASE_URL=http://localhost:8788
+
+# Leave production integrations unset unless a specific local test needs them.
+# RESEND_API_KEY=
+# HTV_ADMIN_TOKEN=

@@ -8,16 +8,19 @@ Hack the Valley 2026 is a static landing page for a 50+ student one-day hackatho
 
 ## Development
 
-**Install/test:**
-```bash
-npm install
-npm test
-```
+Follow the canonical repository instructions in [`AGENTS.md`](AGENTS.md). The short local path is:
 
-**Local preview:**
 ```bash
+npm ci
+npm test
+npm run check
+npm run db:migrations:check
+cp .dev.vars.example .dev.vars
+npm run db:bootstrap:local
 npm run dev
 ```
+
+Do not use remote D1, production credentials, or deploy commands for local acceptance.
 
 **Deploy to Cloudflare:**
 ```bash

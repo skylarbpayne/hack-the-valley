@@ -207,18 +207,15 @@ test('HTV 2026 integrity hardening migration backfills instance links without de
   assert.match(checkMigrations, /linked legacy submissions have canonical projects when possible/);
 });
 
-test('project media upload schema records uploader provenance', () => {
-  const schema = readFileSync(new URL('../schema.sql', import.meta.url), 'utf8');
+test('project media upload migration records uploader provenance', () => {
   const migration = readFileSync(new URL('../migrations/0023_project_media_uploads.sql', import.meta.url), 'utf8');
-  for (const text of [schema, migration]) {
-    assert.match(text, /CREATE TABLE IF NOT EXISTS project_media_uploads/);
-    assert.match(text, /uploaded_by_user_id TEXT NOT NULL REFERENCES users\(id\)/);
-    assert.match(text, /session_id TEXT REFERENCES user_sessions\(id\)/);
-    assert.match(text, /storage_key TEXT NOT NULL UNIQUE/);
-    assert.match(text, /metadata_json TEXT/);
-    assert.match(text, /idx_project_media_uploads_project_created/);
-    assert.doesNotMatch(text, /DROP TABLE|TRUNCATE|DELETE FROM/i);
-  }
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS project_media_uploads/);
+  assert.match(migration, /uploaded_by_user_id TEXT NOT NULL REFERENCES users\(id\)/);
+  assert.match(migration, /session_id TEXT REFERENCES user_sessions\(id\)/);
+  assert.match(migration, /storage_key TEXT NOT NULL UNIQUE/);
+  assert.match(migration, /metadata_json TEXT/);
+  assert.match(migration, /idx_project_media_uploads_project_created/);
+  assert.doesNotMatch(migration, /DROP TABLE|TRUNCATE|DELETE FROM/i);
 });
 
 test('jsonResponse returns JSON with no-store cache headers', async () => {

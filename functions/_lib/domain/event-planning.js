@@ -1,5 +1,6 @@
 import { generateId } from "../event-platform.js";
 import { parseJsonArray, stringOrNull } from "./shared.js";
+import { updateEventInstanceClockById } from "./events.js";
 
 const ANCHOR_SOURCES = new Set(["event_start", "event_end", "manual", "derived"]);
 const SCHEDULE_MODES = new Set(["relative", "fixed"]);
@@ -77,37 +78,7 @@ export async function createDraftEventInstance(db, input = {}, actor = null, { n
 }
 
 export async function updateEventInstanceById(db, instanceId, input = {}, actor = null, { now = new Date() } = {}) {
-  const existing = await first(db, "SELECT * FROM event_instances WHERE id = ?", instanceId);
-  if (!existing) fail("Event instance not found", 404);
-  const updated = nowIso(now);
-  const startsAt = input.starts_at === undefined && input.startsAt === undefined ? existing.starts_at : dateOrNull(input.starts_at ?? input.startsAt, "starts_at");
-  const endsAt = input.ends_at === undefined && input.endsAt === undefined ? existing.ends_at : dateOrNull(input.ends_at ?? input.endsAt, "ends_at");
-  if (startsAt && endsAt && Date.parse(endsAt) < Date.parse(startsAt)) fail("ends_at must be after starts_at");
-  const eventBoundItems = await all(db, `SELECT i.id, i.due_at, a.source
-    FROM event_plan_items i
-    JOIN event_plans p ON p.id = i.event_plan_id
-    JOIN event_plan_anchors a ON a.event_plan_id = p.id AND a.anchor_key = i.anchor_key
-    WHERE p.event_instance_id = ? AND i.schedule_mode = 'relative' AND i.status != 'completed'
-      AND i.manual_override_at IS NULL AND a.source IN ('event_start', 'event_end')`, instanceId);
-  const statements = [db.prepare(`UPDATE event_instances SET title = ?, starts_at = ?, ends_at = ?, venue_name = ?, venue_address = ?, capacity = ?, status = ?, updated_at = ? WHERE id = ?`)
-    .bind(stringOrNull(input.title) ?? existing.title, startsAt, endsAt, stringOrNull(input.venue_name) ?? existing.venue_name,
-      stringOrNull(input.venue_address) ?? existing.venue_address, input.capacity === undefined ? existing.capacity : intOrNull(input.capacity),
-      stringOrNull(input.status) || existing.status, updated, instanceId)];
-  // Event start/end are projections of the instance. Keep persisted plan values in sync for queryability.
-  statements.push(db.prepare(`UPDATE event_plan_anchors SET occurs_at = CASE source WHEN 'event_start' THEN ? WHEN 'event_end' THEN ? ELSE occurs_at END, updated_at = ?
-    WHERE event_plan_id IN (SELECT id FROM event_plans WHERE event_instance_id = ?) AND source IN ('event_start', 'event_end')`).bind(startsAt, endsAt, updated, instanceId));
-  for (const item of eventBoundItems) {
-    const previousAnchor = item.source === "event_start" ? existing.starts_at : existing.ends_at;
-    const nextAnchor = item.source === "event_start" ? startsAt : endsAt;
-    if (!item.due_at || !previousAnchor || !nextAnchor) continue;
-    const dueAt = new Date(Date.parse(item.due_at) + Date.parse(nextAnchor) - Date.parse(previousAnchor)).toISOString();
-    if (dueAt === item.due_at) continue;
-    statements.push(db.prepare("UPDATE event_plan_items SET due_at = ?, updated_at = ? WHERE id = ?").bind(dueAt, updated, item.id));
-    statements.push(db.prepare("INSERT INTO event_plan_item_events (id, event_plan_item_id, event_type, actor_user_id, data_json, occurred_at) VALUES (?, ?, 'event_anchor_shifted', ?, ?, ?)")
-      .bind(generateId("epie"), item.id, actorId(actor), JSON.stringify({ source: item.source, dueAt }), updated));
-  }
-  if (typeof db.batch === "function") await db.batch(statements); else for (const statement of statements) await statement.run();
-  return await first(db, "SELECT * FROM event_instances WHERE id = ?", instanceId);
+  return await updateEventInstanceClockById(db, instanceId, input, { now });
 }
 
 export async function createTimelineTemplateVersion(db, input = {}, actor = null, { now = new Date() } = {}) {
@@ -147,26 +118,77 @@ export async function createTimelineTemplateVersion(db, input = {}, actor = null
 export async function getTimelineTemplateVersion(db, versionId) {
   const version = await first(db, "SELECT * FROM timeline_template_versions WHERE id = ?", versionId);
   if (!version) return null;
-  return { ...version, anchors: await all(db, "SELECT * FROM timeline_template_anchors WHERE template_version_id = ? ORDER BY anchor_key", versionId), items: await all(db, "SELECT * FROM timeline_template_items WHERE template_version_id = ? ORDER BY item_key", versionId) };
+  const anchors = await all(db, "SELECT * FROM timeline_template_anchors WHERE template_version_id = ? ORDER BY anchor_key", versionId);
+  const items = await all(db, "SELECT * FROM timeline_template_items WHERE template_version_id = ? ORDER BY item_key", versionId);
+  // Normalized rows are the runtime source of truth; snapshot_json is retained as an audit artifact.
+  return { ...version, anchors, items };
+}
+
+export async function listTimelineTemplateVersions(db) {
+  const versions = await all(db, `SELECT v.id, v.template_id, v.version_number, v.name, v.instantiated_at, v.created_at, t.description
+    FROM timeline_template_versions v JOIN timeline_templates t ON t.id = v.template_id
+    ORDER BY v.created_at DESC, v.version_number DESC`);
+  return versions;
+}
+
+function validateTemplateGraph(version) {
+  const anchors = new Set(version.anchors.map((anchor) => anchor.anchor_key));
+  const itemsByKey = new Map(version.items.map((item) => [item.item_key, item]));
+  if (itemsByKey.size !== version.items.length) fail("Template contains duplicate item keys", 409);
+  const dependencies = [];
+  for (const item of version.items) {
+    validateSchedule(item.schedule_mode, item.anchor_key, item.offset_days, item.due_at);
+    if (item.schedule_mode === "relative" && !anchors.has(item.anchor_key)) fail(`Template item ${item.item_key} references an unknown anchor`, 409);
+    for (const dependencyKey of parseJsonArray(item.dependency_keys_json, [])) {
+      if (!itemsByKey.has(dependencyKey)) fail(`Template item ${item.item_key} references an unknown dependency`, 409);
+      if (dependencyKey === item.item_key) fail("A template item cannot depend on itself", 409);
+      dependencies.push([item.item_key, dependencyKey]);
+    }
+  }
+  const visiting = new Set(); const visited = new Set();
+  const walk = (key) => {
+    if (visiting.has(key)) fail("Template dependencies contain a cycle", 409);
+    if (visited.has(key)) return;
+    visiting.add(key);
+    for (const [from, to] of dependencies) if (from === key) walk(to);
+    visiting.delete(key); visited.add(key);
+  };
+  for (const key of itemsByKey.keys()) walk(key);
+  return { dependencies };
+}
+
+function existingPlanMatchesTemplate(timeline, version, dependencies) {
+  const templateItemIds = new Set(version.items.map((item) => item.id));
+  const expectedAnchors = new Set(version.anchors.map((anchor) => anchor.anchor_key));
+  if (timeline.items.length !== version.items.length || timeline.anchors.length !== version.anchors.length) return false;
+  if (!timeline.items.every((item) => templateItemIds.has(item.template_item_id))) return false;
+  if (!timeline.anchors.every((anchor) => expectedAnchors.has(anchor.anchor_key))) return false;
+  return timeline.dependencies.length === dependencies.length;
 }
 
 export async function instantiateEventPlan(db, eventInstanceId, templateVersionId, actor = null, { now = new Date() } = {}) {
   const existing = await first(db, "SELECT * FROM event_plans WHERE event_instance_id = ?", eventInstanceId);
-  if (existing) return await getEventPlanTimeline(db, existing.id);
-  const eventInstance = await first(db, "SELECT * FROM event_instances WHERE id = ?", eventInstanceId);
-  if (!eventInstance) fail("Event instance not found", 404);
   const version = await getTimelineTemplateVersion(db, templateVersionId);
   if (!version) fail("Timeline template version not found", 404);
+  const graph = validateTemplateGraph(version);
+  if (existing) {
+    if (existing.template_version_id !== templateVersionId) fail("Event plan already exists for a different template version", 409);
+    const timeline = await getEventPlanTimeline(db, existing.id);
+    if (!existingPlanMatchesTemplate(timeline, version, graph.dependencies)) fail("Existing event plan is incomplete; refusing to return a broken retry", 409);
+    return timeline;
+  }
+  const eventInstance = await first(db, "SELECT * FROM event_instances WHERE id = ?", eventInstanceId);
+  if (!eventInstance) fail("Event instance not found", 404);
   const created = nowIso(now);
   const planId = generateId("event_plan");
-  await db.prepare("INSERT INTO event_plans (id, event_instance_id, template_version_id, created_at, created_by_user_id) VALUES (?, ?, ?, ?, ?)")
-    .bind(planId, eventInstanceId, templateVersionId, created, actorId(actor)).run();
+  const statements = [db.prepare("INSERT INTO event_plans (id, event_instance_id, template_version_id, created_at, created_by_user_id) VALUES (?, ?, ?, ?, ?)")
+    .bind(planId, eventInstanceId, templateVersionId, created, actorId(actor))];
   const anchorDates = new Map();
   for (const anchor of version.anchors) {
     const date = anchor.source === "event_start" ? eventInstance.starts_at : anchor.source === "event_end" ? eventInstance.ends_at : null;
     anchorDates.set(anchor.anchor_key, date);
-    await db.prepare("INSERT INTO event_plan_anchors (id, event_plan_id, anchor_key, occurs_at, source, updated_by_user_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .bind(generateId("epa"), planId, anchor.anchor_key, date, anchor.source, actorId(actor), created).run();
+    statements.push(db.prepare("INSERT INTO event_plan_anchors (id, event_plan_id, anchor_key, occurs_at, source, updated_by_user_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .bind(generateId("epa"), planId, anchor.anchor_key, date, anchor.source, actorId(actor), created));
   }
   const itemIds = new Map();
   for (const item of version.items) {
@@ -174,19 +196,21 @@ export async function instantiateEventPlan(db, eventInstanceId, templateVersionI
     itemIds.set(item.item_key, id);
     const anchorDate = anchorDates.get(item.anchor_key);
     const dueAt = item.schedule_mode === "relative" && anchorDate && item.offset_days !== null ? addDays(anchorDate, item.offset_days) : item.due_at;
-    await db.prepare(`INSERT INTO event_plan_items (id, event_plan_id, template_item_id, type, title, status, priority, anchor_key, offset_days, schedule_mode, due_at, evidence_required, created_at, updated_at)
+    statements.push(db.prepare(`INSERT INTO event_plan_items (id, event_plan_id, template_item_id, type, title, status, priority, anchor_key, offset_days, schedule_mode, due_at, evidence_required, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, planId, item.id, item.type, item.title, item.priority, item.anchor_key, item.offset_days, item.schedule_mode, dueAt, item.evidence_required, created, created).run();
-    await appendItemEvent(db, id, "created_from_template", actor, { templateItemId: item.id }, now);
+      .bind(id, planId, item.id, item.type, item.title, item.priority, item.anchor_key, item.offset_days, item.schedule_mode, dueAt, item.evidence_required, created, created));
+    statements.push(db.prepare("INSERT INTO event_plan_item_events (id, event_plan_item_id, event_type, actor_user_id, data_json, occurred_at) VALUES (?, ?, 'created_from_template', ?, ?, ?)")
+      .bind(generateId("epie"), id, actorId(actor), JSON.stringify({ templateItemId: item.id }), created));
   }
-  for (const item of version.items) {
-    for (const dependencyKey of parseJsonArray(item.dependency_keys_json, [])) {
-      const dependentId = itemIds.get(item.item_key);
-      const dependencyId = itemIds.get(dependencyKey);
-      if (dependentId && dependencyId) await createPlanDependency(db, dependentId, dependencyId, actor, { now });
-    }
+  for (const [itemKey, dependencyKey] of graph.dependencies) {
+    const itemId = itemIds.get(itemKey); const dependencyId = itemIds.get(dependencyKey);
+    statements.push(db.prepare("INSERT INTO event_plan_dependencies (id, event_plan_item_id, depends_on_item_id, created_by_user_id, created_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(generateId("epd"), itemId, dependencyId, actorId(actor), created));
+    statements.push(db.prepare("INSERT INTO event_plan_item_events (id, event_plan_item_id, event_type, actor_user_id, data_json, occurred_at) VALUES (?, ?, 'dependency_added', ?, ?, ?)")
+      .bind(generateId("epie"), itemId, actorId(actor), JSON.stringify({ dependsOnItemId: dependencyId }), created));
   }
-  await db.prepare("UPDATE timeline_template_versions SET instantiated_at = COALESCE(instantiated_at, ?) WHERE id = ?").bind(created, templateVersionId).run();
+  statements.push(db.prepare("UPDATE timeline_template_versions SET instantiated_at = COALESCE(instantiated_at, ?) WHERE id = ?").bind(created, templateVersionId));
+  if (typeof db.batch === "function") await db.batch(statements); else for (const statement of statements) await statement.run();
   return await getEventPlanTimeline(db, planId);
 }
 
@@ -233,16 +257,19 @@ export async function assignPlanItem(db, itemId, input = {}, actor = null, { now
   const id = required(input.assignee_id ?? input.assigneeId, "assignee_id");
   if (type !== "user") fail("Only user assignments are supported");
   if (!await first(db, "SELECT id FROM users WHERE id = ?", id)) fail("Assigned user not found", 404);
+  if (await first(db, "SELECT id FROM event_plan_assignments WHERE event_plan_item_id = ? AND assignee_type = ? AND assignee_id = ? AND ended_at IS NULL", itemId, type, id)) return false;
   const timestamp = nowIso(now);
   await db.prepare("INSERT INTO event_plan_assignments (id, event_plan_item_id, assignee_type, assignee_id, assigned_by_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)")
     .bind(generateId("epa"), itemId, type, id, actorId(actor), timestamp).run();
   await appendItemEvent(db, itemId, "assigned", actor, { assigneeType: type, assigneeId: id }, now);
+  return true;
 }
 
 export async function reschedulePlanItem(db, itemId, input = {}, actor = null, { now = new Date() } = {}) {
   const item = await first(db, "SELECT * FROM event_plan_items WHERE id = ?", itemId);
   if (!item) fail("Plan item not found", 404);
   const dueAt = dateOrNull(input.due_at ?? input.dueAt);
+  if (item.due_at === dueAt && item.manual_override_at) return item;
   const timestamp = nowIso(now);
   await db.prepare("UPDATE event_plan_items SET due_at = ?, manual_override_at = ?, manual_override_by_user_id = ?, updated_at = ? WHERE id = ?")
     .bind(dueAt, timestamp, actorId(actor), timestamp, itemId).run();
@@ -254,6 +281,14 @@ export async function transitionPlanItem(db, itemId, status, actor = null, { now
   if (!ITEM_STATUSES.has(status)) fail("Invalid plan item status");
   const item = await first(db, "SELECT * FROM event_plan_items WHERE id = ?", itemId);
   if (!item) fail("Plan item not found", 404);
+  if (item.status === status) return item;
+  if (status === "completed") {
+    if (item.evidence_required && !await first(db, "SELECT id FROM event_plan_item_evidence WHERE event_plan_item_id = ? LIMIT 1", itemId)) fail("Evidence is required before completing this item", 409);
+    const openPrerequisite = await first(db, `SELECT prerequisite.id FROM event_plan_dependencies dependency
+      JOIN event_plan_items prerequisite ON prerequisite.id = dependency.depends_on_item_id
+      WHERE dependency.event_plan_item_id = ? AND prerequisite.status != 'completed' LIMIT 1`, itemId);
+    if (openPrerequisite) fail("All prerequisite items must be completed first", 409);
+  }
   const timestamp = nowIso(now);
   await db.prepare("UPDATE event_plan_items SET status = ?, completed_at = ?, completed_by_user_id = ?, updated_at = ? WHERE id = ?")
     .bind(status, status === "completed" ? timestamp : null, status === "completed" ? actorId(actor) : null, timestamp, itemId).run();
@@ -268,9 +303,12 @@ export const unblockPlanItem = (db, id, actor, options) => transitionPlanItem(db
 
 export async function attachPlanEvidence(db, itemId, input = {}, actor = null, { now = new Date() } = {}) {
   const timestamp = nowIso(now);
+  const label = required(input.label, "evidence label"); const url = stringOrNull(input.url);
+  if (await first(db, "SELECT id FROM event_plan_item_evidence WHERE event_plan_item_id = ? AND label = ? AND (url IS ? OR url = ?)", itemId, label, url, url)) return false;
   await db.prepare("INSERT INTO event_plan_item_evidence (id, event_plan_item_id, label, url, attached_by_user_id, attached_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(generateId("epievidence"), itemId, required(input.label, "evidence label"), stringOrNull(input.url), actorId(actor), timestamp).run();
+    .bind(generateId("epievidence"), itemId, label, url, actorId(actor), timestamp).run();
   await appendItemEvent(db, itemId, "evidence_attached", actor, {}, now);
+  return true;
 }
 
 export async function createPlanDependency(db, itemId, dependsOnItemId, actor = null, { now = new Date() } = {}) {
@@ -288,8 +326,10 @@ export async function createPlanDependency(db, itemId, dependsOnItemId, actor = 
 }
 
 export async function removePlanDependency(db, itemId, dependsOnItemId, actor = null, { now = new Date() } = {}) {
+  if (!await first(db, "SELECT id FROM event_plan_dependencies WHERE event_plan_item_id = ? AND depends_on_item_id = ?", itemId, dependsOnItemId)) return false;
   await db.prepare("DELETE FROM event_plan_dependencies WHERE event_plan_item_id = ? AND depends_on_item_id = ?").bind(itemId, dependsOnItemId).run();
   await appendItemEvent(db, itemId, "dependency_removed", actor, { dependsOnItemId }, now);
+  return true;
 }
 
 export async function getEventPlanTimeline(db, eventPlanId, filters = {}) {
@@ -330,11 +370,14 @@ export async function previewAnchorShift(db, eventPlanId, input = {}) {
     else if (!item.due_at) reason = "no_due_date";
     return { itemId: item.id, title: item.title, before: item.due_at, after: reason ? item.due_at : new Date(Date.parse(item.due_at) + deltaMs).toISOString(), moved: !reason, reason };
   });
-  return { eventPlanId, anchorKey, before: anchor.occurs_at, after: nextOccursAt, deltaMs, items };
+  const previewToken = fingerprint({ eventPlanId, anchorKey, before: anchor.occurs_at, after: nextOccursAt, items: timeline.items.map((item) => ({ id: item.id, status: item.status, dueAt: item.due_at, scheduleMode: item.schedule_mode, anchorKey: item.anchor_key, manualOverrideAt: item.manual_override_at })) });
+  return { eventPlanId, anchorKey, before: anchor.occurs_at, after: nextOccursAt, deltaMs, items, previewToken };
 }
 
 export async function applyAnchorShift(db, eventPlanId, input = {}, actor = null, { now = new Date() } = {}) {
   const preview = await previewAnchorShift(db, eventPlanId, input);
+  const suppliedToken = stringOrNull(input.preview_token ?? input.previewToken);
+  if (!suppliedToken || suppliedToken !== preview.previewToken) fail("Shift preview is stale; preview again before applying", 409);
   const timestamp = nowIso(now);
   const statements = [db.prepare("UPDATE event_plan_anchors SET occurs_at = ?, updated_by_user_id = ?, updated_at = ? WHERE event_plan_id = ? AND anchor_key = ?")
     .bind(preview.after, actorId(actor), timestamp, eventPlanId, preview.anchorKey)];
@@ -348,4 +391,14 @@ export async function applyAnchorShift(db, eventPlanId, input = {}, actor = null
   if (typeof db.batch === "function") await db.batch(statements);
   else for (const statement of statements) await statement.run();
   return { ...preview, applied: true };
+}
+
+function fingerprint(value) {
+  const source = JSON.stringify(value);
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `preview_${(hash >>> 0).toString(36)}`;
 }

@@ -6,6 +6,7 @@ import {
   createTimelineTemplateVersion,
   getEventPlanTimeline,
   instantiateEventPlan,
+  listTimelineTemplateVersions,
   updateEventInstanceById
 } from "../../../_lib/domain/event-planning.js";
 
@@ -28,7 +29,7 @@ export async function onRequestGet(context) {
     }
     const result = await db.prepare(`SELECT p.id, p.event_instance_id, p.template_version_id, p.created_at, ei.title, ei.starts_at
       FROM event_plans p JOIN event_instances ei ON ei.id = p.event_instance_id ORDER BY p.created_at DESC`).all();
-    return jsonResponse({ ok: true, plans: result.results || [] });
+    return jsonResponse({ ok: true, plans: result.results || [], templates: await listTimelineTemplateVersions(db) });
   });
 }
 

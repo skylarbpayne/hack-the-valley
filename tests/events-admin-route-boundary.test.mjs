@@ -57,6 +57,7 @@ function createAdminEventDb({ currentUser = ADMIN_USER, role = "admin", events =
         },
         async all() {
           if (/FROM events e/.test(sql)) return { results: [...state.events.values()] };
+          if (/FROM event_instances WHERE event_slug = \?/.test(sql)) return { results: [...state.instances.values()].filter((row) => row.event_slug === this.args[0]) };
           if (/FROM event_instances/.test(sql)) return { results: [...state.instances.values()] };
           return { results: [] };
         },
@@ -96,6 +97,13 @@ function createAdminEventDb({ currentUser = ADMIN_USER, role = "admin", events =
             state.instanceWrites.push({ sql, args: this.args, row });
             return { success: true };
           }
+          if (/UPDATE event_instances SET/.test(sql)) {
+            const [title, startsAt, endsAt, venueName, venueAddress, capacity, status, updatedAt, id] = this.args;
+            state.instances.set(id, { ...state.instances.get(id), title, starts_at: startsAt, ends_at: endsAt, venue_name: venueName, venue_address: venueAddress, capacity, status, updated_at: updatedAt });
+            state.instanceWrites.push({ sql, args: this.args, row: state.instances.get(id) });
+            return { success: true };
+          }
+          if (/UPDATE event_plan_anchors SET/.test(sql)) return { success: true };
           if (/INSERT INTO audit_events/.test(sql)) {
             state.audits.push({ sql, args: this.args, metadata: JSON.parse(this.args[7] || "{}") });
             return { success: true };
@@ -198,6 +206,25 @@ test("event admin update route keeps URL slug authoritative and ignores forged a
   assert.equal(db.state.audits[0].args[2], "usr_admin");
   assert.equal(db.state.audits[0].metadata.source, "admin");
   assert.equal(db.state.audits[0].metadata.route, "events.slug.patch");
+});
+
+test("event admin save keeps an undated planning draft's one stable instance ID through dating and moving", async () => {
+  const db = createAdminEventDb({
+    events: [{ slug: "demo-hours", title: "Demo Hours", status: "draft", created_at: "2026-06-01T00:00:00.000Z" }]
+  });
+  db.state.instances.set("event_instance_draft_1", {
+    id: "event_instance_draft_1", event_slug: "demo-hours", instance_key: "draft-1", title: "Demo Hours",
+    starts_at: null, ends_at: null, status: "draft", metadata_json: JSON.stringify({ planning_draft: true }), created_at: "2026-06-01T00:00:00.000Z"
+  });
+  const date = async (startsAt) => await updateEventRoute({
+    request: adminRequest("https://hackthevalley.org/api/events/demo-hours", { method: "PATCH", body: { starts_at: startsAt, status: "open" } }),
+    env: { HTV_DB: db }, params: { slug: "demo-hours" }
+  });
+  assert.equal((await date("2027-09-10T16:00:00.000Z")).status, 200);
+  assert.equal((await date("2027-09-17T16:00:00.000Z")).status, 200);
+  assert.equal(db.state.instances.size, 1);
+  assert.equal(db.state.instances.get("event_instance_draft_1").starts_at, "2027-09-17T16:00:00.000Z");
+  assert.equal(db.state.instanceWrites.filter((write) => /UPDATE event_instances SET/.test(write.sql)).length, 2);
 });
 
 test("event admin auth remains a route concern before Events domain writes", async () => {

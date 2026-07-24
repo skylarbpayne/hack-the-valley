@@ -3,6 +3,7 @@ import {
   createEventPhotoRecord,
   getDb,
   getEventInstance,
+  getPublishedEventPhotoByStorageKey,
   handleErrors,
   jsonResponse,
   listEventPhotos,
@@ -12,14 +13,53 @@ import {
 } from "../../../../../../_lib/event-platform.js";
 import { maxUploadBytes, optionsResponse, randomId } from "../../../../../../_shared/submissions.js";
 
+const PUBLIC_EVENT_PHOTO_CONTENT_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif"
+]);
+
 export function onRequestOptions() {
   return optionsResponse();
 }
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
-    await requireOrganizerAccess(context.request, context.env);
     const db = getDb(context.env);
+    const url = new URL(context.request.url);
+    const storageKey = url.searchParams.get("key");
+    if (storageKey) {
+      if (!context.env.SUBMISSIONS_MEDIA) {
+        return jsonResponse({ error: "Upload storage is not configured." }, { status: 503 });
+      }
+      const photo = await getPublishedEventPhotoByStorageKey(
+        db,
+        context.params.slug,
+        context.params.instanceId,
+        storageKey
+      );
+      if (!photo) return jsonResponse({ error: "Photo not found" }, { status: 404 });
+      const object = await context.env.SUBMISSIONS_MEDIA.get(photo.storage_key);
+      if (!object) return jsonResponse({ error: "Photo not found" }, { status: 404 });
+      const headers = new Headers();
+      object.writeHttpMetadata?.(headers);
+      const contentType = String(photo.content_type || headers.get("content-type") || "")
+        .split(";")[0]
+        .trim()
+        .toLowerCase();
+      if (!PUBLIC_EVENT_PHOTO_CONTENT_TYPES.has(contentType)) {
+        return jsonResponse({ error: "Unsupported photo type" }, { status: 415 });
+      }
+      headers.set("content-type", contentType);
+      headers.set("x-content-type-options", "nosniff");
+      if (object.httpEtag) headers.set("etag", object.httpEtag);
+      headers.set("cache-control", "public, max-age=3600");
+      return new Response(object.body, { headers });
+    }
+
+    await requireOrganizerAccess(context.request, context.env);
     const instance = await getEventInstance(db, context.params.slug, context.params.instanceId);
     if (!instance) return jsonResponse({ error: "Event instance not found" }, { status: 404 });
     const [photos, count] = await Promise.all([

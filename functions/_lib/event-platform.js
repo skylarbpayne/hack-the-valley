@@ -1661,6 +1661,29 @@ export async function listEventPhotos(db, eventSlug, eventInstanceId, { limit = 
   return result.results || [];
 }
 
+export async function listPublishedEventPhotos(db, eventSlug, eventInstanceId, { limit = 12 } = {}) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 12, 50));
+  const result = await db.prepare(`
+    SELECT id, event_slug, event_instance_id, kind, status, storage_key, public_url,
+      original_filename, content_type, bytes, caption, created_at, updated_at
+    FROM event_photos
+    WHERE event_slug = ? AND event_instance_id = ? AND kind = 'photo' AND status = 'approved' AND public_url IS NOT NULL
+    ORDER BY created_at ASC
+    LIMIT ${safeLimit}
+  `).bind(eventSlug, eventInstanceId).all();
+  return result.results || [];
+}
+
+export async function getPublishedEventPhotoByStorageKey(db, eventSlug, eventInstanceId, storageKey) {
+  if (!storageKey) return null;
+  return await db.prepare(`
+    SELECT id, event_slug, event_instance_id, kind, status, storage_key, public_url,
+      original_filename, content_type, bytes, caption, created_at, updated_at
+    FROM event_photos
+    WHERE event_slug = ? AND event_instance_id = ? AND storage_key = ? AND kind = 'photo' AND status = 'approved'
+  `).bind(eventSlug, eventInstanceId, storageKey).first();
+}
+
 export async function countEventPhotos(db, eventSlug, eventInstanceId) {
   const row = await db.prepare(`
     SELECT COUNT(*) AS count
@@ -2228,13 +2251,22 @@ function formatEventDate(value) {
   }
 }
 
-export function renderEventPageHtml(event) {
+export function renderEventPageHtml(event, { photos = [] } = {}) {
   const signupOpen = event.status === "open";
   const title = escapeHtml(event.title);
   const slug = escapeHtml(event.slug);
   const description = escapeHtml(event.description || "Hack the Valley community event.");
   const content = renderText(event.page_content || event.description || "More event details are coming soon.");
   const image = event.image_url ? `<img class="event-hero-image" src="${escapeHtml(event.image_url)}" alt="${title}">` : "";
+  const gallery = photos.length ? `
+    <section class="event-gallery" data-event-photo-gallery>
+      <div class="event-gallery-heading"><p class="kicker">Event recap</p><h2>Photos from ${title}</h2></div>
+      <div class="event-gallery-grid">${photos.map((photo, index) => {
+        const caption = photo.caption ? escapeHtml(photo.caption) : "";
+        const alt = caption ? "" : `${title} photo ${index + 1}`;
+        return `<figure><img class="event-gallery-photo" src="${escapeHtml(photo.public_url)}" alt="${alt}" loading="lazy">${caption ? `<figcaption>${caption}</figcaption>` : ""}</figure>`;
+      }).join("")}</div>
+    </section>` : "";
   const venueParts = [event.venue_name, event.venue_address].filter(Boolean);
   const venue = escapeHtml(venueParts.length ? venueParts.join(" • ") : "Location TBA");
   const when = escapeHtml(formatEventDate(event.starts_at));
@@ -2373,7 +2405,7 @@ export function renderEventPageHtml(event) {
   <title>${title} — Hack the Valley</title>
   <meta name="description" content="${description}">
   <style>
-    body{margin:0;background:#0f172a;color:#f8fafc;font-family:Inter,ui-sans-serif,system-ui,sans-serif}[hidden]{display:none!important}a{color:#67e8f9}.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 72px}.nav{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;margin-bottom:48px}.brand{font-weight:900;text-decoration:none;color:#fff}.participant-nav{display:flex;flex-wrap:wrap;gap:8px;font-size:.9rem;font-weight:800}.participant-nav a{border-radius:999px;padding:8px 12px;text-decoration:none;color:#cbd5e1}.participant-nav a:hover{background:#1e293b;color:#67e8f9}.participant-nav a[aria-current="page"]{background:rgba(103,232,249,.14);box-shadow:inset 0 0 0 1px rgba(103,232,249,.36);color:#67e8f9}.hero{display:grid;gap:28px}.kicker{text-transform:uppercase;letter-spacing:.24em;color:#67e8f9;font-weight:800;font-size:.8rem}h1{font-size:clamp(2.5rem,7vw,5.5rem);line-height:.92;margin:.25em 0}.lede{font-size:1.25rem;color:#cbd5e1;max-width:760px}.event-hero-image{width:100%;max-height:760px;object-fit:contain;background:#020617;border-radius:28px;border:1px solid #334155}.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:28px 0}.meta div,.content,.signup-card{background:#111827;border:1px solid #334155;border-radius:22px;padding:22px}.content{font-size:1.08rem;line-height:1.7;color:#dbeafe}.content p{margin:0 0 1em}.signup-card{margin-top:28px;max-width:680px}.signup-card label{display:block;margin:14px 0;color:#cbd5e1}.signed-in-signup-note{border:1px solid rgba(103,232,249,.36);background:rgba(103,232,249,.1);border-radius:14px;padding:12px;color:#cffafe}.profile-completion-prompt{border:1px solid rgba(251,191,36,.45);background:rgba(251,191,36,.1);border-radius:14px;padding:12px;color:#fde68a}.signup-card input,.signup-card textarea{box-sizing:border-box;width:100%;margin-top:6px;border-radius:12px;border:1px solid #475569;background:#020617;color:#fff;padding:12px}.signup-role-field{border:1px solid #334155;border-radius:16px;padding:14px;margin:14px 0}.signup-role-field legend{font-weight:900;color:#f8fafc}.role-option{display:flex!important;gap:10px;align-items:flex-start;border:1px solid #334155;border-radius:12px;padding:12px}.role-option input{width:auto;margin-top:3px}.role-option strong{display:block;color:#fff}.role-option small{display:block;color:#94a3b8;margin-top:4px}.checkbox{display:flex!important;gap:10px;align-items:flex-start}.checkbox input{width:auto;margin-top:3px}.signed-in-signup-note{border:1px solid rgba(103,232,249,.35);background:rgba(103,232,249,.12);color:#cffafe;border-radius:14px;padding:12px 14px}button{border:0;border-radius:999px;padding:13px 22px;background:#67e8f9;color:#020617;font-weight:900;cursor:pointer}button:disabled{opacity:.6;cursor:not-allowed}#form-message{color:#cbd5e1}.signup-help{color:#94a3b8;margin-top:0}[hidden]{display:none!important}
+    body{margin:0;background:#0f172a;color:#f8fafc;font-family:Inter,ui-sans-serif,system-ui,sans-serif}[hidden]{display:none!important}a{color:#67e8f9}.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 72px}.nav{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;margin-bottom:48px}.brand{font-weight:900;text-decoration:none;color:#fff}.participant-nav{display:flex;flex-wrap:wrap;gap:8px;font-size:.9rem;font-weight:800}.participant-nav a{border-radius:999px;padding:8px 12px;text-decoration:none;color:#cbd5e1}.participant-nav a:hover{background:#1e293b;color:#67e8f9}.participant-nav a[aria-current="page"]{background:rgba(103,232,249,.14);box-shadow:inset 0 0 0 1px rgba(103,232,249,.36);color:#67e8f9}.hero{display:grid;gap:28px}.kicker{text-transform:uppercase;letter-spacing:.24em;color:#67e8f9;font-weight:800;font-size:.8rem}h1{font-size:clamp(2.5rem,7vw,5.5rem);line-height:.92;margin:.25em 0}.lede{font-size:1.25rem;color:#cbd5e1;max-width:760px}.event-hero-image{width:100%;max-height:760px;object-fit:contain;background:#020617;border-radius:28px;border:1px solid #334155}.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:28px 0}.meta div,.content,.signup-card{background:#111827;border:1px solid #334155;border-radius:22px;padding:22px}.content{font-size:1.08rem;line-height:1.7;color:#dbeafe}.content p{margin:0 0 1em}.event-gallery{margin-top:34px}.event-gallery-heading{margin-bottom:16px}.event-gallery-heading h2{font-size:clamp(1.8rem,4vw,3rem);margin:.2em 0}.event-gallery-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;align-items:start}.event-gallery-grid figure{margin:0;background:#111827;border:1px solid #334155;border-radius:20px;overflow:hidden}.event-gallery-photo{display:block;width:100%;height:auto;max-height:640px;object-fit:contain;background:#020617}.event-gallery-grid figcaption{padding:12px 14px;color:#cbd5e1;font-size:.92rem}.signup-card{margin-top:28px;max-width:680px}.signup-card label{display:block;margin:14px 0;color:#cbd5e1}.signed-in-signup-note{border:1px solid rgba(103,232,249,.36);background:rgba(103,232,249,.1);border-radius:14px;padding:12px;color:#cffafe}.profile-completion-prompt{border:1px solid rgba(251,191,36,.45);background:rgba(251,191,36,.1);border-radius:14px;padding:12px;color:#fde68a}.signup-card input,.signup-card textarea{box-sizing:border-box;width:100%;margin-top:6px;border-radius:12px;border:1px solid #475569;background:#020617;color:#fff;padding:12px}.signup-role-field{border:1px solid #334155;border-radius:16px;padding:14px;margin:14px 0}.signup-role-field legend{font-weight:900;color:#f8fafc}.role-option{display:flex!important;gap:10px;align-items:flex-start;border:1px solid #334155;border-radius:12px;padding:12px}.role-option input{width:auto;margin-top:3px}.role-option strong{display:block;color:#fff}.role-option small{display:block;color:#94a3b8;margin-top:4px}.checkbox{display:flex!important;gap:10px;align-items:flex-start}.checkbox input{width:auto;margin-top:3px}.signed-in-signup-note{border:1px solid rgba(103,232,249,.35);background:rgba(103,232,249,.12);color:#cffafe;border-radius:14px;padding:12px 14px}button{border:0;border-radius:999px;padding:13px 22px;background:#67e8f9;color:#020617;font-weight:900;cursor:pointer}button:disabled{opacity:.6;cursor:not-allowed}#form-message{color:#cbd5e1}.signup-help{color:#94a3b8;margin-top:0}[hidden]{display:none!important}
   </style>
 </head>
 <body data-event-detail-page="${slug}">
@@ -2385,6 +2417,7 @@ export function renderEventPageHtml(event) {
     </section>
     <section class="meta"><div><strong>When</strong><br>${when}</div><div><strong>Where</strong><br>${venue}</div></section>
     <section class="content">${content}</section>
+    ${gallery}
     ${signupForm}
   </main>
 </body>

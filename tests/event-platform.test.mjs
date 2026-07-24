@@ -36,6 +36,7 @@ import {
 import worker from "../worker.js";
 import { onRequestPost as postEventSignup } from "../functions/api/events/[slug]/signups/index.js";
 import { onRequestPost as postEventCheckin } from "../functions/api/events/[slug]/checkins/index.js";
+import { onRequestGet as getEventPhotos } from "../functions/api/events/[slug]/instances/[instanceId]/photos/index.js";
 
 function roleAwareAdminDb({ role = "admin", users = [] } = {}) {
   return {
@@ -897,6 +898,39 @@ test("rendered event detail page shows venue name and address and supports signe
   assert.doesNotMatch(html, /name="emergency_contact_phone" required/);
 });
 
+test("rendered event detail page shows a public photo gallery with safe captions", () => {
+  const html = renderEventPageHtml({
+    slug: "demo-hours",
+    title: "Demo Hours",
+    description: "Community demo night",
+    starts_at: "2026-07-23T01:00:00.000Z",
+    venue_name: "Mesh Cowork",
+    venue_address: "2020 Eye street",
+    status: "closed"
+  }, {
+    photos: [
+      {
+        id: "pho_1",
+        public_url: "/api/events/demo-hours/instances/inst_demo_hours_20260722/photos?key=event-photos%2Finst_demo_hours_20260722%2Fpho_1.jpg",
+        caption: "Builders < shipping"
+      },
+      {
+        id: "pho_2",
+        public_url: "/api/events/demo-hours/instances/inst_demo_hours_20260722/photos?key=event-photos%2Finst_demo_hours_20260722%2Fpho_2.jpg",
+        caption: null
+      }
+    ]
+  });
+
+  assert.match(html, /data-event-photo-gallery/);
+  assert.match(html, /Photos from Demo Hours/);
+  assert.match(html, /Builders &lt; shipping/);
+  assert.doesNotMatch(html, /Builders < shipping/);
+  assert.match(html, /alt="" loading="lazy"><figcaption>Builders &lt; shipping<\/figcaption>/);
+  assert.match(html, /alt="Demo Hours photo 2"/);
+  assert.equal((html.match(/class="event-gallery-photo"/g) || []).length, 2);
+});
+
 test("signed-in event signup route uses session identity through Participation and preserves instance role state", async () => {
   const currentUser = {
     id: "usr_session",
@@ -1487,24 +1521,41 @@ test("blog broadcast reconciliation cron runs once daily", () => {
   assert.doesNotMatch(config, /\*\/15 \* \* \* \*/);
 });
 
-test("worker renders real per-event HTML from D1 for /events/<slug>", async () => {
+test("worker renders real per-event HTML and its approved gallery from D1 for /events/<slug>", async () => {
   const fakeDb = {
     prepare(sql) {
       return {
-        bind(slug) {
-          assert.match(sql, /FROM events\s+WHERE slug = \?/);
-          assert.equal(slug, "hack-the-valley-2026");
+        bind(...args) {
+          this.args = args;
           return this;
         },
         async first() {
+          assert.match(sql, /FROM events\s+WHERE slug = \?/);
+          assert.equal(this.args[0], "hack-the-valley-2026");
           return {
             slug: "hack-the-valley-2026",
             title: "Hack the Valley 2026",
             description: "Build in Bakersfield.",
-            status: "open",
+            status: "closed",
+            active_instance_id: null,
             image_url: "/image.png",
             page_content: "This is the real event page body."
           };
+        },
+        async all() {
+          if (/FROM event_instances/.test(sql)) {
+            assert.deepEqual(this.args, ["hack-the-valley-2026"]);
+            return { results: [
+              { id: "inst_htv_2025", event_slug: "hack-the-valley-2026", status: "closed", starts_at: "2025-09-12T16:00:00.000Z" },
+              { id: "inst_htv_2026", event_slug: "hack-the-valley-2026", status: "closed", starts_at: "2026-09-12T16:00:00.000Z" },
+              { id: "inst_htv_draft", event_slug: "hack-the-valley-2026", status: "draft", starts_at: null }
+            ] };
+          }
+          if (/FROM event_photos/.test(sql)) {
+            assert.deepEqual(this.args, ["hack-the-valley-2026", "inst_htv_2026"]);
+            return { results: [{ id: "pho_htv", status: "approved", public_url: "/api/events/hack-the-valley-2026/instances/inst_htv_2026/photos?key=pho_htv" }] };
+          }
+          throw new Error(`Unexpected all() query: ${sql}`);
         }
       };
     }
@@ -1520,6 +1571,8 @@ test("worker renders real per-event HTML from D1 for /events/<slug>", async () =
   const html = await response.text();
   assert.match(html, /data-event-detail-page="hack-the-valley-2026"/);
   assert.match(html, /This is the real event page body/);
+  assert.match(html, /data-event-photo-gallery/);
+  assert.match(html, /pho_htv/);
   assert.doesNotMatch(html, /id="upcoming-events-panel"/);
 });
 
@@ -1788,4 +1841,102 @@ test("worker accepts admin event image uploads and serves uploaded event images 
   assert.equal(imageResponse.status, 200);
   assert.equal(imageResponse.headers.get("content-type"), "image/png");
   assert.equal(await imageResponse.text(), "fake image");
+});
+
+test("approved event photos are publicly readable by their recorded storage key", async () => {
+  const storageKey = "event-photos/inst_demo_hours_20260722/pho_1-demo.jpg";
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async first() {
+          assert.match(sql, /FROM event_photos/);
+          assert.match(sql, /kind = 'photo'/);
+          assert.match(sql, /status = 'approved'/);
+          assert.deepEqual(this.args, ["demo-hours", "inst_demo_hours_20260722", storageKey]);
+          return {
+            id: "pho_1",
+            status: "approved",
+            storage_key: storageKey,
+            content_type: "image/jpeg"
+          };
+        }
+      };
+    }
+  };
+  const response = await getEventPhotos({
+    request: new Request(`https://hackthevalley.org/api/events/demo-hours/instances/inst_demo_hours_20260722/photos?key=${encodeURIComponent(storageKey)}`),
+    env: {
+      HTV_DB: db,
+      SUBMISSIONS_MEDIA: {
+        async get(key) {
+          assert.equal(key, storageKey);
+          return {
+            body: "photo bytes",
+            httpEtag: "etag-photo",
+            writeHttpMetadata(headers) { headers.set("content-type", "image/jpeg"); }
+          };
+        }
+      }
+    },
+    params: { slug: "demo-hours", instanceId: "inst_demo_hours_20260722" }
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "image/jpeg");
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(response.headers.get("cache-control"), "public, max-age=3600");
+  assert.equal(await response.text(), "photo bytes");
+});
+
+test("unapproved or wrong-scope event photo keys are not read from storage", async () => {
+  const storageKey = "event-photos/another-instance/private.jpg";
+  let storageReads = 0;
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...args) { this.args = args; return this; },
+        async first() {
+          assert.match(sql, /status = 'approved'/);
+          assert.deepEqual(this.args, ["demo-hours", "inst_demo_hours_20260722", storageKey]);
+          return null;
+        }
+      };
+    }
+  };
+  const response = await getEventPhotos({
+    request: new Request(`https://hackthevalley.org/api/events/demo-hours/instances/inst_demo_hours_20260722/photos?key=${encodeURIComponent(storageKey)}`),
+    env: { HTV_DB: db, SUBMISSIONS_MEDIA: { async get() { storageReads += 1; return null; } } },
+    params: { slug: "demo-hours", instanceId: "inst_demo_hours_20260722" }
+  });
+
+  assert.equal(response.status, 404);
+  assert.equal(storageReads, 0);
+});
+
+test("approved event photo reads reject active content types and keyless listing stays private", async () => {
+  const storageKey = "event-photos/inst_demo_hours_20260722/pho_bad.html";
+  const db = {
+    prepare() {
+      return {
+        bind() { return this; },
+        async first() {
+          return { id: "pho_bad", status: "approved", kind: "photo", storage_key: storageKey, content_type: "text/html" };
+        }
+      };
+    }
+  };
+  const unsafeResponse = await getEventPhotos({
+    request: new Request(`https://hackthevalley.org/api/events/demo-hours/instances/inst_demo_hours_20260722/photos?key=${encodeURIComponent(storageKey)}`),
+    env: { HTV_DB: db, SUBMISSIONS_MEDIA: { async get() { return { body: "<script>alert(1)</script>", writeHttpMetadata() {} }; } } },
+    params: { slug: "demo-hours", instanceId: "inst_demo_hours_20260722" }
+  });
+  assert.equal(unsafeResponse.status, 415);
+
+  const privateListingResponse = await getEventPhotos({
+    request: new Request("https://hackthevalley.org/api/events/demo-hours/instances/inst_demo_hours_20260722/photos"),
+    env: { HTV_DB: roleAwareAdminDb({ role: "admin" }) },
+    params: { slug: "demo-hours", instanceId: "inst_demo_hours_20260722" }
+  });
+  assert.equal(privateListingResponse.status, 401);
 });

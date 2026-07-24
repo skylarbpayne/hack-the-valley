@@ -31,7 +31,7 @@ import * as subscribe from './functions/api/subscribe.js';
 import * as helperInterest from './functions/api/helper-interest.js';
 import * as blogBroadcast from './functions/api/blog/broadcast.js';
 import { reconcileBroadcastSends } from './functions/_lib/domain/blog-broadcast.js';
-import { getDb, getEvent, handleErrors, renderEventPageHtml } from './functions/_lib/event-platform.js';
+import { getDb, getEvent, handleErrors, listEventInstances, listPublishedEventPhotos, renderEventPageHtml } from './functions/_lib/event-platform.js';
 import * as upload from './functions/api/upload.js';
 import * as users from './functions/api/users/index.js';
 import * as userBadges from './functions/api/users/[id]/badges.js';
@@ -242,11 +242,26 @@ async function renderEventPage(request, env) {
 
     const url = new URL(request.url);
     const slug = decodeURIComponent(url.pathname.match(/^\/events\/([^/]+)\/?$/)?.[1] || "");
-    const event = await getEvent(getDb(env), slug);
+    const db = getDb(env);
+    const event = await getEvent(db, slug);
     if (!event || event.status === "archived") {
       return new Response("Event not found", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
     }
-    return new Response(renderEventPageHtml(event), {
+    const instances = await listEventInstances(db, slug);
+    const activeInstance = event.active_instance_id
+      ? instances.find((instance) => instance.id === event.active_instance_id)
+      : null;
+    const datedInstancesNewestFirst = [...instances]
+      .filter((instance) => instance.starts_at)
+      .reverse();
+    const displayInstance = activeInstance
+      || datedInstancesNewestFirst.find((instance) => instance.status === "closed")
+      || datedInstancesNewestFirst.find((instance) => instance.status !== "archived")
+      || instances.find((instance) => instance.status !== "archived");
+    const photos = displayInstance
+      ? await listPublishedEventPhotos(db, slug, displayInstance.id)
+      : [];
+    return new Response(renderEventPageHtml(event, { photos }), {
       status: 200,
       headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }
     });

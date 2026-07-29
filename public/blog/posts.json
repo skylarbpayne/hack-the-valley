@@ -1,6 +1,13 @@
 {
   "posts": [
     {
+      "slug": "project-spotlight-valley-sat-prep",
+      "title": "Project Spotlight: Valley SAT Prep",
+      "description": "Jordan Garcia and the Sequoia Sasquatches built a classroom-focused SAT diagnostic that won Best Education at Hack the Valley 2026.",
+      "excerpt": "Valley SAT Prep turns a short practice test into student gap analysis and a teacher-ready classroom plan—earning Jordan Garcia and the Sequoia Sasquatches Best Education.",
+      "date": "2026-07-29"
+    },
+    {
       "slug": "project-spotlight-continuum",
       "title": "Project Spotlight: Continuum",
       "description": "Continuum, built by Hack the Valley participant Mofe, captures an AI chat and resumes it in a fresh one so you never lose context to length limits.",

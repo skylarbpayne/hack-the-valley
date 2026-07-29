@@ -1,10 +1,10 @@
 {
   "posts": [
     {
-      "slug": "project-spotlight-valley-sat-prep",
-      "title": "Project Spotlight: Valley SAT Prep",
-      "description": "Jordan Garcia and the Sequoia Sasquatches built a classroom-focused SAT diagnostic that won Best Education at Hack the Valley 2026.",
-      "excerpt": "Valley SAT Prep turns a short practice test into student gap analysis and a teacher-ready classroom plan—earning Jordan Garcia and the Sequoia Sasquatches Best Education.",
+      "slug": "project-spotlight-newgen-inspection-scheduler",
+      "title": "Project Spotlight: NewGen Inspection Scheduler",
+      "description": "Jordan Garcia built NewGen Inspection Scheduler to reduce the manual scheduling, tenant communication, and report work behind residential property inspections.",
+      "excerpt": "NewGen keeps AI in the useful lane: classifying tenant replies, suggesting scheduling changes, and extracting report deficiencies while property managers keep final control.",
       "date": "2026-07-29"
     },
     {

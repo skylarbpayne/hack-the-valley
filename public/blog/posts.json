@@ -1,6 +1,13 @@
 {
   "posts": [
     {
+      "slug": "project-spotlight-newgen-inspection-scheduler",
+      "title": "Project Spotlight: NewGen Inspection Scheduler",
+      "description": "Jordan Garcia built NewGen Inspection Scheduler to reduce the manual scheduling, tenant communication, and report work behind residential property inspections.",
+      "excerpt": "NewGen keeps AI in the useful lane: classifying tenant replies, suggesting scheduling changes, and extracting report deficiencies while property managers keep final control.",
+      "date": "2026-07-29"
+    },
+    {
       "slug": "project-spotlight-continuum",
       "title": "Project Spotlight: Continuum",
       "description": "Continuum, built by Hack the Valley participant Mofe, captures an AI chat and resumes it in a fresh one so you never lose context to length limits.",

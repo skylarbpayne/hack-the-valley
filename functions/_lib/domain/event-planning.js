@@ -91,7 +91,9 @@ export async function createTimelineTemplateVersion(db, input = {}, actor = null
   const versionId = stringOrNull(input.id) || generateId("timeline_version");
   const anchors = Array.isArray(input.anchors) ? input.anchors : [];
   const items = Array.isArray(input.items) ? input.items : [];
-  const snapshot = { name, description: stringOrNull(input.description), anchors, items };
+  // Template configuration has one source of truth: the normalized anchor/item rows.
+  // Keep only a format marker in the legacy NOT NULL snapshot column.
+  const snapshot = { format: "normalized_rows_v1" };
   const writes = [];
   if (!template) writes.push(db.prepare("INSERT INTO timeline_templates (id, name, description, active, created_at, created_by_user_id) VALUES (?, ?, ?, 1, ?, ?)").bind(templateId, name, stringOrNull(input.description), created, actorId(actor)));
   writes.push(db.prepare(`INSERT INTO timeline_template_versions (id, template_id, version_number, name, snapshot_json, created_at, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
@@ -133,6 +135,7 @@ export async function listTimelineTemplateVersions(db) {
 
 function validateTemplateGraph(version) {
   const anchors = new Set(version.anchors.map((anchor) => anchor.anchor_key));
+  if (anchors.size !== version.anchors.length) fail("Template contains duplicate anchor keys", 409);
   const itemsByKey = new Map(version.items.map((item) => [item.item_key, item]));
   if (itemsByKey.size !== version.items.length) fail("Template contains duplicate item keys", 409);
   const dependencies = [];
@@ -187,8 +190,12 @@ export async function instantiateEventPlan(db, eventInstanceId, templateVersionI
   for (const anchor of version.anchors) {
     const date = anchor.source === "event_start" ? eventInstance.starts_at : anchor.source === "event_end" ? eventInstance.ends_at : null;
     anchorDates.set(anchor.anchor_key, date);
-    statements.push(db.prepare("INSERT INTO event_plan_anchors (id, event_plan_id, anchor_key, occurs_at, source, updated_by_user_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .bind(generateId("epa"), planId, anchor.anchor_key, date, anchor.source, actorId(actor), created));
+    // Event anchors are projections of EventInstance and must never be copied
+    // into mutable plan-anchor storage.
+    if (anchor.source !== "event_start" && anchor.source !== "event_end") {
+      statements.push(db.prepare("INSERT INTO event_plan_anchors (id, event_plan_id, anchor_key, occurs_at, source, updated_by_user_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(generateId("epa"), planId, anchor.anchor_key, date, anchor.source, actorId(actor), created));
+    }
   }
   const itemIds = new Map();
   for (const item of version.items) {
@@ -219,7 +226,10 @@ export async function createPlanAnchor(db, eventPlanId, input = {}, actor = null
   const source = stringOrNull(input.source) || "manual";
   if (!ANCHOR_SOURCES.has(source)) fail("anchor source is invalid");
   const existing = await first(db, "SELECT source FROM event_plan_anchors WHERE event_plan_id = ? AND anchor_key = ?", eventPlanId, key);
-  if (source === "event_start" || source === "event_end" || existing?.source === "event_start" || existing?.source === "event_end") fail("Event anchors are projected from the EventInstance and cannot be set directly", 409);
+  const templateAnchor = await first(db, `SELECT anchor.source FROM event_plans plan
+    JOIN timeline_template_anchors anchor ON anchor.template_version_id = plan.template_version_id
+    WHERE plan.id = ? AND anchor.anchor_key = ?`, eventPlanId, key);
+  if (source === "event_start" || source === "event_end" || existing?.source === "event_start" || existing?.source === "event_end" || templateAnchor?.source === "event_start" || templateAnchor?.source === "event_end") fail("Event anchors are projected from the EventInstance and cannot be set directly", 409);
   const timestamp = nowIso(now);
   await db.prepare(`INSERT INTO event_plan_anchors (id, event_plan_id, anchor_key, occurs_at, source, updated_by_user_id, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -240,7 +250,8 @@ export async function createPlanItem(db, eventPlanId, input = {}, actor = null, 
   let dueAt = dateOrNull(input.due_at ?? input.dueAt);
   validateSchedule(scheduleMode, anchorKey, offsetDays, dueAt);
   if (scheduleMode === "relative" && anchorKey && offsetDays !== null && !dueAt) {
-    const anchor = await first(db, "SELECT occurs_at FROM event_plan_anchors WHERE event_plan_id = ? AND anchor_key = ?", eventPlanId, anchorKey);
+    const anchor = await getEffectivePlanAnchor(db, eventPlanId, anchorKey);
+    if (!anchor) fail("relative items require an existing plan anchor", 409);
     if (anchor?.occurs_at) dueAt = addDays(anchor.occurs_at, offsetDays);
   }
   const timestamp = nowIso(now);
@@ -344,11 +355,38 @@ export async function getEventPlanTimeline(db, eventPlanId, filters = {}) {
   const dependencies = itemIds.length ? await all(db, `SELECT * FROM event_plan_dependencies WHERE event_plan_item_id IN (${itemIds.map(() => "?").join("," )})`, ...itemIds) : [];
   const assignments = itemIds.length ? await all(db, `SELECT * FROM event_plan_assignments WHERE event_plan_item_id IN (${itemIds.map(() => "?").join(",")}) AND ended_at IS NULL`, ...itemIds) : [];
   const anchorEvents = await all(db, "SELECT * FROM event_plan_anchor_events WHERE event_plan_id = ? ORDER BY occurred_at DESC", eventPlanId);
-  const anchors = (await all(db, "SELECT * FROM event_plan_anchors WHERE event_plan_id = ? ORDER BY anchor_key", eventPlanId)).map((anchor) => ({
-    ...anchor,
-    occurs_at: anchor.source === "event_start" ? plan.event_starts_at : anchor.source === "event_end" ? plan.event_ends_at : anchor.occurs_at
-  }));
+  const storedAnchors = await all(db, "SELECT * FROM event_plan_anchors WHERE event_plan_id = ? ORDER BY anchor_key", eventPlanId);
+  const templateAnchors = plan.template_version_id
+    ? await all(db, "SELECT * FROM timeline_template_anchors WHERE template_version_id = ? ORDER BY anchor_key", plan.template_version_id)
+    : [];
+  const storedByKey = new Map(storedAnchors.map((anchor) => [anchor.anchor_key, anchor]));
+  const anchors = templateAnchors.map((anchor) => {
+    if (anchor.source === "event_start" || anchor.source === "event_end") {
+      return {
+        id: null,
+        event_plan_id: eventPlanId,
+        anchor_key: anchor.anchor_key,
+        occurs_at: anchor.source === "event_start" ? plan.event_starts_at : plan.event_ends_at,
+        source: anchor.source,
+        projected: true
+      };
+    }
+    return storedByKey.get(anchor.anchor_key) || { ...anchor, event_plan_id: eventPlanId, occurs_at: null };
+  });
+  for (const anchor of storedAnchors) if (!templateAnchors.some((templateAnchor) => templateAnchor.anchor_key === anchor.anchor_key)) anchors.push(anchor);
   return { plan, anchors, anchorEvents, items: filtered, events, evidence, dependencies, assignments };
+}
+
+async function getEffectivePlanAnchor(db, eventPlanId, anchorKey) {
+  const stored = await first(db, "SELECT * FROM event_plan_anchors WHERE event_plan_id = ? AND anchor_key = ?", eventPlanId, anchorKey);
+  if (stored) return stored;
+  const projected = await first(db, `SELECT anchor.anchor_key, anchor.source, instance.starts_at, instance.ends_at
+    FROM event_plans plan
+    JOIN event_instances instance ON instance.id = plan.event_instance_id
+    JOIN timeline_template_anchors anchor ON anchor.template_version_id = plan.template_version_id
+    WHERE plan.id = ? AND anchor.anchor_key = ? AND anchor.source IN ('event_start', 'event_end')`, eventPlanId, anchorKey);
+  if (!projected) return null;
+  return { ...projected, occurs_at: projected.source === "event_start" ? projected.starts_at : projected.ends_at, projected: true };
 }
 
 export async function previewAnchorShift(db, eventPlanId, input = {}) {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createDraftEventInstance,
+  instantiateEventPlan,
   previewAnchorShift,
   updateEventInstanceById
 } from "../functions/_lib/domain/event-planning.js";
@@ -47,6 +48,46 @@ test("draft event instances retain their ID and row count through date changes",
   assert.equal(moved.id, draft.id);
   assert.equal(db.state.rows.size, 1);
   assert.equal(moved.starts_at, "2027-09-17T16:00:00.000Z");
+});
+
+test("plan instantiation keeps event clock anchors virtual instead of persisting duplicate dates", async () => {
+  const state = { batch: [] };
+  const version = { id: "template_v1", template_id: "template_1", version_number: 1, name: "HTV", snapshot_json: '{"format":"normalized_rows_v1"}' };
+  const templateAnchors = [
+    { id: "anchor_start", template_version_id: "template_v1", anchor_key: "event_start", source: "event_start" },
+    { id: "anchor_open", template_version_id: "template_v1", anchor_key: "applications_open", source: "manual" }
+  ];
+  const db = {
+    prepare(sql) {
+      return {
+        sql, args: [], bind(...args) { this.args = args; return this; },
+        async first() {
+          if (/SELECT \* FROM event_plans WHERE event_instance_id/.test(sql)) return null;
+          if (/FROM timeline_template_versions WHERE id/.test(sql)) return version;
+          if (/FROM event_instances WHERE id/.test(sql)) return { id: "instance_1", starts_at: "2027-09-10T16:00:00.000Z", ends_at: "2027-09-12T16:00:00.000Z" };
+          if (/FROM event_plans p JOIN event_instances/.test(sql)) return { id: "plan_1", event_instance_id: "instance_1", template_version_id: "template_v1", event_starts_at: "2027-09-10T16:00:00.000Z", event_ends_at: "2027-09-12T16:00:00.000Z" };
+          return null;
+        },
+        async all() {
+          if (/FROM timeline_template_anchors/.test(sql)) return { results: templateAnchors };
+          if (/FROM timeline_template_items/.test(sql) || /FROM event_plan_items/.test(sql) || /FROM event_plan_anchor_events/.test(sql)) return { results: [] };
+          if (/FROM event_plan_anchors/.test(sql)) return { results: [{ id: "stored_manual", event_plan_id: "plan_1", anchor_key: "applications_open", source: "manual", occurs_at: null }] };
+          return { results: [] };
+        }
+      };
+    },
+    async batch(statements) { state.batch = statements; }
+  };
+
+  const timeline = await instantiateEventPlan(db, "instance_1", "template_v1", { userId: "usr_admin" });
+  const anchorWrites = state.batch.filter((statement) => /INSERT INTO event_plan_anchors/.test(statement.sql));
+  assert.equal(anchorWrites.length, 1);
+  assert.equal(anchorWrites[0].args[4], "manual");
+  const eventStart = timeline.anchors.find((anchor) => anchor.anchor_key === "event_start");
+  assert.equal(eventStart.id, null);
+  assert.equal(eventStart.source, "event_start");
+  assert.equal(eventStart.occurs_at, "2027-09-10T16:00:00.000Z");
+  assert.equal(eventStart.projected, true);
 });
 
 test("anchor shift preview moves only open relative non-overridden work", async () => {

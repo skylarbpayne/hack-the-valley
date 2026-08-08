@@ -381,7 +381,7 @@ async function allRows(db, sql, ...binds) {
   return result.results || [];
 }
 
-/** EventInstance owns the event clock; plan start/end anchors are its projections. */
+/** EventInstance owns the event clock; plan start/end anchors are read-only projections. */
 export async function updateEventInstanceClockById(db, instanceId, input = {}, { now = new Date().toISOString() } = {}) {
   const existing = await db.prepare("SELECT * FROM event_instances WHERE id = ?").bind(instanceId).first();
   if (!existing) throw Object.assign(new Error("Event instance not found"), { status: 404 });
@@ -389,18 +389,16 @@ export async function updateEventInstanceClockById(db, instanceId, input = {}, {
   const endsAt = input.ends_at === undefined && input.endsAt === undefined ? existing.ends_at : optionalIso(input.ends_at ?? input.endsAt, "ends_at");
   if (startsAt && endsAt && Date.parse(endsAt) < Date.parse(startsAt)) throw Object.assign(new Error("ends_at must be after starts_at"), { status: 400 });
   const timestamp = now instanceof Date ? now.toISOString() : new Date(now).toISOString();
-  const affectedItems = await allRows(db, `SELECT i.id, i.due_at, a.source
+  const affectedItems = await allRows(db, `SELECT i.id, i.due_at, anchor.source
     FROM event_plan_items i JOIN event_plans p ON p.id = i.event_plan_id
-    JOIN event_plan_anchors a ON a.event_plan_id = p.id AND a.anchor_key = i.anchor_key
+    JOIN timeline_template_anchors anchor ON anchor.template_version_id = p.template_version_id AND anchor.anchor_key = i.anchor_key
     WHERE p.event_instance_id = ? AND i.schedule_mode = 'relative' AND i.status != 'completed'
-      AND i.manual_override_at IS NULL AND a.source IN ('event_start', 'event_end')`, instanceId);
+      AND i.manual_override_at IS NULL AND anchor.source IN ('event_start', 'event_end')`, instanceId);
   const statements = [
     db.prepare(`UPDATE event_instances SET title = ?, starts_at = ?, ends_at = ?, venue_name = ?, venue_address = ?, capacity = ?, status = ?, updated_at = ? WHERE id = ?`)
       .bind(trimOrNull(input.title) ?? existing.title, startsAt, endsAt, trimOrNull(input.venue_name) ?? existing.venue_name,
         trimOrNull(input.venue_address) ?? existing.venue_address, input.capacity === undefined ? existing.capacity : input.capacity === "" ? null : Number(input.capacity),
-        trimOrNull(input.status) || existing.status, timestamp, instanceId),
-    db.prepare(`UPDATE event_plan_anchors SET occurs_at = CASE source WHEN 'event_start' THEN ? WHEN 'event_end' THEN ? ELSE occurs_at END, updated_at = ?
-      WHERE event_plan_id IN (SELECT id FROM event_plans WHERE event_instance_id = ?) AND source IN ('event_start', 'event_end')`).bind(startsAt, endsAt, timestamp, instanceId)
+        trimOrNull(input.status) || existing.status, timestamp, instanceId)
   ];
   for (const item of affectedItems) {
     const before = item.source === "event_start" ? existing.starts_at : existing.ends_at;

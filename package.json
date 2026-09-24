@@ -13,7 +13,10 @@
     "users:import-resend": "node scripts/import-resend-users.mjs",
     "roles:seed-admin": "node scripts/seed-admin-roles.mjs",
     "deploy": "wrangler deploy --keep-vars",
-    "deploy:ci": "wrangler deploy --keep-vars"
+    "deploy:ci": "wrangler deploy --keep-vars",
+    "sponsorships:setup:local": "node scripts/sponsorships-local.mjs setup",
+    "sponsorships:dev": "node scripts/sponsorships-local.mjs dev",
+    "sponsorships:reset:local": "node scripts/sponsorships-local.mjs reset"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

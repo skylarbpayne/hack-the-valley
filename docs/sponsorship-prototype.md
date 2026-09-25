@@ -30,6 +30,10 @@ Then open <http://localhost:8788/admin-sponsorships>. Both admins can manage eve
 sponsorship motion. Each motion has one owner; one admin can own many motions.
 The assigned owner determines who receives an overdue reminder preview.
 
+Use **Switch account** beside the signed-in name to test another identity.
+The access-denied screen also offers account switching. Both flows clear the
+current session before opening login.
+
 ## Demo data
 
 - Ten fictional businesses with reusable primary contacts and every outreach
@@ -114,12 +118,49 @@ For the equivalent direct commands use
 
 ## Validation and limits
 
+September 24, 2026 acceptance results:
+
+- `npm test`: **356 passed, 0 failed, 0 skipped**, including actual local
+  Miniflare/D1 concurrent writes, stale revisions and transaction rollback.
+- `npm run check`: passed. `npm run db:migrations:check`: all **26 migrations**
+  applied successfully, including integrity fixtures. `git diff --check`: clean.
+- Fresh and repeated local setup succeeded without remote credentials; repeated
+  setup preserved edits. The server was stopped and restarted, and the added
+  contact, $500 paid commitment, invoice/check references and uploaded PNG
+  remained available.
+- Browser acceptance used Danny (super admin), Alex (admin), and the ordinary
+  member. Both admins could edit across owners; the member saw an access denial.
+  Account switching was verified after fixing the pre-existing login redirect
+  loop in the organizer page.
+- Created and edited a contact, logged a call, moved outreach to Committed,
+  recorded $200 of a $500 commitment (still Committed), then $500 (Paid), and
+  uploaded/viewed a private logo. Reused the contact in a new 2028 campaign with
+  a fresh Not contacted motion; the 2027 payment/history stayed separate.
+  Archived the 2028 campaign and confirmed its history remained readable.
+- Completed and then rescheduled an overdue task. Live reminder eligibility
+  changed while saved daily snapshots stayed unchanged. Capturing twice kept
+  exactly two owner previews. In-kind fulfillment stayed Committed.
+- Combined owner/overdue filtering and status filtering worked. Desktop and
+  390px-wide layouts were reviewed; the document remained 390px wide with an
+  independently scrollable table. No browser JavaScript errors were observed
+  on the final page.
+
+See the [browser evidence](evidence/sponsorships/README.md) for screenshots.
+
 Foundation TDD evidence: the relationship and rollback tests first failed with
 `no such table: sponsor_contacts`, then passed after migration `0026`. The setup
 preservation and isolated-launch tests first failed because those behaviors
 were absent, then passed after adding the fixture and launcher modules. The
 tests use real SQLite constraints and transactional batches, with additional
 acceptance against Wrangler's actual local D1/R2 runtime.
+
+Subsequent red/green slices covered contact/campaign/motion validation and CRUD,
+authorization, Committed/Paid transitions, overdue grouping, private media and
+scheduled previews. Regression tests reproduced successful-write/lost-response
+retries, same-key concurrent logo replacement, revocation/archive races,
+successful UI writes followed by failed refreshes, and the account-switch loop
+before their fixes. Receipts, activity and audit counts are asserted together;
+real D1 tests also inject a failing batch to prove rollback and safe retry.
 
 ```sh
 node --test tests/sponsorships-foundation.test.mjs
@@ -134,3 +175,11 @@ one primary contact per business, one current follow-up and one logo per
 commitment. It does not issue invoices, attach checks, publish sponsor logos or
 send real reminder emails. Production deployment, migrations and delivery
 configuration need a separate approved rollout.
+
+Logo uploads write to local R2 before saving the D1 reference. If the database
+write fails, the old logo remains current and the new object is retained: an
+overlapping retry may still successfully reference it. Retrying the same upload
+reuses its deterministic object key and does not create another object version.
+Unreferenced files from abandoned uploads are retained until local reset; an
+automated deferred cleanup job is outside this prototype. Old referenced logos
+are removed only after a successful replacement is saved.

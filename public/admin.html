@@ -42,13 +42,14 @@
       </div>
 
       <nav id="admin-section-nav" aria-label="Admin sections" class="sticky top-3 z-20 mb-8 rounded-3xl border border-slate-700 bg-slate-950/90 p-3 shadow-2xl shadow-slate-950/30 backdrop-blur">
-        <div class="grid sm:grid-cols-2 lg:grid-cols-7 gap-2 text-sm font-black">
+        <div class="grid sm:grid-cols-2 lg:grid-cols-8 gap-2 text-sm font-black">
           <button type="button" data-admin-nav="dashboard" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Dashboard</button>
           <button type="button" data-admin-nav="live-ops" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Live ops</button>
           <button type="button" data-admin-nav="events" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Events</button>
           <button type="button" data-admin-nav="people" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">People</button>
           <button type="button" data-admin-nav="resources" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Resources</button>
           <button type="button" data-admin-nav="blog" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Blog</button>
+          <a href="/admin-sponsorships" class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Sponsorships</a>
           <button id="access-admin-nav" type="button" data-admin-nav="access" class="hidden rounded-2xl border border-violet-500/50 px-4 py-3 text-left text-violet-200 hover:border-violet-300">Access</button>
         </div>
       </nav>
@@ -121,6 +122,11 @@
       </section>
 
       <section id="admin-dashboard" data-admin-section="dashboard" class="grid md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+        <a href="/admin-sponsorships" class="block bg-bc-navy border border-bc-cyan/60 rounded-2xl p-5 hover:border-bc-cyan transition">
+          <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Sponsorships</div>
+          <h2 class="text-xl font-black mt-2">Grow community support</h2>
+          <p class="text-slate-400 text-sm mt-2">Review outreach, reuse contacts, track commitments and payments, and follow up on overdue conversations.</p>
+        </a>
         <a href="#event-cockpit" data-admin-nav="live-ops" class="block bg-bc-navy border border-bc-cyan/60 rounded-2xl p-5 hover:border-bc-cyan transition">
           <div class="text-xs uppercase tracking-[0.2em] text-bc-cyan font-semibold">Live ops</div>
           <h2 class="text-xl font-black mt-2">Run the room</h2>

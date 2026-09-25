@@ -154,6 +154,51 @@ test('activity writes reject a null body with a validation error and no side eff
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM sponsorship_activities WHERE motion_id=?').bind(motion.id).first()).n,1);
 });
 
+test('campaign create and archive retries preserve one result while same-key changed payloads conflict',async t=>{
+  const {db,close}=await createSponsorshipDb();t.after(close);
+  const input={name:'Annual sponsor outreach',year:2027},createOptions=options();
+  const [created,concurrent]=await Promise.all([
+    mutateSponsor(db,'campaigns',null,input,createOptions),
+    mutateSponsor(db,'campaigns',null,input,createOptions),
+  ]);
+  assert.deepEqual(concurrent,created);
+  assert.deepEqual(await mutateSponsor(db,'campaigns',null,input,createOptions),created);
+  await assert.rejects(mutateSponsor(db,'campaigns',null,{...input,year:2028},createOptions),error=>error.status===409);
+  const campaignId=created.body.item.id,archiveOptions=options();
+  const archive={revision:1,archived_at:'2026-09-24T18:00:00Z'};
+  const archived=await mutateSponsor(db,'campaigns',campaignId,archive,archiveOptions);
+  assert.deepEqual(await mutateSponsor(db,'campaigns',campaignId,archive,archiveOptions),archived);
+  await assert.rejects(mutateSponsor(db,'campaigns',campaignId,{...archive,archived_at:null},archiveOptions),error=>error.status===409);
+  const current=await db.prepare('SELECT * FROM sponsorship_campaigns WHERE id=?').bind(campaignId).first();
+  assert.equal(current.revision,2);assert.equal(current.archived_at,'2026-09-24T18:00:00.000Z');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM sponsorship_campaigns').first()).n,1);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM audit_events WHERE target_id=?').bind(campaignId).first()).n,2);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM sponsorship_mutation_receipts').first()).n,2);
+});
+
+test('activity replay and concurrent retry append one entry; failed writes can retry without extra audit effects',async t=>{
+  const {db,contact,campaign}=await fixtures(t);
+  const motion=await createMotion(db,contact,campaign);
+  const input={type:'call',description:'Discussed the sponsorship package'},opts=options();
+  const [first,concurrent]=await Promise.all([
+    addSponsorActivity(db,motion.id,input,opts),addSponsorActivity(db,motion.id,input,opts),
+  ]);
+  assert.deepEqual(concurrent,first);
+  assert.deepEqual(await addSponsorActivity(db,motion.id,input,opts),first);
+  await assert.rejects(addSponsorActivity(db,motion.id,{...input,description:'Different conversation'},opts),error=>error.status===409);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM sponsorship_activities WHERE motion_id=? AND type='call'").bind(motion.id).first()).n,1);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE target_id=? AND action='sponsorship.activity.create'").bind(motion.id).first()).n,1);
+  const retryOptions=options(),retryInput={type:'email',description:'Sent proposal after the call'};
+  const faultDb={prepare:db.prepare.bind(db),batch(statements){return db.batch([...statements,db.prepare("INSERT INTO sponsorship_write_guards(id,valid) VALUES('activity-failure',0)")]);}};
+  await assert.rejects(addSponsorActivity(faultDb,motion.id,retryInput,retryOptions),error=>error.status===409);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM sponsorship_activities WHERE motion_id=? AND type='email'").bind(motion.id).first()).n,0);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM sponsorship_mutation_receipts WHERE idempotency_key=?').bind(retryOptions.key).first()).n,0);
+  const success=await addSponsorActivity(db,motion.id,retryInput,retryOptions);
+  assert.deepEqual(await addSponsorActivity(db,motion.id,retryInput,retryOptions),success);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM sponsorship_activities WHERE motion_id=? AND type='email'").bind(motion.id).first()).n,1);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE target_id=? AND action='sponsorship.activity.create'").bind(motion.id).first()).n,2);
+});
+
 function pauseNextBatch(db) {
   let release,arrived,intercept=true;
   const pause=new Promise(resolve=>{release=resolve;});

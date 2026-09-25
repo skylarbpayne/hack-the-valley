@@ -544,8 +544,18 @@
       return me;
     }
 
-    function switchAccount() {
-      window.location.href = `/login/?next=${encodeURIComponent(currentAdminReturnPath())}`;
+    async function switchAccount() {
+      const button = $("logout");
+      button.disabled = true;
+      button.textContent = "Signing out…";
+      try {
+        const { switchAdminAccount } = await import("/admin-session.js");
+        await switchAdminAccount(currentAdminReturnPath());
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = "Could not sign out. Try again";
+        button.title = error.message;
+      }
     }
 
     function toIsoLocalValue(value) {

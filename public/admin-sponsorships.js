@@ -1,3 +1,5 @@
+import { switchAdminAccount } from './admin-session.js';
+
 const API = '/api/admin/sponsorships';
 const STATUSES = {
   not_contacted: 'Not contacted', contacted: 'Contacted', followup: 'Followup',
@@ -528,6 +530,17 @@ function manageCampaigns(record = null) {
 
 async function loadInbox() { state.reminders = (await request('/reminders')).items || []; }
 
+async function switchWorkspaceAccount(button) {
+  button.disabled = true;
+  button.textContent = 'Signing out…';
+  try { await switchAdminAccount('/admin-sponsorships'); }
+  catch (error) {
+    button.disabled = false;
+    button.textContent = 'Could not sign out. Try again';
+    button.title = error.message;
+  }
+}
+
 function bindPage() {
   $('#close-editor').addEventListener('click', () => $('#editor').close());
   $('#campaign-manage').addEventListener('click', () => manageCampaigns());
@@ -548,7 +561,8 @@ function bindPage() {
   document.addEventListener('click', event => {
     const target = event.target.closest('button');
     if (!target) return;
-    if (target.dataset.openMotion) void openMotion(target.dataset.openMotion, target.hasAttribute('data-payment-focus'));
+    if (target.hasAttribute('data-switch-account')) void switchWorkspaceAccount(target);
+    else if (target.dataset.openMotion) void openMotion(target.dataset.openMotion, target.hasAttribute('data-payment-focus'));
     else if (target.dataset.editContact) editContact(state.contacts.find(row => row.id === target.dataset.editContact));
     else if (target.dataset.useContact) newMotion(target.dataset.useContact);
     else if (target.dataset.editCampaign) manageCampaigns(state.campaigns.find(row => row.id === target.dataset.editCampaign));
@@ -590,7 +604,7 @@ async function initialize() {
     const motion = new URLSearchParams(window.location.search).get('motion');
     if (motion) await openMotion(motion);
   } catch (error) {
-    $('#loading').innerHTML = empty('Workspace unavailable', escapeHtml(error.message), '<a class="button secondary" href="/login/?next=/admin-sponsorships">Sign in with another account</a> <button class="button secondary" id="retry-load">Try again</button>');
+    $('#loading').innerHTML = empty('Workspace unavailable', escapeHtml(error.message), '<button type="button" class="button secondary" data-switch-account>Sign in with another account</button> <button class="button secondary" id="retry-load">Try again</button>');
     $('#retry-load').addEventListener('click', () => window.location.reload());
   }
 }

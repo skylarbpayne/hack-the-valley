@@ -1,6 +1,6 @@
 # HTV sponsorship management: local prototype plan
 
-Date: September 24, 2026  
+Date: September 24, 2026
 Status: Implemented and locally verified on `codex/sponsorship-prototype`; ready for PR review.
 Scope: Functional local prototype with seeded data, persistent local database, local logo storage, and an overdue-reminder preview inbox.
 

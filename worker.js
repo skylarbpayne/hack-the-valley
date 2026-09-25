@@ -1,3 +1,5 @@
+import { runScheduledSponsorshipReminders } from './functions/_lib/domain/sponsorship-reminders.js';
+import * as adminSponsorships from './functions/api/admin/sponsorships/index.js';
 import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
 import * as adminMe from './functions/api/admin/me.js';
 import * as adminRoles from './functions/api/admin/roles.js';
@@ -91,6 +93,10 @@ async function routeApiRequest(request, env, ctx, routeModule, params = {}) {
 }
 
 function matchApiRoute(pathname) {
+  if (pathname === '/api/admin/sponsorships' || pathname.startsWith('/api/admin/sponsorships/')) {
+    return { routeModule: adminSponsorships, params: {} };
+  }
+
   if (pathname === '/api/events') {
     return { routeModule: eventsIndex, params: {} };
   }
@@ -446,10 +452,19 @@ export default {
     // (logged) so a transient Resend hiccup never fails the cron tick.
     try {
       const db = getDb(env);
-      const summary = await reconcileBroadcastSends(db, { env });
-      console.log('blog broadcast reconcile', summary);
+      // Production blog reconciliation retains its daily cadence. The separate
+      // local prototype ticks every 15 minutes to exercise overdue previews.
+      if (!event?.cron || event.cron === '0 15 * * *') {
+        const summary = await reconcileBroadcastSends(db, { env });
+        console.log('blog broadcast reconcile', summary);
+      }
     } catch (err) {
       console.error('blog broadcast reconcile failed', err);
+    }
+    try {
+      await runScheduledSponsorshipReminders(getDb(env), { env, scheduledTime: event?.scheduledTime });
+    } catch (err) {
+      console.error('sponsorship reminder preview failed', err);
     }
   },
 };

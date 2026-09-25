@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateContact, validateMotion, normalizeCommitment, mutateSponsor, listSponsorRecords, getSponsorMotion } from '../functions/_lib/domain/sponsorships.js';
+import { validateContact, validateMotion, normalizeCommitment, mutateSponsor, listSponsorRecords, getSponsorMotion, addSponsorActivity } from '../functions/_lib/domain/sponsorships.js';
 
 test('contact validation requires a business and validates optional email', () => {
   assert.throws(() => validateContact({ business_name: '' }), /business/i);
@@ -147,6 +147,13 @@ test('follow-up completion and rescheduling preserves history and clears complet
   assert.ok((await getSponsorMotion(db,motion.id)).activities.length>=3);
 });
 
+test('activity writes reject a null body with a validation error and no side effects', async t=>{
+  const {db,contact,campaign}=await fixtures(t);
+  const motion=await createMotion(db,contact,campaign);
+  await assert.rejects(addSponsorActivity(db,motion.id,null,options()),error=>error.status===400);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM sponsorship_activities WHERE motion_id=?').bind(motion.id).first()).n,1);
+});
+
 function pauseNextBatch(db) {
   let release,arrived,intercept=true;
   const pause=new Promise(resolve=>{release=resolve;});
@@ -222,4 +229,12 @@ test('a failed commitment transition rolls back motion, sponsorship, activity, a
   assert.equal(detail.item.status,'committed');
   assert.ok(detail.commitment);
   assert.equal(detail.activities.length,2);
+});
+
+test('sponsorship review lists the saved in-kind description',async t=>{
+ const {db,contact,campaign}=await fixtures(t);
+ const motion=await createMotion(db,contact,campaign,{status:'committed'});
+ await mutateSponsor(db,'commitment',motion.id,{revision:1,contribution_type:'in_kind',in_kind_description:'Lunch for 50 students'},options());
+ const list=await listSponsorRecords(db,'motions',{});
+ assert.equal(list.items[0].in_kind_description,'Lunch for 50 students');
 });

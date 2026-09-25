@@ -175,7 +175,7 @@ async function applySponsorMutation(db,resource,rowId,input,c) {
   return commitMutation(db,c,statements,{status:previous?200:201,body:{ok:true,item:row}},now);
 }
 const JOINED_MOTIONS=`SELECT m.*,c.business_name,c.contact_name,c.email,u.name AS owner_name,u.email AS owner_email,p.name AS campaign_name,p.archived_at AS campaign_archived_at,
-  s.id AS sponsorship_id,s.contribution_type,s.committed_cents,s.received_cents,s.fulfilled_at,s.logo_storage_key,
+  s.id AS sponsorship_id,s.contribution_type,s.committed_cents,s.received_cents,s.fulfilled_at,s.logo_storage_key,s.in_kind_description,
   EXISTS(SELECT 1 FROM roles r WHERE r.user_id=m.owner_user_id AND r.scope_type='global' AND r.scope_id='*' AND r.role IN ('admin','super_admin') AND r.revoked_at IS NULL) AS owner_active,
   (SELECT a.description FROM sponsorship_activities a WHERE a.motion_id=m.id ORDER BY a.created_at DESC,a.id DESC LIMIT 1) AS latest_activity
   FROM sponsorship_motions m JOIN sponsor_contacts c ON c.id=m.contact_id JOIN sponsorship_campaigns p ON p.id=m.campaign_id JOIN users u ON u.id=m.owner_user_id LEFT JOIN sponsorships s ON s.motion_id=m.id`;
@@ -209,6 +209,7 @@ export async function getSponsorMotion(db,motionId) {
   return {ok:true,item:await projectMotion(row),commitment,activities};
 }
 export async function addSponsorActivity(db,motionId,input,options) {
+  validateInputObject(input);
   const c=await mutationContext(db,`activity:${motionId}`,input,options); if(c.replay)return c.replay;
   await getRow(db,'motions',motionId);
   const now=new Date().toISOString();

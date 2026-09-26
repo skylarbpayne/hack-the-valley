@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMoney, createMutationKeyStore, createSaveSession, reviewLatestDraft, filterMotions } from '../public/admin-sponsorships.js';
+import { parseMoney, createMutationKeyStore, createSaveSession, reviewLatestDraft, filterMotions, telephoneHref } from '../public/admin-sponsorships.js';
+
+test('contact call links preserve international prefixes and separate extensions from the number', () => {
+  assert.equal(telephoneHref('(661) 555-0100'), 'tel:6615550100');
+  assert.equal(telephoneHref('+1 (661) 555-0100 ext. 42'), 'tel:+16615550100;ext=42');
+  assert.equal(telephoneHref('555-0102 x7'), 'tel:5550102;ext=7');
+  assert.equal(telephoneHref('+44 20 7946 0958'), 'tel:+442079460958');
+  for (const value of [null, '', '  ', 'Not provided', 'javascript:alert(1)', '555-0100" onclick="alert(1)']) {
+    assert.equal(telephoneHref(value), null);
+  }
+});
 
 test('sponsorship form converts exact dollars to cents and rejects ambiguous input', () => {
   assert.equal(parseMoney('12.30'), 1230);

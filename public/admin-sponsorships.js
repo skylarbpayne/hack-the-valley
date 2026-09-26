@@ -6,6 +6,14 @@ const STATUSES = {
   interest: 'Interest', negotiating: 'Negotiating', lost: 'Lost', committed: 'Committed', paid: 'Paid',
 };
 
+export function telephoneHref(value) {
+  const match = String(value ?? '').trim().match(/^(\+?[\d\s().-]+?)(?:\s*(?:ext\.?|extension|x|#)\s*(\d+))?$/i);
+  if (!match) return null;
+  const number = match[1].replace(/[\s().-]/g, '');
+  if (!/^\+?\d+$/.test(number)) return null;
+  return `tel:${number}${match[2] ? `;ext=${match[2]}` : ''}`;
+}
+
 export function parseMoney(value) {
   const raw = String(value).trim();
   if (!raw) return null;
@@ -69,6 +77,11 @@ export function filterMotions(rows, { campaign = '', owner = '', status = '', ov
 }
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+const phoneLink = (value, missing = 'Not provided') => {
+  const phone = String(value ?? '').trim();
+  const href = telephoneHref(phone);
+  return href ? `<a class="contact-link" href="${escapeHtml(href)}" aria-label="Call ${escapeHtml(phone)}">${escapeHtml(phone)}</a>` : escapeHtml(phone || missing);
+};
 const money = cents => cents == null ? 'Not set' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: cents % 100 ? 2 : 0 }).format(cents / 100);
 const moneyInput = cents => cents == null ? '' : (cents / 100).toFixed(2);
 const dateLabel = value => value ? new Date(`${value.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : 'No date set';
@@ -253,7 +266,7 @@ function contactTable(rows) {
   if (!rows.length) return empty('Your relationships start here', 'Add a business once, then reuse it for every campaign.', '<button class="button secondary" data-add-contact>+ Add contact</button>');
   return `<div class="table-scroll"><table><thead><tr><th scope="col">Business</th><th scope="col">Primary contact</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Campaign history</th><th scope="col">Actions</th></tr></thead><tbody>${rows.map(row => {
     const motions = state.motions.filter(motion => motion.contact_id === row.id);
-    return `<tr><td class="business-cell"><button class="business-name" data-edit-contact="${escapeHtml(row.id)}">${escapeHtml(row.business_name)}</button><span class="subtext">${escapeHtml(row.website || '')}</span></td><td>${escapeHtml(row.contact_name || 'Not set')}</td><td>${row.email ? `<a href="mailto:${escapeHtml(row.email)}">${escapeHtml(row.email)}</a>` : '—'}</td><td>${escapeHtml(row.phone || '—')}</td><td>${motions.length ? motions.map(motion => `<span class="subtext">${escapeHtml(motion.campaign_name)} · ${escapeHtml(STATUSES[motion.status])}</span>`).join('') : '<span class="subtext">Not in a campaign yet</span>'}</td><td><div class="button-row"><button class="button secondary small" data-use-contact="${escapeHtml(row.id)}">Add to campaign</button><button class="button quiet small" data-edit-contact="${escapeHtml(row.id)}">Edit</button></div></td></tr>`;
+    return `<tr><td class="business-cell"><button class="business-name" data-edit-contact="${escapeHtml(row.id)}">${escapeHtml(row.business_name)}</button><span class="subtext">${escapeHtml(row.website || '')}</span></td><td>${escapeHtml(row.contact_name || 'Not set')}</td><td>${row.email ? `<a href="mailto:${escapeHtml(row.email)}">${escapeHtml(row.email)}</a>` : '—'}</td><td>${phoneLink(row.phone, '—')}</td><td>${motions.length ? motions.map(motion => `<span class="subtext">${escapeHtml(motion.campaign_name)} · ${escapeHtml(STATUSES[motion.status])}</span>`).join('') : '<span class="subtext">Not in a campaign yet</span>'}</td><td><div class="button-row"><button class="button secondary small" data-use-contact="${escapeHtml(row.id)}">Add to campaign</button><button class="button quiet small" data-edit-contact="${escapeHtml(row.id)}">Edit</button></div></td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
@@ -394,7 +407,8 @@ async function openMotion(id, focusPayment = false, preserveDraftOnError = false
     state.detail = result;
     const contact = state.contacts.find(item => item.id === row.contact_id);
     const activities = result.activities || [];
-    const body = `<div class="inline-contact"><div><p><strong>${escapeHtml(contact?.contact_name || row.contact_name || 'Primary contact not set')}</strong></p><span class="subtext">${escapeHtml(contact?.email || row.email || 'No email yet')}</span><span class="subtext">${escapeHtml(row.campaign_name)}</span></div><button class="button secondary small" id="edit-motion-contact">Edit contact</button></div>
+    const email = contact?.email ?? row.email;
+    const body = `<section class="inline-contact" aria-label="Primary contact details"><div class="contact-card-heading"><div><span class="contact-caption">Primary contact</span><p><strong>${escapeHtml(contact?.contact_name || row.contact_name || 'Not provided')}</strong></p></div><button class="button secondary small" id="edit-motion-contact">Edit contact</button></div><dl class="contact-details"><dt>Phone</dt><dd>${phoneLink(contact?.phone)}</dd><dt>Email</dt><dd>${email ? `<a class="contact-link" href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>` : 'Not provided'}</dd><dt>Campaign</dt><dd>${escapeHtml(row.campaign_name)}</dd></dl></section>
       ${row.owner_active === false || row.owner_active === 0 ? '<p class="drawer-callout warning">This owner no longer has admin access. Reassign this prospect to an active admin. No overdue reminder will be generated for the former owner.</p>' : ''}
       ${row.campaign_archived_at ? '<p class="drawer-callout">This campaign is archived. Its history is preserved and overdue reminders are paused.</p>' : ''}
       ${motionForm(row)}

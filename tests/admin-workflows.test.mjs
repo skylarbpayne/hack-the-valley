@@ -160,8 +160,8 @@ test("workflow endpoint returns only non-editorial sections and gated command me
   const body = await response.json();
 
   assert.equal(body.ok, true);
-  assert.deepEqual(body.sections.map((section) => section.id), ["events", "participation", "projects", "badges", "audit"]);
-  assert.deepEqual(body.domains, ["events", "participation", "projects", "badges", "audit"]);
+  assert.deepEqual(body.sections.map((section) => section.id), ["sponsorships", "events", "participation", "projects", "badges", "audit"]);
+  assert.deepEqual(body.domains, ["sponsorships", "events", "participation", "projects", "badges", "audit"]);
   assert.equal(body.sections.some((section) => ["content", "campaigns"].includes(section.id)), false);
 
   const commands = body.sections.flatMap((section) => section.commands);
@@ -264,7 +264,7 @@ test("admin audit endpoint falls back to legacy rows while the generic audit mig
 
 test("admin workflow surface helper is deterministic and excludes delegated domains", () => {
   const body = adminWorkflowSurface();
-  assert.deepEqual(body.sections.map((section) => section.id), ["events", "participation", "projects", "badges", "audit"]);
+  assert.deepEqual(body.sections.map((section) => section.id), ["sponsorships", "events", "participation", "projects", "badges", "audit"]);
   const serialized = JSON.stringify(body).toLowerCase();
   assert.doesNotMatch(serialized, /blog|campaign|email blast|contentitem/);
   assert.match(serialized, /approval required|approvalrequired/);

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Sponsorships · Hack the Valley</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/admin-sponsorships.css">
+  <script type="module" src="/admin-sponsorships.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#workspace">Skip to workspace</a>
+  <header class="topbar">
+    <a class="brand" href="/admin"><img class="brand-logo" src="/images/HackTheValleyLogo.PNG" alt="Hack the Valley logo" width="48" height="48"><span>HACK THE VALLEY <small>ORGANIZER WORKSPACE</small></span></a>
+    <div class="topbar-right"><span class="access-pill">Admin access</span><a href="/admin">← Organizer home</a></div>
+  </header>
+  <main id="workspace" class="workspace">
+    <div id="loading" class="empty-state" role="status">Checking your admin session…</div>
+    <div id="app" hidden>
+      <header class="page-header">
+        <div><p class="eyebrow">BUILDING COMMUNITY, TOGETHER</p><h1>Sponsorships<span class="title-dot">.</span></h1></div>
+        <div class="page-actions"><button id="campaign-manage" class="button secondary">Manage campaigns</button><button id="add-primary" class="button primary">+ Add prospect</button></div>
+      </header>
+      <div class="workspace-context"><div class="account-context"><span id="session-name"></span><button type="button" class="button quiet small" data-switch-account>Switch account</button></div><span id="preview-label" class="preview-label" hidden>Local prototype · Sample data · Emails are previews only</span></div>
+      <section id="summary" class="summary-grid" aria-label="Campaign summary"></section>
+      <nav class="tabs" aria-label="Sponsorship views">
+        <button class="tab active" data-tab="outreach" aria-current="page">Outreach <span id="outreach-count"></span></button>
+        <button class="tab" data-tab="contacts">Contacts bank</button>
+        <button class="tab" data-tab="sponsorships">Sponsorships</button>
+        <button class="tab" data-tab="inbox">Preview inbox</button>
+      </nav>
+      <div id="global-status" class="notice" role="status" aria-live="polite" hidden></div>
+      <section class="review-card" aria-labelledby="view-title">
+        <div class="section-heading"><div><h2 id="view-title">The weekly review</h2><p id="view-description">Keep the next conversation moving.</p></div><button id="refresh" class="button quiet">↻ Refresh</button></div>
+        <div id="filters" class="filters">
+          <label class="search-field"><span>Search</span><input id="search" type="search" placeholder="Business, contact, or next action…"></label>
+          <label id="campaign-filter-label"><span>Campaign</span><select id="campaign-filter"><option value="">All campaigns</option></select></label>
+          <label id="status-filter-label"><span>Status</span><select id="status-filter"><option value="">All statuses</option></select></label>
+          <label id="owner-filter-label"><span>Owner</span><select id="owner-filter"><option value="">All owners</option></select></label>
+          <label id="overdue-filter-label" class="checkbox-field"><input id="overdue-filter" type="checkbox"><span>Overdue only</span></label>
+        </div>
+        <div id="inbox-controls" class="inbox-controls" hidden><p><strong>Preview only.</strong> Daily summaries are due at 9 a.m. Pacific, only for owners with overdue, unfinished follow-ups. Lost, Paid, and archived campaigns are excluded.</p><div class="button-row"><button id="generate-previews" class="button primary">Capture today’s previews</button><button id="refresh-previews" class="button secondary">Check current eligibility</button></div></div>
+        <div id="results" aria-live="polite"></div>
+        <footer class="table-footer"><span id="result-count"></span><span id="result-note">Follow-up dates use Pacific time.</span></footer>
+      </section>
+      <footer class="workspace-footer"><span>Hack the Valley · Central Valley community</span><span>Shared contacts. Fresh outreach each year.</span></footer>
+    </div>
+  </main>
+  <dialog id="editor" aria-labelledby="editor-title">
+    <div class="drawer-header"><div><p class="eyebrow" id="editor-eyebrow">SPONSORSHIP WORKSPACE</p><h2 id="editor-title"></h2></div><button id="close-editor" class="icon-button" aria-label="Close details">×</button></div>
+    <div id="editor-content" class="drawer-content"></div>
+    <div id="editor-status" class="drawer-status" role="status" aria-live="polite" hidden></div>
+  </dialog>
+</body>
+</html>

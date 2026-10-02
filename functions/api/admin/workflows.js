@@ -35,6 +35,16 @@ function command({
 
 const sections = [
   {
+    id: "sponsorships",
+    label: "Sponsorships",
+    description: "Reusable business contacts, yearly sponsor outreach, commitments, and overdue follow-ups.",
+    commands: [
+      command({ id: "sponsorships.list", label: "Review sponsor outreach", method: "GET", pathTemplate: "/api/admin/sponsorships/motions", domain: "sponsorships", readOnly: true, description: "Review ownership, status, completed activity, and next actions in the sponsorship workspace." }),
+      command({ id: "sponsorships.create", label: "Add sponsor prospect", method: "POST", pathTemplate: "/api/admin/sponsorships/motions", domain: "sponsorships", approvalRequired: true, description: "Review and save a business prospect for a yearly fundraising effort, assigned to an active HTV admin owner." }),
+      command({ id: "sponsorships.update", label: "Update outreach", method: "PATCH", pathTemplate: "/api/admin/sponsorships/motions/{id}", domain: "sponsorships", approvalRequired: true, description: "Save outreach changes with revision and retry protection." })
+    ]
+  },
+  {
     id: "events",
     label: "Events",
     description: "Event setup, recurrence planning, image assets, and participant-facing signup fields.",

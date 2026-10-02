@@ -101,7 +101,11 @@ export function broadcastIdempotencyKey(slug, scheduledAtIso) {
 // recipients to reply with projects/stories to feature on the blog.
 export function resolveBroadcastConfig(env = {}) {
   const apiKey = String(env.RESEND_API_KEY || '').trim();
-  const from = String(env.RESEND_BROADCAST_FROM || env.RESEND_FROM || env.RESEND_FROM_EMAIL || '').trim();
+  // RESEND_BROADCAST_FROM only — no fallback to RESEND_FROM/RESEND_FROM_EMAIL. Those are the
+  // transactional (login) sender; silently reusing one for whole-list blasts would let production
+  // look configured with a sender never verified for broadcast, contradicting the deploy gate
+  // this function exists to enforce (see htv-issue-100).
+  const from = String(env.RESEND_BROADCAST_FROM || '').trim();
   const replyTo = String(env.RESEND_BROADCAST_REPLY_TO || env.RESEND_REPLY_TO || env.HTV_CONTACT_EMAIL || 'contact@hackthevalley.org').trim();
   const missing = [];
   if (!apiKey) missing.push('RESEND_API_KEY');

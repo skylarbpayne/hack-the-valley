@@ -5,6 +5,8 @@ import * as adminWorkflows from './functions/api/admin/workflows.js';
 import * as adminAudit from './functions/api/admin/audit.js';
 import * as adminPhysicalResources from './functions/api/admin/physical-resources/index.js';
 import * as adminPhysicalResource from './functions/api/admin/physical-resources/[id].js';
+import * as adminEventPlans from './functions/api/admin/event-plans/index.js';
+import * as adminEventPlan from './functions/api/admin/event-plans/[id].js';
 import * as authRequestCode from './functions/api/auth/request-code.js';
 import * as authVerifyCode from './functions/api/auth/verify-code.js';
 import * as authMagicLogin from './functions/api/auth/magic-login.js';
@@ -113,6 +115,15 @@ function matchApiRoute(pathname) {
 
   if (pathname === '/api/admin/physical-resources' || pathname === '/api/admin/physical-resources/') {
     return { routeModule: adminPhysicalResources, params: {} };
+  }
+
+  if (pathname === '/api/admin/event-plans' || pathname === '/api/admin/event-plans/') {
+    return { routeModule: adminEventPlans, params: {} };
+  }
+
+  const adminEventPlanMatch = pathname.match(/^\/api\/admin\/event-plans\/([^/]+)\/?$/);
+  if (adminEventPlanMatch) {
+    return { routeModule: adminEventPlan, params: { id: decodeURIComponent(adminEventPlanMatch[1]) } };
   }
 
   const adminPhysicalResourceMatch = pathname.match(/^\/api\/admin\/physical-resources\/([^/]+)(?:\/(checkouts|photo))?\/?$/);

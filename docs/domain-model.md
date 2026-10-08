@@ -111,3 +111,25 @@ Do not big-bang rename the database. The safer sequence is:
 3. Move routes to helpers one slice at a time.
 4. Add migrations only when a concept cannot be safely represented with current tables.
 5. Keep public routes/API compatibility unless intentionally changed.
+
+## Sponsorship management
+
+Sponsorship management is a separate organizer domain, accessible only to active
+signed-in global admins. It uses the existing `Person` identities for ownership:
+one user owns many sponsorship motions; each motion has one assigned owner.
+
+| Concept | Storage | Boundary |
+| --- | --- | --- |
+| SponsorContact | `sponsor_contacts` | A reusable business and its one primary contact; no participant login is created. |
+| SponsorshipCampaign | `sponsorship_campaigns` | A named annual/event fundraising effort, optionally linked to an event instance; distinct from an outbound communication Campaign. |
+| SponsorshipMotion | `sponsorship_motions` | One contact/campaign pair, its owner, outreach state, notes, and current follow-up. |
+| Sponsorship | `sponsorships` | Zero or one commitment per motion; cash/in-kind amounts, payment references, fulfillment, and private logo metadata. |
+| SponsorshipActivity | `sponsorship_activities` | Completed outreach actions and change history scoped to a motion. |
+| ReminderDigest | `sponsorship_reminder_digests` | A preview-only overdue summary, unique per owner/Pacific date/mode; not a claim of email delivery. |
+
+All new tables are defined by migration `0030_sponsorship_management.sql`. Mutations record a retry receipt
+in the same D1 transaction as their data, activity, and audit changes. Optimistic
+revision guards reject stale writes. Daily summaries include only overdue,
+unfinished follow-ups in active campaigns, excluding Lost/Paid motions and
+inactive admin owners. Local setup, accounts, and demo steps are in
+[`sponsorship-prototype.md`](sponsorship-prototype.md).

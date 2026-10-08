@@ -215,7 +215,7 @@ npm run sponsorships:dev
 
 Before coding, refresh upstream and start an isolated `codex/sponsorship-prototype` branch from the appropriate upstream base, preserving unrelated work and this plan. Resolve any newer migration numbering first.
 
-Add the next available migration (currently proposed `0026_sponsorship_management.sql`), follow upstream AGENTS.md: migrations are the only schema source (do not recreate schema.sql), add the local launcher/seed scripts, and document the commands.
+Add the next available migration (`0030_sponsorship_management.sql` after the event-planning migrations on main), follow upstream AGENTS.md: migrations are the only schema source (do not recreate schema.sql), add the local launcher/seed scripts, and document the commands.
 
 **Tests first:** add failing local integration cases for the new relationship constraints and repeated setup preserving edited fixtures. As the protected API entry point is added, first prove member/bootstrap access is rejected and admin access succeeds.
 

@@ -127,7 +127,7 @@ one user owns many sponsorship motions; each motion has one assigned owner.
 | SponsorshipActivity | `sponsorship_activities` | Completed outreach actions and change history scoped to a motion. |
 | ReminderDigest | `sponsorship_reminder_digests` | A preview-only overdue summary, unique per owner/Pacific date/mode; not a claim of email delivery. |
 
-All new tables are defined by migration `0026`. Mutations record a retry receipt
+All new tables are defined by migration `0030_sponsorship_management.sql`. Mutations record a retry receipt
 in the same D1 transaction as their data, activity, and audit changes. Optimistic
 revision guards reject stale writes. Daily summaries include only overdue,
 unfinished follow-ups in active campaigns, excluding Lost/Paid motions and

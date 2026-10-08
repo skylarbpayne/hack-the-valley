@@ -148,7 +148,8 @@ September 24, 2026 acceptance results:
 See the [browser evidence](evidence/sponsorships/README.md) for screenshots.
 
 Foundation TDD evidence: the relationship and rollback tests first failed with
-`no such table: sponsor_contacts`, then passed after migration `0026`. The setup
+`no such table: sponsor_contacts`, then passed after the sponsorship migration
+(now `0030` after merging the event-planning migrations). The setup
 preservation and isolated-launch tests first failed because those behaviors
 were absent, then passed after adding the fixture and launcher modules. The
 tests use real SQLite constraints and transactional batches, with additional

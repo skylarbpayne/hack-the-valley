@@ -7,3 +7,4 @@ export * from "./badges.js";
 export * from "./projects.js";
 export * from "./submissions.js";
 export * from "./physical-resources.js";
+export * from "./event-planning.js";

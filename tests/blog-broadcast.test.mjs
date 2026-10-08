@@ -199,6 +199,28 @@ test('resolveBroadcastConfig requires an API key and sender', () => {
   assert.equal(custom.replyTo, 'blog@hackthevalley.org');
 });
 
+test('resolveBroadcastConfig does not fall back to RESEND_FROM / RESEND_FROM_EMAIL (htv-issue-100)', () => {
+  // RESEND_FROM/RESEND_FROM_EMAIL are the transactional (login) sender. Accepting either as a
+  // broadcast fallback would let production look configured for whole-list blasts using a
+  // sender never verified for that purpose - the exact footgun PR #45 intended to close.
+  assert.throws(() => resolveBroadcastConfig({ RESEND_API_KEY: 'k', RESEND_FROM: 'legacy@b.co' }), (err) => {
+    return err.status === 503 && /RESEND_BROADCAST_FROM/.test(err.message);
+  });
+  assert.throws(() => resolveBroadcastConfig({ RESEND_API_KEY: 'k', RESEND_FROM_EMAIL: 'legacy@b.co' }), (err) => {
+    return err.status === 503 && /RESEND_BROADCAST_FROM/.test(err.message);
+  });
+  assert.throws(() => resolveBroadcastConfig({ RESEND_API_KEY: 'k', RESEND_FROM: 'a@b.co', RESEND_FROM_EMAIL: 'c@d.co' }), (err) => {
+    return err.status === 503 && /RESEND_BROADCAST_FROM/.test(err.message);
+  });
+  // RESEND_BROADCAST_FROM set alongside the legacy vars still wins - and uses the broadcast
+  // value, not either legacy one, confirming there's no silent cross-contamination either way.
+  const config = resolveBroadcastConfig({
+    RESEND_API_KEY: 'k', RESEND_BROADCAST_FROM: 'HTV <a@b.co>',
+    RESEND_FROM: 'legacy@b.co', RESEND_FROM_EMAIL: 'also-legacy@b.co',
+  });
+  assert.equal(config.from, 'HTV <a@b.co>');
+});
+
 test('resolveAudienceId targets only a segment that contains every Resend contact', async () => {
   const explicit = mockFetch([
     { status: 200, body: { data: [{ id: 'contact_1' }, { id: 'contact_2' }] } },

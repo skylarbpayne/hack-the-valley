@@ -9,7 +9,7 @@ import {
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
-    await requireOrganizerAccess(context.request, context.env);
+    await requireOrganizerAccess(context.request, context.env, { scopeType: "event", scopeId: context.params.slug });
     const db = getDb(context.env);
     const cockpit = await getEventCockpit(db, context.params.slug, context.params.instanceId);
     return jsonResponse(cockpit);

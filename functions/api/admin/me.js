@@ -1,5 +1,7 @@
 import {
   getUserCommunityState,
+  getCurrentUserFromRequest,
+  getDb,
   handleErrors,
   jsonResponse,
   methodNotAllowed,
@@ -16,7 +18,9 @@ function isAdmin(roles = []) {
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
-    const access = await requireAdmin(context.request, context.env);
+    const db = getDb(context.env);
+    const signedIn = await getCurrentUserFromRequest(db, context.request);
+    const access = signedIn ? { user: signedIn, bootstrap: false } : await requireAdmin(context.request, context.env);
     if (access.bootstrap) {
       return jsonResponse({
         ok: true,
@@ -32,8 +36,11 @@ export async function onRequestGet(context) {
       });
     }
 
-    const state = await getUserCommunityState(context.env.HTV_DB || context.env.SUBMISSIONS_DB || context.env.DB, access.user.id);
+    const state = await getUserCommunityState(db, access.user.id);
     const roles = state.roles || [];
+    if (!roles.some(role => ['admin', 'super_admin', 'organizer'].includes(role.role) && !role.revoked_at)) {
+      return jsonResponse({ error: 'Forbidden' }, { status: 403 });
+    }
     return jsonResponse({
       ok: true,
       bootstrap: false,
@@ -45,8 +52,9 @@ export async function onRequestGet(context) {
       roles,
       capabilities: {
         admin: isAdmin(roles),
+        organizer: roles.some((role) => role.role === "organizer" && !role.revoked_at),
         super_admin: isSuperAdmin(roles),
-        role_management: isSuperAdmin(roles),
+        role_management: isAdmin(roles),
         bootstrap: false
       }
     });

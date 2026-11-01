@@ -2,7 +2,7 @@ import {
   handleErrors,
   jsonResponse,
   methodNotAllowed,
-  requireAdmin
+  requireOrganizerAccess
 } from "../../../_lib/event-platform.js";
 import {
   assertEventImageKeyForRoute,
@@ -22,7 +22,7 @@ export function onRequestOptions() {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    await requireAdmin(context.request, context.env);
+    await requireOrganizerAccess(context.request, context.env, { scopeType: "event", scopeId: context.params.slug });
     if (!context.env.SUBMISSIONS_MEDIA) {
       throw Object.assign(new Error("Upload storage is not configured."), { status: 503 });
     }

@@ -18,7 +18,7 @@ function trustedOrganizerSource(access = {}) {
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
-    await requireOrganizerAccess(context.request, context.env);
+    await requireOrganizerAccess(context.request, context.env, { scopeType: "event", scopeId: context.params.slug });
     const db = getDb(context.env);
     const projects = await listOrganizerEventProjectSubmissions(db, {
       eventSlug: context.params.slug,
@@ -30,7 +30,7 @@ export async function onRequestGet(context) {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    const access = await requireOrganizerAccess(context.request, context.env);
+    const access = await requireOrganizerAccess(context.request, context.env, { scopeType: "event", scopeId: context.params.slug });
     const db = getDb(context.env);
     const body = await readJson(context.request);
     const project = await submitEventInstanceProjectSubmission(db, {

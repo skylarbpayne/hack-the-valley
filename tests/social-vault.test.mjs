@@ -20,10 +20,11 @@ const req = (path = '', { user = 'danny', method = 'GET', body, headers = {} } =
 const call = (env,path,options) => worker.fetch(req(path,options),env);
 const count = async (db,table) => (await db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first()).n;
 
-test('vault ignores global admin/bootstrap, requires explicit magic-login grant and same-origin reveal', async t => {
+test('vault grants live global admins, ignores bootstrap, requires member grant and same-origin reveal', async t => {
   const env = await fixture(t);
   assert.equal((await call(env,'',{user:null})).status,401);
-  assert.equal((await call(env,'',{user:'alex'})).status,403, 'global admin is not a vault grant');
+  assert.equal((await call(env,'',{user:'alex'})).status,200, 'global admin has implicit vault access');
+  assert.equal((await call(env,'',{user:'alex'}).then(r=>r.json())).role,'admin');
   assert.equal((await call({...env,HTV_ADMIN_TOKEN:'recovery',HTV_ADMIN_BOOTSTRAP_TOKEN_ENABLED:'1'},'',{user:null,headers:{Authorization:'Bearer recovery'}})).status,401);
   assert.equal((await call(env,'/members',{method:'POST',body:{email:'member@example.com',role:'member'},headers:{Origin:'https://evil.example'}})).status,403);
   assert.equal((await call(env,'/members',{method:'POST',body:{email:'member@example.com',role:'member'},headers:{Origin:''}})).status,403);
@@ -83,15 +84,47 @@ test('15-person cap is database-atomic across competing grants and revocation ma
   for(let n=0;n<15;n++) await db.prepare('INSERT INTO users(id,email,name,created_at,updated_at) VALUES(?,?,?,?,?)').bind(`vault_test_${n}`,`vault${n}@example.test`,'Synthetic','2026-01-01','2026-01-01').run();
   const grant=n=>call(env,'/members',{method:'POST',body:{email:`vault${n}@example.test`,role:'member'}});
   const results=await Promise.all(Array.from({length:15},(_,n)=>grant(n)));
-  assert.equal(results.filter(r=>r.status===200).length,14);
-  assert.equal(results.filter(r=>r.status===409).length,1);
-  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM social_vault_members WHERE revoked_at IS NULL').first()).n,15);
-  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action='social_vault_grant'").first()).n,14);
+  assert.equal(results.filter(r=>r.status===200).length,13);
+  assert.equal(results.filter(r=>r.status===409).length,2);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM social_vault_members WHERE revoked_at IS NULL').first()).n,14);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action='social_vault_grant'").first()).n,13);
   const victim=(await db.prepare("SELECT user_id FROM social_vault_members WHERE role='member' AND revoked_at IS NULL LIMIT 1").first()).user_id;
   assert.equal((await call(env,`/members/${victim}`,{method:'DELETE'})).status,200);
   const missing=(await db.prepare("SELECT id,email FROM users WHERE id NOT IN (SELECT user_id FROM social_vault_members WHERE revoked_at IS NULL) AND id LIKE 'vault_test_%' LIMIT 1").first()).email;
   assert.equal((await call(env,'/members',{method:'POST',body:{email:missing,role:'member'}})).status,200);
-  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM social_vault_members WHERE revoked_at IS NULL').first()).n,15);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM social_vault_members WHERE revoked_at IS NULL').first()).n,14);
+});
+
+test('admin management, immediate revocation, membership fallback, and seat deduplication', async t => {
+  const env = await fixture(t), db = env.HTV_DB;
+  const created = await call(env, '/accounts', { user:'alex', method:'POST', body:{ label:'Synthetic', login:'test', password:'synthetic-only' } });
+  assert.equal(created.status, 201, await created.clone().text());
+  const { id } = await created.json();
+  assert.equal((await call(env, `/accounts/${id}/reveal`, { user:'alex', method:'POST' })).status, 200);
+  assert.equal((await call(env, '/members', { user:'alex', method:'POST', body:{ email:'member@example.com', role:'member' } })).status, 200);
+  assert.equal((await call(env, '/members', { user:'member', method:'POST', body:{ email:'alex@example.com', role:'owner' } })).status, 403);
+  const before = (await call(env, '', { user:'alex' }).then(r=>r.json())).effectiveCount;
+  assert.equal((await call(env, '/members', { method:'POST', body:{ email:'alex@example.com',role:'member' } })).status, 200);
+  assert.equal((await call(env, '', { user:'alex' }).then(r=>r.json())).effectiveCount, before);
+  await db.prepare("UPDATE roles SET revoked_at='2026-02-01' WHERE user_id=? AND role='admin'").bind(DEMO_USERS.alex).run();
+  assert.equal((await call(env,'',{user:'alex'}).then(r=>r.json())).role, 'member');
+  assert.equal((await call(env,`/accounts/${id}/reveal`,{user:'alex',method:'POST'})).status,200);
+  assert.equal((await call(env,'/accounts',{user:'alex',method:'POST',body:{label:'No',login:'no',password:'no'}})).status,403);
+  assert.equal((await call(env,`/members/${DEMO_USERS.alex}`,{method:'DELETE'})).status,200);
+  assert.equal((await call(env,'',{user:'alex'})).status,403);
+  assert.equal((await call(env,`/accounts/${id}/reveal`,{user:'alex',method:'POST'})).status,403);
+});
+
+test('database rejects a sixteenth effective admin and allows admin/member overlap', async t => {
+  const env = await fixture(t), db=env.HTV_DB;
+  for(let n=0;n<13;n++) await db.prepare('INSERT INTO users(id,email,name,created_at,updated_at) VALUES(?,?,?,?,?)').bind(`seat_${n}`,`seat${n}@example.test`,'Synthetic','2026-01-01','2026-01-01').run();
+  for(let n=0;n<13;n++) assert.equal((await call(env,'/members',{method:'POST',body:{email:`seat${n}@example.test`,role:'member'}})).status,200);
+  await assert.rejects(db.prepare("INSERT INTO roles(id,user_id,role,scope_type,scope_id,created_at) VALUES('seat-admin',?,'admin','global','*','2026-01-01')").bind(DEMO_USERS.member).run(), /full/i);
+  await db.prepare("INSERT INTO roles(id,user_id,role,scope_type,scope_id,created_at) VALUES('seat-overlap',?,'admin','global','*','2026-01-01')").bind('seat_0').run();
+  assert.equal((await call(env,'',{user:'danny'}).then(r=>r.json())).effectiveCount,15);
+  await db.prepare("UPDATE social_vault_members SET revoked_at='2026-02-01' WHERE user_id='seat_1'").run();
+  await db.prepare("INSERT INTO roles(id,user_id,role,scope_type,scope_id,created_at) VALUES('seat-admin',?,'admin','global','*','2026-01-01')").bind(DEMO_USERS.member).run();
+  assert.equal((await call(env,'',{user:'danny'}).then(r=>r.json())).effectiveCount,15);
 });
 
 test('actual local D1 commits guarded writes and audit together, denies stale updates', async t => {

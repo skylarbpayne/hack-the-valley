@@ -12,8 +12,8 @@ function button(text, action, className = '') { const el = document.createElemen
 async function refresh() {
   hideSecret();
   state = await api();
-  $('editor').hidden = state.role !== 'owner';
-  $('management').hidden = state.role !== 'owner';
+  $('editor').hidden = !['owner','admin'].includes(state.role);
+  $('management').hidden = !['owner','admin'].includes(state.role);
   const list = $('accounts'); list.replaceChildren();
   if (!state.accounts.length) { const empty = document.createElement('p'); empty.textContent = 'No accounts saved yet.'; list.append(empty); }
   for (const account of state.accounts) {
@@ -32,13 +32,13 @@ async function refresh() {
         status('Shown temporarily; this reveal was audited.');
       } catch (error) { status(error.message); }
     }));
-    if (state.role === 'owner') row.append(button('Replace', () => {
+    if (['owner','admin'].includes(state.role)) row.append(button('Replace', () => {
       hideSecret(); const form = $('account-form'); form.reset(); form.elements.id.value = account.id; form.elements.revision.value = account.revision; form.elements.label.value = account.label; form.elements.login.focus(); status('Enter the login and new password to replace this account.');
     }, 'secondary'));
     list.append(row);
   }
-  if (state.role === 'owner') {
-    const members = $('members'); members.replaceChildren(); $('count').textContent = `${state.members.length} of ${state.capacity} active people`;
+  if (['owner','admin'].includes(state.role)) {
+    const members = $('members'); members.replaceChildren(); $('count').textContent = `${state.effectiveCount} of ${state.capacity} effective people (admins included; ${state.members.length} explicit grants)`;
     for (const member of state.members) {
       const row = document.createElement('div'); row.className = 'row';
       const name = document.createElement('span'); name.textContent = `${member.email} (${member.role})`;

@@ -59,7 +59,7 @@ export async function onRequestGet(context) {
       return new Response(object.body, { headers });
     }
 
-    await requireOrganizerAccess(context.request, context.env);
+    await requireOrganizerAccess(context.request, context.env, { scopeType: "event", scopeId: context.params.slug });
     const instance = await getEventInstance(db, context.params.slug, context.params.instanceId);
     if (!instance) return jsonResponse({ error: "Event instance not found" }, { status: 404 });
     const [photos, count] = await Promise.all([
@@ -72,7 +72,7 @@ export async function onRequestGet(context) {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    await requireOrganizerAccess(context.request, context.env);
+    await requireOrganizerAccess(context.request, context.env, { scopeType: "event", scopeId: context.params.slug });
     if (!context.env.SUBMISSIONS_MEDIA) {
       return jsonResponse({ error: "Upload storage is not configured." }, { status: 503 });
     }

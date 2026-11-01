@@ -6,7 +6,7 @@ import {
   methodNotAllowed,
   normalizeEmail,
   readJson,
-  requireSuperAdminAccess
+  requireAdmin
 } from "../../_lib/event-platform.js";
 import { appendAuditEvent, buildAuditEvent } from "../../_lib/domain/audit.js";
 
@@ -74,13 +74,20 @@ async function auditRoleChange(db, { action, targetUserId, targetEmail, role, ac
 async function grantAdmin(db, email, access) {
   const user = await requireExistingUser(db, email);
   const now = new Date().toISOString();
-  await db.prepare(`
+  try {
+    await db.prepare(`
     INSERT INTO roles (id, user_id, role, scope_type, scope_id, granted_by_user_id, created_at, revoked_at)
     VALUES (?, ?, ?, 'global', '*', ?, ?, NULL)
     ON CONFLICT(user_id, role, scope_type, scope_id) DO UPDATE SET
       granted_by_user_id = excluded.granted_by_user_id,
       revoked_at = NULL
   `).bind(generateId("role"), user.id, ADMIN_ROLE, actorId(access), now).run();
+  } catch (error) {
+    if (/Social vault is full \(15 effective people\)/.test(String(error))) {
+      throw Object.assign(new Error("All 15 vault-access seats are occupied. Remove an effective seat before granting another admin."), { status: 409 });
+    }
+    throw error;
+  }
   await auditRoleChange(db, { action: "grant_admin", targetUserId: user.id, targetEmail: email, role: ADMIN_ROLE, actorUserId: actorId(access) });
   return user;
 }
@@ -104,7 +111,7 @@ async function revokeAdmin(db, email, access) {
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
-    const access = await requireSuperAdminAccess(context.request, context.env);
+    const access = await requireAdmin(context.request, context.env);
     const db = getDb(context.env);
     const roles = await listAdminRoles(db);
     return jsonResponse({ ok: true, bootstrap: Boolean(access.bootstrap), roles, count: roles.length });
@@ -113,7 +120,7 @@ export async function onRequestGet(context) {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    const access = await requireSuperAdminAccess(context.request, context.env);
+    const access = await requireAdmin(context.request, context.env);
     const db = getDb(context.env);
     const input = await readJson(context.request);
     const email = assertAdminEmail(input.email);

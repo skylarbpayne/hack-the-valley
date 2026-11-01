@@ -328,9 +328,9 @@
       <section id="role-admin" data-admin-section="access" class="hidden bg-bc-navy border-2 border-violet-500/70 rounded-2xl p-6 mt-8">
         <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5 mb-4">
           <div>
-            <p class="text-violet-300 uppercase tracking-[0.2em] text-xs font-black">Super admin</p>
+            <p class="text-violet-300 uppercase tracking-[0.2em] text-xs font-black">Admin access</p>
             <h2 class="text-2xl font-black mt-1">Admin role grants</h2>
-            <p id="role-admin-status" class="text-sm text-slate-400 mt-1">Sensitive access changes are isolated from normal event work. Only the global super admin can grant or revoke admin access.</p>
+            <p id="role-admin-status" class="text-sm text-slate-400 mt-1">Sensitive access changes are isolated from normal event work. Admins can grant or revoke global admin access. Super-admin grants remain a separate bootstrap operation.</p>
           </div>
           <button id="load-admin-roles" class="border border-violet-400 text-violet-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-violet-400 hover:text-bc-dark">Refresh roles</button>
         </div>
@@ -560,11 +560,11 @@
 
     function showAdminSection(section = "dashboard", { focusTarget = null, updateHash = false } = {}) {
       let nextSection = section;
-      if (nextSection === "access" && !isCurrentSuperAdmin()) nextSection = "dashboard";
+      if (nextSection === "access" && !hasAdminRole(currentAdminUser?.roles || [])) nextSection = "dashboard";
       currentAdminSection = nextSection;
       document.querySelectorAll("[data-admin-section]").forEach((panel) => {
         const shouldShow = panel.dataset.adminSection === nextSection;
-        if (panel.id === "role-admin" && !isCurrentSuperAdmin()) {
+        if (panel.id === "role-admin" && !hasAdminRole(currentAdminUser?.roles || [])) {
           panel.classList.add("hidden");
           return;
         }
@@ -585,9 +585,9 @@
 
     function showApp(me) {
       currentAdminUser = me;
-      const superAdmin = hasSuperAdminRole(me.roles || []);
-      $("role-admin").classList.toggle("hidden", !superAdmin);
-      $("access-admin-nav").classList.toggle("hidden", !superAdmin);
+      const admin = hasAdminRole(me.roles || []);
+      $("role-admin").classList.toggle("hidden", !admin);
+      $("access-admin-nav").classList.toggle("hidden", !admin);
       loginPanel.classList.add("hidden");
       adminApp.classList.remove("hidden");
       showAdminSection(adminSectionFromHash(), { updateHash: false });
@@ -605,7 +605,7 @@
         await loadUsers();
         await loadHelperInterests();
         await loadPhysicalResources();
-        if (hasSuperAdminRole(me.roles || [])) await loadAdminRoles();
+        if (hasAdminRole(me.roles || [])) await loadAdminRoles();
       }
       return me;
     }

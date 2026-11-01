@@ -4,7 +4,7 @@ import {
   jsonResponse,
   methodNotAllowed,
   readJson,
-  requireOrganizerAccess
+  requireAdmin
 } from "../../../_lib/event-platform.js";
 import {
   awardPersonBadgeFromAdminRoute,
@@ -21,7 +21,7 @@ async function readOptionalJson(request) {
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
-    await requireOrganizerAccess(context.request, context.env);
+    await requireAdmin(context.request, context.env);
     const badges = await listPersonBadgesForAdminRoute(getDb(context.env), { personId: context.params.id });
     return jsonResponse({ ok: true, badges });
   });
@@ -29,7 +29,7 @@ export async function onRequestGet(context) {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    const access = await requireOrganizerAccess(context.request, context.env);
+    const access = await requireAdmin(context.request, context.env);
     const body = await readJson(context.request);
     const result = await awardPersonBadgeFromAdminRoute(getDb(context.env), {
       personId: context.params.id,
@@ -42,7 +42,7 @@ export async function onRequestPost(context) {
 
 export async function onRequestDelete(context) {
   return handleErrors(async () => {
-    const access = await requireOrganizerAccess(context.request, context.env);
+    const access = await requireAdmin(context.request, context.env);
     const url = new URL(context.request.url);
     const body = await readOptionalJson(context.request);
     const result = await revokePersonBadgeFromAdminRoute(getDb(context.env), {

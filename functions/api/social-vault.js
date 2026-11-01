@@ -9,6 +9,9 @@ const memberIdOk = id => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test
 const newId = () => `sv_${crypto.randomUUID().replaceAll('-', '')}`;
 const memberExists = `EXISTS (SELECT 1 FROM social_vault_members WHERE user_id = ? AND revoked_at IS NULL)`;
 const ownerExists = `EXISTS (SELECT 1 FROM social_vault_members WHERE user_id = ? AND role = 'owner' AND revoked_at IS NULL)`;
+const adminExists = `EXISTS (SELECT 1 FROM roles WHERE user_id = ? AND role IN ('admin','super_admin') AND scope_type='global' AND scope_id='*' AND revoked_at IS NULL)`;
+const readerExists = `(${memberExists} OR ${adminExists})`;
+const managerExists = `(${ownerExists} OR ${adminExists})`;
 const encode = bytes => btoa(String.fromCharCode(...bytes));
 const decode = text => Uint8Array.from(atob(text), c => c.charCodeAt(0));
 
@@ -61,19 +64,22 @@ async function write(db, statement, audit) {
 }
 const audit = (action, actor, targetType, targetId) => buildAuditEvent({ action: `social_vault_${action}`, actorUserId: actor, targetType, targetId, scopeType: 'social_vault', scopeId: 'shared', metadata: {} });
 async function roleFor(db, userId) {
-  return db.prepare('SELECT role FROM social_vault_members WHERE user_id = ? AND revoked_at IS NULL').bind(userId).first();
+  const admin = await db.prepare(`SELECT role FROM roles WHERE user_id=? AND role IN ('admin','super_admin') AND scope_type='global' AND scope_id='*' AND revoked_at IS NULL LIMIT 1`).bind(userId).first();
+  return admin ? { role: 'admin' } : db.prepare('SELECT role FROM social_vault_members WHERE user_id = ? AND revoked_at IS NULL').bind(userId).first();
 }
 async function list(db, actor, role) {
-  const accounts = (await db.prepare(`SELECT id,label,revision,updated_at FROM social_vault_accounts WHERE ${memberExists} ORDER BY label`).bind(actor).all()).results || [];
+  const accounts = (await db.prepare(`SELECT id,label,revision,updated_at FROM social_vault_accounts WHERE ${readerExists} ORDER BY label`).bind(actor,actor).all()).results || [];
   if (!(await roleFor(db, actor))) throw failure(403, 'Vault access revoked.');
-  const members = role === 'owner' ? (await db.prepare(`SELECT m.user_id,u.email,m.role,m.granted_at FROM social_vault_members m JOIN users u ON u.id=m.user_id WHERE m.revoked_at IS NULL AND ${ownerExists} ORDER BY u.email`).bind(actor).all()).results || [] : undefined;
-  return { ok: true, role, accounts, ...(members ? { members, capacity: 15 } : {}) };
+  const manager = role === 'owner' || role === 'admin';
+  const members = manager ? (await db.prepare(`SELECT m.user_id,u.email,m.role,m.granted_at FROM social_vault_members m JOIN users u ON u.id=m.user_id WHERE m.revoked_at IS NULL AND ${managerExists} ORDER BY u.email`).bind(actor,actor).all()).results || [] : undefined;
+  const effectiveCount = manager ? (await db.prepare(`SELECT COUNT(*) AS n FROM (SELECT user_id FROM social_vault_members WHERE revoked_at IS NULL UNION SELECT user_id FROM roles WHERE role IN ('admin','super_admin') AND scope_type='global' AND scope_id='*' AND revoked_at IS NULL)`).first()).n : undefined;
+  return { ok: true, role, accounts, ...(manager ? { members, capacity: 15, effectiveCount } : {}) };
 }
 export async function onRequest(context) {
   const { request, env, params = {} } = context;
   try {
     const db = getDb(env);
-    // Deliberately use the magic-login session only. Admin/bootstrap roles do not grant vault access.
+    // Deliberately use the magic-login session only. A live global admin role grants access; bootstrap tokens do not.
     const user = await getCurrentUserFromRequest(db, request);
     if (!user) throw failure(401, 'Sign in to access shared logins.');
     const actor = user.id, membership = await roleFor(db, actor);
@@ -84,28 +90,28 @@ export async function onRequest(context) {
     sameOrigin(request);
     const input = request.method === 'DELETE' ? await bodyOf(request) : await bodyOf(request);
     if (path === 'members' && request.method === 'POST') {
-      if (membership.role !== 'owner') throw failure(403, 'Owner required.');
+      if (!['owner','admin'].includes(membership.role)) throw failure(403, 'Owner or admin required.');
       const email = clean(input.email, 254)?.toLowerCase(), role = input.role;
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !['owner','member'].includes(role)) throw failure(400, 'Valid email and role required.');
       const target = await db.prepare('SELECT id FROM users WHERE lower(email)=?').bind(email).first();
       if (!target) throw failure(404, 'That person must sign in once before being granted access.');
       const now = new Date().toISOString();
       await write(db, db.prepare(`INSERT INTO social_vault_members (user_id,role,granted_by_user_id,granted_at,revoked_at)
-        SELECT ?,?,?,?,NULL WHERE ${ownerExists}
+        SELECT ?,?,?,?,NULL WHERE ${managerExists}
         ON CONFLICT(user_id) DO UPDATE SET role=excluded.role,granted_by_user_id=excluded.granted_by_user_id,granted_at=excluded.granted_at,revoked_at=NULL`)
-        .bind(target.id,role,actor,now,actor), audit('grant', actor, 'user', target.id));
-      return response({ ok: true, members: (await list(db, actor, 'owner')).members });
+        .bind(target.id,role,actor,now,actor,actor), audit('grant', actor, 'user', target.id));
+      return response({ ok: true, members: (await list(db, actor, membership.role)).members });
     }
     if (path.startsWith('members/') && request.method === 'DELETE') {
-      if (membership.role !== 'owner') throw failure(403, 'Owner required.');
+      if (!['owner','admin'].includes(membership.role)) throw failure(403, 'Owner or admin required.');
       const target = path.slice(8);
       if (!memberIdOk(target)) throw failure(400, 'Invalid member.');
-      await write(db, db.prepare(`UPDATE social_vault_members SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND ${ownerExists}`)
-        .bind(new Date().toISOString(),target,actor), audit('revoke',actor,'user',target));
-      return response({ ok: true, rotationWarning: 'Rotate every shared password this person could have seen; revocation cannot erase copied credentials.', members: (await list(db, actor, 'owner')).members });
+      await write(db, db.prepare(`UPDATE social_vault_members SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND ${managerExists}`)
+        .bind(new Date().toISOString(),target,actor,actor), audit('revoke',actor,'user',target));
+      return response({ ok: true, rotationWarning: 'Rotate every shared password this person could have seen; revocation cannot erase copied credentials. Active admins retain implicit access.', members: (await list(db, actor, membership.role)).members });
     }
     if (path === 'accounts' && request.method === 'POST' || /^accounts\/sv_[a-f0-9]{32}$/.test(path) && request.method === 'PUT') {
-      if (membership.role !== 'owner') throw failure(403, 'Owner required to edit credentials.');
+      if (!['owner','admin'].includes(membership.role)) throw failure(403, 'Owner or admin required to edit credentials.');
       const label = clean(input.label, 100), login = clean(input.login, 254), password = input.password;
       if (!label || !login || typeof password !== 'string' || password.length < 1 || password.length > 2048) throw failure(400, 'Label, login and password required.');
       const id = request.method === 'POST' ? newId() : path.slice(9);
@@ -114,15 +120,15 @@ export async function onRequest(context) {
       const encrypted = await encrypt(env,id,login,password), now = new Date().toISOString();
       const statement = request.method === 'POST'
         ? db.prepare(`INSERT INTO social_vault_accounts(id,label,ciphertext,iv,updated_at,updated_by_user_id)
-            SELECT ?,?,?,?,?,? WHERE ${ownerExists}`).bind(id,label,encrypted.ciphertext,encrypted.iv,now,actor,actor)
+            SELECT ?,?,?,?,?,? WHERE ${managerExists}`).bind(id,label,encrypted.ciphertext,encrypted.iv,now,actor,actor,actor)
         : db.prepare(`UPDATE social_vault_accounts SET label=?,ciphertext=?,iv=?,revision=revision+1,updated_at=?,updated_by_user_id=?
-            WHERE id=? AND revision=? AND ${ownerExists}`).bind(label,encrypted.ciphertext,encrypted.iv,now,actor,id,revision,actor);
+            WHERE id=? AND revision=? AND ${managerExists}`).bind(label,encrypted.ciphertext,encrypted.iv,now,actor,id,revision,actor,actor);
       await write(db,statement,audit(request.method === 'POST' ? 'create':'update',actor,'social_vault_account',id));
       return response({ ok: true, id }, request.method === 'POST' ? 201 : 200);
     }
     if (/^accounts\/sv_[a-f0-9]{32}\/reveal$/.test(path) && request.method === 'POST') {
       const id = path.split('/')[1];
-      const row = await db.prepare(`SELECT id,ciphertext,iv FROM social_vault_accounts WHERE id=? AND ${memberExists}`).bind(id,actor).first();
+      const row = await db.prepare(`SELECT id,ciphertext,iv FROM social_vault_accounts WHERE id=? AND ${readerExists}`).bind(id,actor,actor).first();
       if (!row) throw failure(404, 'Account unavailable.');
       const secret = await decrypt(env,row);
       // Recheck membership in the same atomic batch as the reveal audit, after
@@ -130,7 +136,7 @@ export async function onRequest(context) {
       const gate = newId();
       try {
         await db.batch([
-          db.prepare(`INSERT INTO social_vault_write_guards(id,valid) SELECT ?, CASE WHEN ${memberExists} THEN 1 ELSE 0 END`).bind(gate,actor),
+          db.prepare(`INSERT INTO social_vault_write_guards(id,valid) SELECT ?, CASE WHEN ${readerExists} THEN 1 ELSE 0 END`).bind(gate,actor,actor),
           auditEventStatement(db,audit('reveal',actor,'social_vault_account',id)),
           db.prepare('DELETE FROM social_vault_write_guards WHERE id=?').bind(gate)
         ]);

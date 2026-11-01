@@ -8,13 +8,13 @@ import {
   methodNotAllowed,
   readJson,
   registerEventSignup,
-  requireAdmin,
+  requireOrganizerAccess,
   signupsToCsv
 } from "../../../../_lib/event-platform.js";
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
-    await requireAdmin(context.request, context.env);
+    await requireOrganizerAccess(context.request, context.env, { scopeType: "event", scopeId: context.params.slug });
     const db = getDb(context.env);
     const event = await getEvent(db, context.params.slug);
     if (!event) return jsonResponse({ error: "Event not found" }, { status: 404 });

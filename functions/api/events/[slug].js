@@ -5,7 +5,7 @@ import {
   jsonResponse,
   methodNotAllowed,
   readJson,
-  requireAdmin
+  requireOrganizerAccess
 } from "../../_lib/event-platform.js";
 import { updateEventSeriesFromAdminRoute } from "../../_lib/domain/events.js";
 
@@ -22,7 +22,7 @@ export async function onRequestGet(context) {
 
 export async function onRequestPatch(context) {
   return handleErrors(async () => {
-    const access = await requireAdmin(context.request, context.env);
+    const access = await requireOrganizerAccess(context.request, context.env, { scopeType: "event", scopeId: context.params.slug });
     const db = getDb(context.env);
     const input = await readJson(context.request);
     const event = await updateEventSeriesFromAdminRoute(db, {

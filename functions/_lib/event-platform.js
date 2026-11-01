@@ -1974,7 +1974,7 @@ async function getSignupByInstanceAndUser(db, eventSlug, eventInstanceId, userId
   `).bind(eventSlug, eventInstanceId, userId).first();
 }
 
-export async function searchCheckinCandidates(db, eventSlug, { eventInstanceId, query = "", limit = 25 } = {}) {
+export async function searchCheckinCandidates(db, eventSlug, { eventInstanceId, query = "", limit = 25, signedUpOnly = false } = {}) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 25, 100));
   const trimmed = String(query || "").trim().toLowerCase();
   if (!eventInstanceId) {
@@ -2031,23 +2031,25 @@ export async function searchCheckinCandidates(db, eventSlug, { eventInstanceId, 
       ON pcs.event_instance_id = s.event_instance_id AND pcs.user_id = u.id
     LEFT JOIN emergency_contacts ec
       ON ec.event_instance_id = s.event_instance_id AND ec.user_id = u.id
-    WHERE lower(u.email) LIKE ?
+    WHERE ${signedUpOnly ? 's.id IS NOT NULL AND' : ''} (
+      lower(u.email) LIKE ?
        OR lower(COALESCE(u.name, '')) LIKE ?
-       OR lower(trim(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, ''))) LIKE ?
+       OR lower(trim(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, ''))) LIKE ?)
     ORDER BY is_signed_up DESC, pcs.checked_in_at IS NULL DESC, lower(COALESCE(u.name, u.email)) ASC
     LIMIT ${safeLimit}
   `).bind(eventInstanceId, like, like, like).all();
   return result.results || [];
 }
 
-export async function listEventCheckinCandidates(db, eventSlug, { requestedInstanceId = null, query = "", limit = 25 } = {}) {
+export async function listEventCheckinCandidates(db, eventSlug, { requestedInstanceId = null, query = "", limit = 25, signedUpOnly = false } = {}) {
   const event = await getEvent(db, eventSlug);
   if (!event || event.status === "archived") throw Object.assign(new Error("Event not found"), { status: 404 });
   const instance = await resolveCheckinEventInstance(db, eventSlug, requestedInstanceId);
   const candidates = await searchCheckinCandidates(db, eventSlug, {
     eventInstanceId: instance.id,
     query,
-    limit
+    limit,
+    signedUpOnly
   });
   return { event, instance, candidates };
 }

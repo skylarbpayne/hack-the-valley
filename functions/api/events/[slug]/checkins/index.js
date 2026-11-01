@@ -6,19 +6,20 @@ import {
   listEventCheckinCandidates,
   methodNotAllowed,
   readJson,
-  requireAdmin
+  requireOrganizerAccess
 } from "../../../../_lib/event-platform.js";
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
-    await requireAdmin(context.request, context.env);
+    const access = await requireOrganizerAccess(context.request, context.env, { scopeType: "event", scopeId: context.params.slug });
     const db = getDb(context.env);
     const url = new URL(context.request.url);
     const query = url.searchParams.get("query") || url.searchParams.get("q") || "";
     const { event, instance, candidates } = await listEventCheckinCandidates(db, context.params.slug, {
       requestedInstanceId: url.searchParams.get("instance_id"),
       query,
-      limit: url.searchParams.get("limit") || 25
+      limit: url.searchParams.get("limit") || 25,
+      signedUpOnly: access.role?.role === "organizer"
     });
 
     return jsonResponse({ event, instance, candidates, count: candidates.length });
@@ -27,10 +28,19 @@ export async function onRequestGet(context) {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    const access = await requireAdmin(context.request, context.env);
+    const access = await requireOrganizerAccess(context.request, context.env, { scopeType: "event", scopeId: context.params.slug });
     const db = getDb(context.env);
     const url = new URL(context.request.url);
     const input = await readJson(context.request);
+    if (access.role?.role === "organizer") {
+      const instanceId = input.event_instance_id || url.searchParams.get("instance_id");
+      const existing = typeof input.user_id === 'string' && typeof instanceId === 'string'
+        ? await db.prepare('SELECT id FROM signups WHERE event_slug=? AND event_instance_id=? AND user_id=?').bind(context.params.slug, instanceId, input.user_id).first()
+        : null;
+      if (!existing || Object.keys(input).some(key => !['user_id', 'event_instance_id'].includes(key))) {
+        return jsonResponse({ error: "Organizers can only check in existing event signups." }, { status: 403 });
+      }
+    }
     const result = await checkInEventAttendee(db, context.env, context.params.slug, input, {
       requestedInstanceId: input.event_instance_id || url.searchParams.get("instance_id"),
       actor: access.user?.id || "admin"

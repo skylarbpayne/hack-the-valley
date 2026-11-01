@@ -2,6 +2,7 @@ import { runScheduledSponsorshipReminders } from './functions/_lib/domain/sponso
 import * as adminSponsorships from './functions/api/admin/sponsorships/index.js';
 import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
 import * as adminMe from './functions/api/admin/me.js';
+import * as socialVault from './functions/api/social-vault.js';
 import * as adminRoles from './functions/api/admin/roles.js';
 import * as adminWorkflows from './functions/api/admin/workflows.js';
 import * as adminAudit from './functions/api/admin/audit.js';
@@ -103,6 +104,8 @@ async function routeApiRequest(request, env, ctx, routeModule, params = {}) {
 }
 
 function matchApiRoute(pathname) {
+  const vaultMatch = pathname.match(/^\/api\/social-vault(?:\/(.*))?$/);
+  if (vaultMatch) return { routeModule: socialVault, params: { path: vaultMatch[1] || '' } };
   if (pathname === '/api/admin/sponsorships' || pathname.startsWith('/api/admin/sponsorships/')) {
     return { routeModule: adminSponsorships, params: {} };
   }

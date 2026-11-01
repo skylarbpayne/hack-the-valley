@@ -1,0 +1,13 @@
+# Shared social logins (HTV)
+
+`/shared-logins/` is a separate portal page. Existing magic-login sessions identify people; vault membership is independent of admin/organizer roles. A global admin or bootstrap token alone cannot access it. Members reveal; owners grant/revoke and create/replace accounts. No credential-count limit is imposed. The database enforces **15 active people including owners** and prevents revoking the last owner.
+
+## Onboarding / deployment boundary
+
+1. With explicit HTV deployment approval, apply forward-only migration `0033_social_vault.sql` and deploy the Worker; **do not** edit prior migrations.
+2. Provision `HTV_SOCIAL_VAULT_KEY` as a Cloudflare **Worker secret**, not a tracked variable or `wrangler.toml` value. Generate 32 cryptographically random bytes, base64-encode them, retain the key in a secured recovery store, then set through approved secret management. Losing the key makes stored credentials unrecoverable. Changing it requires first replacing/re-encrypting stored credentials; there is no automatic key rotation.
+3. Have the designated first owner complete the existing magic-login flow once. In an approved, authenticated D1 operations session, look up that exact person's `users.id` by email and insert **only that ID** into `social_vault_members` with `role='owner'` and a timestamp. There is intentionally no HTTP self-enrollment or global-admin bootstrap for this step. Do not put the real email or ID in a migration, source file, or public issue. Read back the active owner row. Until provisioned, the vault denies everyone.
+4. Thereafter owners grant existing users by email in `/shared-logins/`; new people must magic-login once first. Share the separate page URL directly with ordinary members; they do not need access to `/admin`. Owners can grant another owner, then revoke or replace the original. At 15 active people, revoke one before adding another.
+5. On revocation, access stops even if the magic-login session continues. **Rotate every password the person might have seen** at the social provider; revocation cannot erase a copied secret. Replace the corresponding encrypted entry in the vault after provider rotation.
+
+All API responses are private/no-store; the reveal is a same-origin JSON POST audited before disclosure. Labels and member identities may appear in list responses; login/password never appear there or in audit metadata. Secrets are encrypted with AES-256-GCM using a fresh 96-bit nonce and the account ID as authenticated additional data. The vault is deliberately not a general-purpose password manager, and it cannot prevent an authorized viewer from copying a secret.

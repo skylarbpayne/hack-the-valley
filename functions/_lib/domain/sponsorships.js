@@ -103,10 +103,10 @@ async function getRow(db,resource,rowId) {
   if(!row) throw sponsorError('Record not found',404); return row;
 }
 export async function listSponsorOwners(db) {
-  return (await db.prepare("SELECT u.id,u.name,u.email FROM users u WHERE EXISTS (SELECT 1 FROM roles r WHERE r.user_id=u.id AND r.scope_type='global' AND r.scope_id='*' AND r.role IN ('admin','super_admin') AND r.revoked_at IS NULL) ORDER BY u.name,u.email").all()).results;
+  return (await db.prepare("SELECT u.id,u.name,u.email FROM users u WHERE EXISTS (SELECT 1 FROM roles r WHERE r.user_id=u.id AND r.scope_type='global' AND r.scope_id='*' AND r.role IN ('admin','super_admin','organizer') AND r.revoked_at IS NULL) ORDER BY u.name,u.email").all()).results;
 }
 async function checkOwner(db,userId) {
-  if (!(await listSponsorOwners(db)).some(u=>u.id===userId)) throw sponsorError('Owner must be an active global admin');
+  if (!(await listSponsorOwners(db)).some(u=>u.id===userId)) throw sponsorError('Owner must be an active global organizer or admin');
 }
 export async function mutateSponsor(db,resource,rowId,input,options) {
   validateInputObject(input);
@@ -153,7 +153,7 @@ async function applySponsorMutation(db,resource,rowId,input,c) {
     // Recheck only creation/reassignment invariants inside the write batch;
     // historical motions remain editable when an existing owner loses access.
     if(!previous || row.owner_user_id!==previous.owner_user_id) statements.push(...existenceGuard(db,
-      "SELECT 1 FROM roles WHERE user_id=? AND role IN ('admin','super_admin') AND scope_type='global' AND scope_id='*' AND revoked_at IS NULL",[row.owner_user_id]));
+      "SELECT 1 FROM roles WHERE user_id=? AND role IN ('admin','super_admin','organizer') AND scope_type='global' AND scope_id='*' AND revoked_at IS NULL",[row.owner_user_id]));
     if(!previous) statements.push(...existenceGuard(db,
       'SELECT 1 FROM sponsorship_campaigns WHERE id=? AND archived_at IS NULL',[row.campaign_id]));
   }
@@ -176,7 +176,7 @@ async function applySponsorMutation(db,resource,rowId,input,c) {
 }
 const JOINED_MOTIONS=`SELECT m.*,c.business_name,c.contact_name,c.email,u.name AS owner_name,u.email AS owner_email,p.name AS campaign_name,p.archived_at AS campaign_archived_at,
   s.id AS sponsorship_id,s.contribution_type,s.committed_cents,s.received_cents,s.fulfilled_at,s.logo_storage_key,s.in_kind_description,
-  EXISTS(SELECT 1 FROM roles r WHERE r.user_id=m.owner_user_id AND r.scope_type='global' AND r.scope_id='*' AND r.role IN ('admin','super_admin') AND r.revoked_at IS NULL) AS owner_active,
+  EXISTS(SELECT 1 FROM roles r WHERE r.user_id=m.owner_user_id AND r.scope_type='global' AND r.scope_id='*' AND r.role IN ('admin','super_admin','organizer') AND r.revoked_at IS NULL) AS owner_active,
   (SELECT a.description FROM sponsorship_activities a WHERE a.motion_id=m.id ORDER BY a.created_at DESC,a.id DESC LIMIT 1) AS latest_activity
   FROM sponsorship_motions m JOIN sponsor_contacts c ON c.id=m.contact_id JOIN sponsorship_campaigns p ON p.id=m.campaign_id JOIN users u ON u.id=m.owner_user_id LEFT JOIN sponsorships s ON s.motion_id=m.id`;
 async function projectMotion(row) {

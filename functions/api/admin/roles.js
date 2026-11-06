@@ -6,12 +6,13 @@ import {
   methodNotAllowed,
   normalizeEmail,
   readJson,
-  requireAdmin
+  requireAdmin,
+  requireSuperAdminAccess
 } from "../../_lib/event-platform.js";
-import { appendAuditEvent, buildAuditEvent } from "../../_lib/domain/audit.js";
+import { auditEventStatement, buildAuditEvent } from "../../_lib/domain/audit.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ADMIN_ROLE = "admin";
+const MANAGED_ROLES = new Set(["admin", "organizer"]);
 
 function assertAdminEmail(value) {
   const email = normalizeEmail(value);
@@ -40,7 +41,7 @@ async function listAdminRoles(db) {
       u.name
     FROM roles r
     JOIN users u ON u.id = r.user_id
-    WHERE r.role IN ('admin', 'super_admin')
+    WHERE r.role IN ('admin', 'super_admin', 'organizer')
       AND r.revoked_at IS NULL
     ORDER BY CASE r.role WHEN 'super_admin' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, lower(u.email) ASC
   `).all();
@@ -50,13 +51,13 @@ async function listAdminRoles(db) {
 async function requireExistingUser(db, email) {
   const existing = await db.prepare("SELECT id, email, name FROM users WHERE lower(email) = ? LIMIT 1").bind(email).first();
   if (!existing) {
-    throw Object.assign(new Error("No user exists for that email. Ask them to sign in once before granting admin."), { status: 404 });
+    throw Object.assign(new Error("No user exists for that email. Ask them to sign in once before granting a role."), { status: 404 });
   }
   return existing;
 }
 
-async function auditRoleChange(db, { action, targetUserId, targetEmail, role, actorUserId }) {
-  await appendAuditEvent(db, buildAuditEvent({
+function roleAuditStatement(db, { action, targetUserId, targetEmail, role, actorUserId }) {
+  return auditEventStatement(db, buildAuditEvent({
     action,
     actorUserId,
     targetType: "user",
@@ -71,47 +72,48 @@ async function auditRoleChange(db, { action, targetUserId, targetEmail, role, ac
   }));
 }
 
-async function grantAdmin(db, email, access) {
+async function grantRole(db, email, role, access) {
   const user = await requireExistingUser(db, email);
   const now = new Date().toISOString();
   try {
-    await db.prepare(`
+    await db.batch([db.prepare(`
     INSERT INTO roles (id, user_id, role, scope_type, scope_id, granted_by_user_id, created_at, revoked_at)
     VALUES (?, ?, ?, 'global', '*', ?, ?, NULL)
     ON CONFLICT(user_id, role, scope_type, scope_id) DO UPDATE SET
       granted_by_user_id = excluded.granted_by_user_id,
       revoked_at = NULL
-  `).bind(generateId("role"), user.id, ADMIN_ROLE, actorId(access), now).run();
+  `).bind(generateId("role"), user.id, role, actorId(access), now),
+    roleAuditStatement(db, { action: `grant_${role}`, targetUserId: user.id, targetEmail: email, role, actorUserId: actorId(access) })]);
   } catch (error) {
-    if (/Social vault is full \(15 effective people\)/.test(String(error))) {
+    if (role === "admin" && /Social vault is full \(15 effective people\)/.test(String(error))) {
       throw Object.assign(new Error("All 15 vault-access seats are occupied. Remove an effective seat before granting another admin."), { status: 409 });
     }
     throw error;
   }
-  await auditRoleChange(db, { action: "grant_admin", targetUserId: user.id, targetEmail: email, role: ADMIN_ROLE, actorUserId: actorId(access) });
   return user;
 }
 
-async function revokeAdmin(db, email, access) {
+async function revokeRole(db, email, role, access) {
   const user = await db.prepare("SELECT id, email, name FROM users WHERE lower(email) = ? LIMIT 1").bind(email).first();
   if (!user) throw Object.assign(new Error("No user exists for that email."), { status: 404 });
   const now = new Date().toISOString();
-  await db.prepare(`
+  await db.batch([db.prepare(`
     UPDATE roles
     SET revoked_at = ?
     WHERE user_id = ?
-      AND role = 'admin'
+      AND role = ?
       AND scope_type = 'global'
       AND scope_id = '*'
       AND revoked_at IS NULL
-  `).bind(now, user.id).run();
-  await auditRoleChange(db, { action: "revoke_admin", targetUserId: user.id, targetEmail: email, role: ADMIN_ROLE, actorUserId: actorId(access) });
+  `).bind(now, user.id, role),
+    roleAuditStatement(db, { action: `revoke_${role}`, targetUserId: user.id, targetEmail: email, role, actorUserId: actorId(access) })]);
   return user;
 }
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
     const access = await requireAdmin(context.request, context.env);
+    if (access.bootstrap || !access.user?.id) throw Object.assign(new Error("A signed-in admin session is required."), { status: 403 });
     const db = getDb(context.env);
     const roles = await listAdminRoles(db);
     return jsonResponse({ ok: true, bootstrap: Boolean(access.bootstrap), roles, count: roles.length });
@@ -120,19 +122,20 @@ export async function onRequestGet(context) {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    const access = await requireAdmin(context.request, context.env);
+    const access = await requireSuperAdminAccess(context.request, context.env);
+    if (access.bootstrap || !access.user?.id) throw Object.assign(new Error("A signed-in super-admin session is required."), { status: 403 });
     const db = getDb(context.env);
     const input = await readJson(context.request);
     const email = assertAdminEmail(input.email);
     const action = String(input.action || "grant").trim().toLowerCase();
-    if (input.role && input.role !== ADMIN_ROLE) {
-      throw Object.assign(new Error("This endpoint only manages admin grants. Seed super_admin separately."), { status: 400 });
-    }
+    const role = input.role === undefined ? "admin" : input.role;
+    if (!MANAGED_ROLES.has(role) || (input.scope_type && input.scope_type !== "global") || (input.scope_id && input.scope_id !== "*"))
+      throw Object.assign(new Error("Only global admin and organizer grants are supported. Seed super_admin separately."), { status: 400 });
     let user;
     if (action === "grant") {
-      user = await grantAdmin(db, email, access);
+      user = await grantRole(db, email, role, access);
     } else if (action === "revoke") {
-      user = await revokeAdmin(db, email, access);
+      user = await revokeRole(db, email, role, access);
     } else {
       throw Object.assign(new Error("action must be grant or revoke."), { status: 400 });
     }

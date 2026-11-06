@@ -75,7 +75,7 @@
           <button type="button" data-admin-nav="blog" title="Write, preview, and publish posts on hackthevalley.org/blog." class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Blog</button>
           <a href="/admin-sponsorships" title="Sponsorships: outreach, contacts, commitments, payments, and overdue follow-ups (separate page)." class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Sponsorships</a>
           <a href="/shared-logins/" title="Shared social logins: separate vault grants, not general admin access." class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Shared logins</a>
-          <button id="access-admin-nav" title="Grant or revoke global admin access. Isolated from normal event operations on purpose." type="button" data-admin-nav="access" class="hidden rounded-2xl border border-violet-500/50 px-4 py-3 text-left text-violet-200 hover:border-violet-300">Access</button>
+          <button id="access-admin-nav" title="Review role grants; only super-admins may change access." type="button" data-admin-nav="access" class="hidden rounded-2xl border border-violet-500/50 px-4 py-3 text-left text-violet-200 hover:border-violet-300">Access</button>
         </div>
       </nav>
 
@@ -329,14 +329,15 @@
         <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5 mb-4">
           <div>
             <p class="text-violet-300 uppercase tracking-[0.2em] text-xs font-black">Admin access</p>
-            <h2 class="text-2xl font-black mt-1">Admin role grants</h2>
-            <p id="role-admin-status" class="text-sm text-slate-400 mt-1">Sensitive access changes are isolated from normal event work. Admins can grant or revoke global admin access. Super-admin grants remain a separate bootstrap operation.</p>
+            <h2 class="text-2xl font-black mt-1">Global role grants</h2>
+            <p id="role-admin-status" class="text-sm text-slate-400 mt-1">Only signed-in super-admins may grant or revoke admin and organizer roles. Super-admin grants remain a separate bootstrap operation.</p>
           </div>
           <button id="load-admin-roles" class="border border-violet-400 text-violet-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-violet-400 hover:text-bc-dark">Refresh roles</button>
         </div>
         <form id="admin-role-form" class="grid lg:grid-cols-[1fr_auto_auto] gap-3 items-end bg-bc-dark border border-slate-700 rounded-2xl p-4 mb-4">
-          <label class="block"><span class="text-sm font-semibold">Admin email</span><input name="email" type="email" required class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="person@example.com"></label>
-          <label class="block"><span class="text-sm font-semibold">Action</span><select name="action" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><option value="grant">Grant admin</option><option value="revoke">Revoke admin</option></select></label>
+          <label class="block"><span class="text-sm font-semibold">Account email</span><input name="email" type="email" required class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="person@example.com"></label>
+          <label class="block"><span class="text-sm font-semibold">Role</span><select name="role" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><option value="organizer">Organizer</option><option value="admin">Admin</option></select></label>
+          <label class="block"><span class="text-sm font-semibold">Action</span><select name="action" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><option value="grant">Grant</option><option value="revoke">Revoke</option></select></label>
           <button class="bg-violet-300 text-bc-dark px-5 py-3 rounded-lg font-black hover:bg-violet-200">Apply</button>
         </form>
         <div id="admin-role-list" class="overflow-x-auto text-sm text-slate-300"></div>
@@ -587,6 +588,7 @@
       currentAdminUser = me;
       const admin = hasAdminRole(me.roles || []);
       $("role-admin").classList.toggle("hidden", !admin);
+      $("admin-role-form").classList.toggle("hidden", !me.capabilities?.role_management);
       $("access-admin-nav").classList.toggle("hidden", !admin);
       loginPanel.classList.add("hidden");
       adminApp.classList.remove("hidden");
@@ -1416,7 +1418,7 @@
         status.textContent = "Loading role grants…";
         const data = await api("/api/admin/roles");
         renderAdminRoles(data.roles || []);
-        status.textContent = `Loaded ${data.count ?? (data.roles || []).length} active admin role grant(s).`;
+        status.textContent = `Loaded ${data.count ?? (data.roles || []).length} active role grant(s).${currentAdminUser?.capabilities?.role_management ? '' : ' Read-only: only super-admins may change access.'}`;
         return data.roles || [];
       } catch (error) {
         status.textContent = error.message;
@@ -1428,7 +1430,7 @@
     function renderAdminRoles(roles) {
       const container = $("admin-role-list");
       if (!roles.length) {
-        container.innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">No active admin role grants yet.</div>`;
+        container.innerHTML = `<div class="rounded-xl border border-slate-700 p-4 text-slate-400">No active role grants yet.</div>`;
         return;
       }
       container.innerHTML = `
@@ -1454,11 +1456,11 @@
       const status = $("role-admin-status");
       const payload = Object.fromEntries(new FormData(form).entries());
       status.className = "text-sm text-slate-400 mt-1";
-      status.textContent = `${payload.action === "revoke" ? "Revoking" : "Granting"} admin for ${payload.email}…`;
+      status.textContent = `${payload.action === "revoke" ? "Revoking" : "Granting"} ${payload.role} for ${payload.email}…`;
       try {
         const data = await api("/api/admin/roles", { method: "POST", body: JSON.stringify(payload) });
         renderAdminRoles(data.roles || []);
-        status.textContent = `${payload.action === "revoke" ? "Revoked" : "Granted"} admin for ${payload.email}.`;
+        status.textContent = `${payload.action === "revoke" ? "Revoked" : "Granted"} ${payload.role} for ${payload.email}.`;
         form.reset();
       } catch (error) {
         status.textContent = error.message;

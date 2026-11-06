@@ -54,13 +54,52 @@ test('scoped organizer updates assigned event and checks in an existing signup, 
   assert.equal((await call('/api/events/synthetic-event/instances/inst_synthetic-event/followup')).status, 403);
 });
 
-test('global admin can manage roles and vault while organizer UI remains a separate narrow surface', async t => {
+test('global admin can read roles and vault while organizer UI remains a separate narrow surface', async t => {
   const { call } = await fixture(t);
   assert.equal((await call('/api/admin/roles', 'alex')).status, 200);
   assert.equal((await call('/api/social-vault', 'alex')).status, 200);
   const ui = readFileSync(new URL('../public/organizer.html', import.meta.url), 'utf8');
   assert.match(ui, /Event operations/);
   assert.doesNotMatch(ui, /api\/admin\/message-drafts|api\/admin\/roles/);
+  assert.match(ui, /href="\/admin-sponsorships"/);
+  const adminUi = readFileSync(new URL('../public/admin.html', import.meta.url), 'utf8');
+  assert.match(adminUi, /<select name="role"/);
+  assert.match(adminUi, /role_management/);
+  const sponsorshipUi = readFileSync(new URL('../public/admin-sponsorships.html', import.meta.url), 'utf8');
+  assert.match(sponsorshipUi, /href="\/organizer"/);
+});
+
+test('only a signed-in super admin changes global organizer and admin grants with an audit trail', async t => {
+  const { db, call } = await fixture(t);
+  for (const role of ['admin', 'organizer']) {
+    const denied = await call('/api/admin/roles', 'alex', 'POST', { email: 'member@example.com', role, action: 'grant' });
+    assert.equal(denied.status, 403);
+    assert.equal((await call('/api/admin/roles', 'alex', 'POST', { email: 'member@example.com', role, action: 'revoke' })).status, 403);
+  }
+  assert.equal((await call('/api/admin/me', 'alex').then(response => response.json())).capabilities.role_management, false);
+  assert.equal((await call('/api/admin/me', 'danny').then(response => response.json())).capabilities.role_management, true);
+  const token = new Request(`${origin}/api/admin/roles`, { method: 'POST', headers: { Authorization: 'Bearer recovery', 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'member@example.com', role: 'organizer', action: 'grant' }) });
+  assert.equal((await worker.fetch(token, { HTV_DB: db, HTV_ADMIN_TOKEN: 'recovery', HTV_ADMIN_BOOTSTRAP_TOKEN_ENABLED: '1' })).status, 403);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM roles WHERE user_id=? AND scope_type='global'").bind(DEMO_USERS.member).first()).n, 0);
+  for (const role of ['organizer', 'admin']) {
+    const granted = await call('/api/admin/roles', 'danny', 'POST', { email: 'member@example.com', role, action: 'grant' });
+    assert.equal(granted.status, 200, await granted.clone().text());
+    assert.ok((await granted.json()).roles.some(row => row.user_id === DEMO_USERS.member && row.role === role));
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM audit_events WHERE action=? AND actor_user_id=? AND target_id=?').bind(`grant_${role}`, DEMO_USERS.danny, DEMO_USERS.member).first()).n, 1);
+    if (role === 'organizer') {
+      assert.equal((await call('/api/admin/sponsorships')).status, 200);
+      assert.equal((await call('/api/social-vault')).status, 403);
+      assert.equal((await call('/api/admin/message-drafts/audience')).status, 403);
+    }
+  }
+  assert.equal((await call('/api/admin/roles', 'danny', 'POST', { email: 'member@example.com', role: 'super_admin', action: 'grant' })).status, 400);
+  assert.equal((await call('/api/admin/roles', 'danny', 'POST', { email: 'member@example.com', role: 'super_admin', action: 'revoke' })).status, 400);
+  assert.equal((await call('/api/admin/roles', 'danny', 'POST', { email: 'member@example.com', role: 'organizer', scope_type: 'event', action: 'grant' })).status, 400);
+  for (const role of ['organizer', 'admin']) {
+    const revoked = await call('/api/admin/roles', 'danny', 'POST', { email: 'member@example.com', role, action: 'revoke' });
+    assert.equal(revoked.status, 200, await revoked.clone().text());
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM audit_events WHERE action=? AND actor_user_id=? AND target_id=?').bind(`revoke_${role}`, DEMO_USERS.danny, DEMO_USERS.member).first()).n, 1);
+  }
 });
 
 test('admin grant reports a capacity conflict instead of assigning a sixteenth effective person', async t => {
@@ -71,8 +110,15 @@ test('admin grant reports a capacity conflict instead of assigning a sixteenth e
     await db.prepare("INSERT INTO social_vault_members(user_id,role,granted_at) VALUES(?,'member','2026-01-01')").bind(`seat_${n}`).run();
   }
   await db.prepare("INSERT INTO users(id,email,created_at,updated_at) VALUES('overflow-user','overflow@example.test','2026-01-01','2026-01-01')").run();
-  const result = await call('/api/admin/roles', 'alex', 'POST', { email:'overflow@example.test', action:'grant' });
+  const result = await call('/api/admin/roles', 'danny', 'POST', { email:'overflow@example.test', action:'grant' });
   assert.equal(result.status, 409, await result.clone().text());
   assert.match((await result.json()).error, /15 vault-access seats/);
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM roles WHERE user_id='overflow-user'").first()).n, 0);
+});
+
+test('role grants roll back if their audit event cannot be stored', async t => {
+  const { db, call } = await fixture(t);
+  await db.exec("CREATE TRIGGER fail_role_audit BEFORE INSERT ON audit_events WHEN NEW.action = 'grant_organizer' BEGIN SELECT RAISE(FAIL, 'audit unavailable'); END;");
+  assert.equal((await call('/api/admin/roles', 'danny', 'POST', { email: 'member@example.com', role: 'organizer', action: 'grant' })).status, 500);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM roles WHERE user_id=? AND role='organizer' AND scope_type='global'").bind(DEMO_USERS.member).first()).n, 0);
 });

@@ -789,7 +789,7 @@ test("admin page gates the full UI behind a signed-in admin role", () => {
   assert.match(html, /active admin role/);
   assert.match(html, /id="role-admin"/);
   assert.match(html, /\/api\/admin\/roles/);
-  assert.match(html, /Admin role grants/);
+  assert.match(html, /Global role grants/);
   assert.doesNotMatch(html, /localStorage\.setItem\("htv_admin_token"/);
   assert.doesNotMatch(html, /id="admin-token"/);
   assert.doesNotMatch(html, /Prefill Hack Hours at Panera/);

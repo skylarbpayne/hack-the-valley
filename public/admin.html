@@ -75,7 +75,7 @@
           <button type="button" data-admin-nav="blog" title="Write, preview, and publish posts on hackthevalley.org/blog." class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Blog</button>
           <a href="/admin-sponsorships" title="Sponsorships: outreach, contacts, commitments, payments, and overdue follow-ups (separate page)." class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Sponsorships</a>
           <a href="/shared-logins/" title="Shared social logins: separate vault grants, not general admin access." class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Shared logins</a>
-          <button id="access-admin-nav" title="Review role grants; only super-admins may change access." type="button" data-admin-nav="access" class="hidden rounded-2xl border border-violet-500/50 px-4 py-3 text-left text-violet-200 hover:border-violet-300">Access</button>
+          <button id="access-admin-nav" title="Manage organizer and social manager access; super-admins also manage admin grants." type="button" data-admin-nav="access" class="hidden rounded-2xl border border-violet-500/50 px-4 py-3 text-left text-violet-200 hover:border-violet-300">Access</button>
         </div>
       </nav>
 
@@ -330,17 +330,34 @@
           <div>
             <p class="text-violet-300 uppercase tracking-[0.2em] text-xs font-black">Admin access</p>
             <h2 class="text-2xl font-black mt-1">Global role grants</h2>
-            <p id="role-admin-status" class="text-sm text-slate-400 mt-1">Only signed-in super-admins may grant or revoke admin and organizer roles. Super-admin grants remain a separate bootstrap operation.</p>
+            <p id="role-admin-status" class="text-sm text-slate-400 mt-1">Signed-in global admins may grant/revoke organizers; only global super-admins may grant/revoke admins. Super-admin grants remain a separate bootstrap operation.</p>
           </div>
           <button id="load-admin-roles" class="border border-violet-400 text-violet-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-violet-400 hover:text-bc-dark">Refresh roles</button>
         </div>
         <form id="admin-role-form" class="grid lg:grid-cols-[1fr_auto_auto] gap-3 items-end bg-bc-dark border border-slate-700 rounded-2xl p-4 mb-4">
           <label class="block"><span class="text-sm font-semibold">Account email</span><input name="email" type="email" required class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="person@example.com"></label>
-          <label class="block"><span class="text-sm font-semibold">Role</span><select name="role" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><option value="organizer">Organizer</option><option value="admin">Admin</option></select></label>
+          <label class="block"><span class="text-sm font-semibold">Role</span><select name="role" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><option value="organizer">Organizer</option><option value="admin" id="admin-role-option" hidden>Admin</option></select></label>
           <label class="block"><span class="text-sm font-semibold">Action</span><select name="action" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><option value="grant">Grant</option><option value="revoke">Revoke</option></select></label>
           <button class="bg-violet-300 text-bc-dark px-5 py-3 rounded-lg font-black hover:bg-violet-200">Apply</button>
         </form>
         <div id="admin-role-list" class="overflow-x-auto text-sm text-slate-300"></div>
+        <div class="mt-6 border-t border-slate-700 pt-6">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 class="text-xl font-black">Social managers · shared logins</h3>
+              <p class="text-sm text-slate-400 mt-1">An explicit vault member can reveal shared social logins only. This does not grant organizer, admin, vault owner, or credential-editing powers.</p>
+              <p class="text-sm text-slate-400 mt-1">Global admins have implicit vault access; there is no separate revocation here. Revoke an admin role separately to remove that implicit access.</p>
+            </div>
+            <button id="load-social-managers" type="button" class="border border-violet-400 text-violet-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-violet-400 hover:text-bc-dark">Refresh vault access</button>
+          </div>
+          <p id="social-manager-seats" class="mt-3 text-sm text-amber-200">Loading effective vault seats…</p>
+          <form id="social-manager-form" class="flex flex-wrap gap-3 items-end bg-bc-dark border border-slate-700 rounded-2xl p-4 my-4">
+            <label class="block flex-1 min-w-52"><span class="text-sm font-semibold">Social manager account email</span><input name="email" type="email" required class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="person@example.com"></label>
+            <button class="bg-violet-300 text-bc-dark px-5 py-3 rounded-lg font-black hover:bg-violet-200">Grant social manager · reveal only</button>
+          </form>
+          <p id="social-manager-status" role="status" class="text-sm text-slate-400">Active explicit vault grants are listed below; owner grants are read-only here. The account must sign in once before a member grant.</p>
+          <div id="social-manager-list" class="mt-3 overflow-x-auto text-sm text-slate-300"></div>
+        </div>
       </section>
 
       <section id="message-draft" data-admin-section="email" class="hidden bg-bc-navy border border-slate-700 rounded-2xl p-6 mt-8">
@@ -475,6 +492,7 @@
     let currentCockpitInstanceId = null;
     let currentCockpitRoster = [];
     let currentAdminUser = null;
+    let currentSocialManagers = [];
     let workflowSections = [];
     let selectedWorkflowId = null;
     let currentPhysicalResources = [];
@@ -535,7 +553,7 @@
     }
 
     function hasSuperAdminRole(roles = []) {
-      return roles.some((role) => role.role === "super_admin" && !role.revoked_at);
+      return roles.some((role) => role.role === "super_admin" && role.scope_type === "global" && role.scope_id === "*" && !role.revoked_at);
     }
 
     function isCurrentSuperAdmin() {
@@ -589,6 +607,8 @@
       const admin = hasAdminRole(me.roles || []);
       $("role-admin").classList.toggle("hidden", !admin);
       $("admin-role-form").classList.toggle("hidden", !me.capabilities?.role_management);
+      $("admin-role-option").hidden = !isCurrentSuperAdmin();
+      if (!isCurrentSuperAdmin()) $("admin-role-form").elements.role.value = "organizer";
       $("access-admin-nav").classList.toggle("hidden", !admin);
       loginPanel.classList.add("hidden");
       adminApp.classList.remove("hidden");
@@ -607,7 +627,9 @@
         await loadUsers();
         await loadHelperInterests();
         await loadPhysicalResources();
-        if (hasAdminRole(me.roles || [])) await loadAdminRoles();
+        if (hasAdminRole(me.roles || [])) {
+          await Promise.all([loadAdminRoles(), loadSocialManagers()]);
+        }
       }
       return me;
     }
@@ -1418,7 +1440,7 @@
         status.textContent = "Loading role grants…";
         const data = await api("/api/admin/roles");
         renderAdminRoles(data.roles || []);
-        status.textContent = `Loaded ${data.count ?? (data.roles || []).length} active role grant(s).${currentAdminUser?.capabilities?.role_management ? '' : ' Read-only: only super-admins may change access.'}`;
+        status.textContent = `Loaded ${data.count ?? (data.roles || []).length} active role grant(s).${currentAdminUser?.capabilities?.role_management ? '' : ' Read-only role list.'}`;
         return data.roles || [];
       } catch (error) {
         status.textContent = error.message;
@@ -1455,6 +1477,11 @@
       const form = event.currentTarget;
       const status = $("role-admin-status");
       const payload = Object.fromEntries(new FormData(form).entries());
+      if (payload.role === "admin" && !isCurrentSuperAdmin()) {
+        status.textContent = "Only a global super-admin can change admin grants.";
+        status.className = "text-sm text-red-300 mt-1";
+        return;
+      }
       status.className = "text-sm text-slate-400 mt-1";
       status.textContent = `${payload.action === "revoke" ? "Revoking" : "Granting"} ${payload.role} for ${payload.email}…`;
       try {
@@ -1465,6 +1492,79 @@
       } catch (error) {
         status.textContent = error.message;
         status.className = "text-sm text-red-300 mt-1";
+      }
+    }
+
+    async function loadSocialManagers() {
+      const status = $("social-manager-status");
+      try {
+        const data = await api("/api/social-vault");
+        currentSocialManagers = data.members || [];
+        $("social-manager-seats").textContent = `${data.effectiveCount} / ${data.capacity} effective vault seats in use (unique people, including implicit global admins and explicit members/owners).`;
+        renderSocialManagers();
+        return data;
+      } catch (error) {
+        currentSocialManagers = [];
+        $("social-manager-list").textContent = "Vault grants unavailable.";
+        $("social-manager-seats").textContent = "Seat count unavailable.";
+        status.textContent = error.message;
+        status.className = "text-sm text-red-300";
+        throw error;
+      }
+    }
+
+    function renderSocialManagers() {
+      const members = currentSocialManagers;
+      const container = $("social-manager-list");
+      if (!members.length) {
+        container.textContent = "No active explicit vault grants.";
+        return;
+      }
+      container.innerHTML = `<table class="min-w-full border-separate border-spacing-y-2"><thead class="text-left text-xs uppercase tracking-widest text-slate-400"><tr><th>Email</th><th>Access</th><th>Granted</th><th>Action</th></tr></thead><tbody>${members.map((member) => `
+        <tr class="bg-bc-dark"><td class="p-3 font-mono text-xs">${escapeHtml(member.email)}</td><td class="p-3">${member.role === "member" ? "Social manager · reveal only" : "Vault owner · manage credentials"}</td><td class="p-3 text-xs">${escapeHtml(member.granted_at || "")}</td><td class="p-3">${member.role === "member" ? `<button type="button" data-social-revoke="${escapeHtml(member.user_id)}" class="border border-red-400/60 text-red-200 px-3 py-2 rounded-lg text-xs font-bold">Revoke explicit grant</button>` : "Manage owner in Shared logins"}</td></tr>
+      `).join("")}</tbody></table>`;
+      container.querySelectorAll("[data-social-revoke]").forEach((button) => button.addEventListener("click", () => revokeSocialManager(button.dataset.socialRevoke)));
+    }
+
+    async function grantSocialManager(event) {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const status = $("social-manager-status");
+      const email = form.elements.email.value.trim().toLowerCase();
+      try {
+        if (!currentAdminUser?.capabilities?.role_management || !hasAdminRole(currentAdminUser.roles || [])) throw new Error("A signed-in global admin is required.");
+        const data = await loadSocialManagers();
+        const existing = (data.members || []).find((member) => member.email.toLowerCase() === email);
+        if (existing) throw new Error(existing.role === "owner" ? "This person is a vault owner. Use Shared logins to manage owner access." : "This person already has an explicit vault grant.");
+        const roles = await api("/api/admin/roles");
+        if ((roles.roles || []).some((grant) => grant.email.toLowerCase() === email && ["admin", "super_admin"].includes(grant.role) && grant.scope_type === "global" && grant.scope_id === "*"))
+          throw new Error("This global admin already has implicit vault access. Manage their admin role separately.");
+        await api("/api/social-vault/members", { method: "POST", body: JSON.stringify({ email, role: "member" }) });
+        await loadSocialManagers();
+        status.textContent = `Granted social manager (reveal only) to ${email}.`;
+        status.className = "text-sm text-green-300";
+        form.reset();
+      } catch (error) {
+        status.textContent = error.message;
+        status.className = "text-sm text-red-300";
+      }
+    }
+
+    async function revokeSocialManager(userId) {
+      const status = $("social-manager-status");
+      try {
+        if (!currentAdminUser?.capabilities?.role_management || !hasAdminRole(currentAdminUser.roles || [])) throw new Error("A signed-in global admin is required.");
+        await loadSocialManagers();
+        const member = currentSocialManagers.find((row) => row.user_id === userId && row.role === "member");
+        if (!member) throw new Error("This explicit member grant is no longer active. Refresh and retry.");
+        if (!window.confirm(`Revoke social manager access for ${member.email}? Rotate every shared password this person could have seen; revocation cannot erase copied credentials. Global admins retain implicit access.`)) return;
+        const result = await api(`/api/social-vault/members/${encodeURIComponent(member.user_id)}`, { method: "DELETE", body: "{}" });
+        await loadSocialManagers();
+        status.textContent = result.rotationWarning || "Explicit member grant revoked. Rotate shared passwords.";
+        status.className = "text-sm text-amber-200";
+      } catch (error) {
+        status.textContent = error.message;
+        status.className = "text-sm text-red-300";
       }
     }
 
@@ -1833,6 +1933,8 @@
     $("new-physical-resource").addEventListener("click", () => resetPhysicalResourceForm());
     $("generate-physical-resource-id").addEventListener("click", () => resetPhysicalResourceForm({ resourceId: generatePhysicalResourceId(), createWithId: true, focus: true }));
     $("load-admin-roles").addEventListener("click", () => loadAdminRoles().catch(() => {}));
+    $("load-social-managers").addEventListener("click", () => loadSocialManagers().catch(() => {}));
+    $("social-manager-form").addEventListener("submit", grantSocialManager);
     $("admin-role-form").addEventListener("submit", applyAdminRoleChange);
     $("load-events").addEventListener("click", () => loadEvents().catch(() => {}));
     $("new-event").addEventListener("click", resetForm);

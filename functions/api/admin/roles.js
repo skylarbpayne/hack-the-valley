@@ -6,8 +6,7 @@ import {
   methodNotAllowed,
   normalizeEmail,
   readJson,
-  requireAdmin,
-  requireSuperAdminAccess
+  requireAdmin
 } from "../../_lib/event-platform.js";
 import { auditEventStatement, buildAuditEvent } from "../../_lib/domain/audit.js";
 
@@ -122,8 +121,8 @@ export async function onRequestGet(context) {
 
 export async function onRequestPost(context) {
   return handleErrors(async () => {
-    const access = await requireSuperAdminAccess(context.request, context.env);
-    if (access.bootstrap || !access.user?.id) throw Object.assign(new Error("A signed-in super-admin session is required."), { status: 403 });
+    const access = await requireAdmin(context.request, context.env);
+    if (access.bootstrap || !access.user?.id) throw Object.assign(new Error("A signed-in admin session is required."), { status: 403 });
     const db = getDb(context.env);
     const input = await readJson(context.request);
     const email = assertAdminEmail(input.email);
@@ -131,6 +130,8 @@ export async function onRequestPost(context) {
     const role = input.role === undefined ? "admin" : input.role;
     if (!MANAGED_ROLES.has(role) || (input.scope_type && input.scope_type !== "global") || (input.scope_id && input.scope_id !== "*"))
       throw Object.assign(new Error("Only global admin and organizer grants are supported. Seed super_admin separately."), { status: 400 });
+    if (role === "admin" && access.role.role !== "super_admin")
+      throw Object.assign(new Error("Only a signed-in global super-admin may change admin grants."), { status: 403 });
     let user;
     if (action === "grant") {
       user = await grantRole(db, email, role, access);

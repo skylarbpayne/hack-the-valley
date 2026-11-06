@@ -20,17 +20,31 @@ test('sponsorship API requires session admin including inbox and media',async t=
   for(const user of ['danny','alex'])assert.equal((await worker.fetch(req('',{user}),env)).status,200);
   assert.equal((await worker.fetch(req('',{user:null,headers:{Authorization:'Bearer recovery'}}),{...env,HTV_ADMIN_TOKEN:'recovery',HTV_ADMIN_BOOTSTRAP_TOKEN_ENABLED:'1'})).status,403);
 });
-test('organizer-only and event-scoped admin roles cannot access sponsorship reads or writes',async t=>{
+test('global organizers can work sponsorship leads while event-scoped roles cannot',async t=>{
   const env=await setup(t);
   await env.HTV_DB.prepare("INSERT INTO roles(id,user_id,role,scope_type,scope_id,created_at) VALUES('scoped-test-role',?,'organizer','global','*',?)").bind(DEMO_USERS.member,new Date().toISOString()).run();
-  for(const role of ['global organizer','event admin']) {
-    if(role==='event admin') await env.HTV_DB.prepare("UPDATE roles SET role='admin',scope_type='event',scope_id='hack-the-valley-2026' WHERE id='scoped-test-role'").run();
+  const owners=await worker.fetch(req('/owners',{user:'member'}),env);
+  assert.equal(owners.status,200);
+  assert.ok((await owners.json()).items.some(owner=>owner.id===DEMO_USERS.member));
+  const created=await worker.fetch(req('/contacts',{user:'member',method:'POST',body:{business_name:'Organizer prospect'}}),env);
+  assert.equal(created.status,201,await created.clone().text());
+  assert.equal((await worker.fetch(req('/contacts',{user:'member'}),env)).status,200);
+  assert.equal((await worker.fetch(req('/reminders',{user:'member'}),env)).status,200);
+  assert.equal((await worker.fetch(req('/motions/unknown',{user:'member'}),env)).status,404);
+  const campaign=await worker.fetch(req('/campaigns',{user:'member',method:'POST',body:{name:'Organizer campaign',year:2027}}),env);
+  assert.equal(campaign.status,201,await campaign.clone().text());
+  const contact=(await created.json()).item;
+  const campaignRow=(await campaign.json()).item;
+  const motion=await worker.fetch(req('/motions',{user:'member',method:'POST',body:{contact_id:contact.id,campaign_id:campaignRow.id,owner_user_id:DEMO_USERS.member,status:'not_contacted'}}),env);
+  assert.equal(motion.status,201,await motion.clone().text());
+  for(const role of ['event organizer','event admin']) {
+    await env.HTV_DB.prepare("UPDATE roles SET role=?,scope_type='event',scope_id='hack-the-valley-2026' WHERE id='scoped-test-role'").bind(role==='event admin'?'admin':'organizer').run();
     for(const path of ['/contacts','/motions/unknown/logo','/reminders']) {
       assert.equal((await worker.fetch(req(path,{user:'member'}),env)).status,403,`${role}: ${path}`);
     }
     assert.equal((await worker.fetch(req('/contacts',{user:'member',method:'POST',body:{business_name:'Unauthorized prospect'}}),env)).status,403,`${role}: contact mutation`);
   }
-  assert.equal((await env.HTV_DB.prepare('SELECT COUNT(*) AS n FROM sponsor_contacts').first()).n,0);
+  assert.equal((await env.HTV_DB.prepare('SELECT COUNT(*) AS n FROM sponsor_contacts').first()).n,1);
 });
 test('authorization is checked again before replaying a successful mutation',async t=>{
   const env=await setup(t),headers={'Idempotency-Key':'revoke-retry-test'};

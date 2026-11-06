@@ -115,7 +115,7 @@ async function request(path, { method = 'GET', body, upload, headers = {}, finge
   if (!response.ok) {
     const error = new Error(data.error || data.message || 'This change could not be saved.');
     error.status = response.status;
-    if (response.status === 403) error.message = 'Admin access is required. An active admin or super admin role is needed to use this workspace.';
+    if (response.status === 403) error.message = 'A global organizer or admin role is required to use this workspace.';
     if (response.status === 409) error.message += ' Your draft has been kept. Review the latest saved version before applying your changes.';
     throw error;
   }
@@ -364,7 +364,7 @@ function bindMotionForm(row) {
     saving(form, async session => {
       const data = Object.fromEntries(new FormData(form));
       if (!row && !data.contact_id) throw new Error('Choose a business contact first.');
-      if (!data.owner_user_id) throw new Error('An active admin owner is required.');
+      if (!data.owner_user_id) throw new Error('An active organizer or admin owner is required.');
       data.follow_up_on ||= null;
       if (row) {
         data.revision = row.revision;
@@ -400,7 +400,7 @@ async function openMotion(id, focusPayment = false, preserveDraftOnError = false
     const activities = result.activities || [];
     const email = contact?.email ?? row.email;
     const body = `<section class="inline-contact" aria-label="Primary contact details"><div class="contact-card-heading"><div><span class="contact-caption">Primary contact</span><p><strong>${escapeHtml(contact?.contact_name || row.contact_name || 'Not provided')}</strong></p></div><button class="button secondary small" id="edit-motion-contact">Edit contact</button></div><dl class="contact-details"><dt>Phone</dt><dd>${phoneLink(contact?.phone)}</dd><dt>Email</dt><dd>${email ? `<a class="contact-link" href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>` : 'Not provided'}</dd><dt>Campaign</dt><dd>${escapeHtml(row.campaign_name)}</dd></dl></section>
-      ${row.owner_active === false || row.owner_active === 0 ? '<p class="drawer-callout warning">This owner no longer has admin access. Reassign this prospect to an active admin. No overdue reminder will be generated for the former owner.</p>' : ''}
+      ${row.owner_active === false || row.owner_active === 0 ? '<p class="drawer-callout warning">This owner no longer has organizer or admin access. Reassign this prospect to an active owner. No overdue reminder will be generated for the former owner.</p>' : ''}
       ${row.campaign_archived_at ? '<p class="drawer-callout">This campaign is archived. Its history is preserved and overdue reminders are paused.</p>' : ''}
       ${motionForm(row)}
       ${result.commitment ? commitmentForm(result.commitment) : '<section class="form-section"><h3>Sponsorship details</h3><p class="intro">Set the outreach status to Committed to track cash, in-kind support, payment references, and a logo.</p></section>'}
@@ -598,6 +598,10 @@ async function initialize() {
   try {
     const session = await request('');
     state.user = session.user;
+    try {
+      const me = await fetch('/api/admin/me', { credentials: 'same-origin', cache: 'no-store' }).then(response => response.json());
+      $('#sponsor-admin-link').hidden = !me.capabilities?.admin;
+    } catch { /* Sponsorship authorization is enforced by the API; this only decorates navigation. */ }
     state.previewMode = Boolean(session.preview_mode);
     $('#session-name').textContent = `Signed in as ${state.user.name || state.user.email}`;
     $('#preview-label').hidden = !state.previewMode;

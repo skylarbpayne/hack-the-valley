@@ -29,7 +29,7 @@ export async function listReminderPreviews(db, { now = new Date(), origin = 'htt
     JOIN users u ON u.id = m.owner_user_id
     WHERE EXISTS (
       SELECT 1 FROM roles r WHERE r.user_id = u.id
-        AND r.role IN ('admin', 'super_admin')
+        AND r.role IN ('admin', 'super_admin', 'organizer')
         AND r.scope_type = 'global' AND r.scope_id = '*' AND r.revoked_at IS NULL
     )
     ORDER BY m.owner_user_id, m.follow_up_on, c.business_name, m.id

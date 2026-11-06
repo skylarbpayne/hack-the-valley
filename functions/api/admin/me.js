@@ -30,7 +30,7 @@ export async function onRequestGet(context) {
         capabilities: {
           admin: true,
           super_admin: true,
-          role_management: true,
+          role_management: false,
           bootstrap: true
         }
       });
@@ -54,7 +54,7 @@ export async function onRequestGet(context) {
         admin: isAdmin(roles),
         organizer: roles.some((role) => role.role === "organizer" && !role.revoked_at),
         super_admin: isSuperAdmin(roles),
-        role_management: isAdmin(roles),
+        role_management: roles.some(role => role.role === "super_admin" && role.scope_type === "global" && role.scope_id === "*" && !role.revoked_at),
         bootstrap: false
       }
     });

@@ -1,4 +1,4 @@
-import { getDb, requireAdmin } from '../../../_lib/event-platform.js';
+import { getDb, requireOrganizerAccess } from '../../../_lib/event-platform.js';
 import { mutateSponsor, listSponsorRecords, getSponsorMotion, listSponsorOwners, addSponsorActivity, sponsorError } from '../../../_lib/domain/sponsorships.js';
 import { listReminderPreviews, captureReminderPreviews, listReminderDigests } from '../../../_lib/domain/sponsorship-reminders.js';
 
@@ -6,8 +6,8 @@ const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:
 async function handle(context) {
   try {
     const {request,env}=context;
-    const access=await requireAdmin(request,env);
-    if(access.bootstrap || !access.user?.id)throw sponsorError('A signed-in admin session is required',403);
+    const access=await requireOrganizerAccess(request,env);
+    if(access.bootstrap || !access.user?.id)throw sponsorError('A signed-in global organizer or admin session is required',403);
     const db=getDb(env),url=new URL(request.url),method=request.method;
     const parts=url.pathname.replace(/^\/api\/admin\/sponsorships\/?/,'').split('/').filter(Boolean).map(decodeURIComponent);
     const [resource,rowId,action]=parts;

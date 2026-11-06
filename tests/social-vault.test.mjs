@@ -35,6 +35,26 @@ test('vault grants live global admins, ignores bootstrap, requires member grant 
   assert.equal((await call(env,'/members',{user:'member',method:'POST',body:{email:'alex@example.com',role:'owner'}})).status,403);
 });
 
+test('Access-compatible admin vault grant is member-only, revokes by listed user ID, and leaves roles untouched', async t => {
+  const env = await fixture(t), db = env.HTV_DB;
+  const granted = await call(env, '/members', { user: 'alex', method: 'POST', body: { email: 'member@example.com', role: 'member' } });
+  assert.equal(granted.status, 200, await granted.clone().text());
+  const listing = await call(env, '', { user: 'alex' }).then(r => r.json());
+  const member = listing.members.find(row => row.email === 'member@example.com');
+  assert.equal(member.user_id, DEMO_USERS.member);
+  assert.equal(member.role, 'member');
+  assert.equal(listing.capacity, 15);
+  assert.equal(listing.effectiveCount, 3);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM roles WHERE user_id=? AND revoked_at IS NULL').bind(DEMO_USERS.member).first()).n, 0);
+  assert.equal((await call(env, '/members', { user: 'member', method: 'POST', body: { email: 'alex@example.com', role: 'member' } })).status, 403);
+  const revoked = await call(env, `/members/${encodeURIComponent(member.user_id)}`, { user: 'alex', method: 'DELETE' });
+  assert.equal(revoked.status, 200);
+  assert.match((await revoked.json()).rotationWarning, /Rotate every shared password/);
+  assert.equal((await call(env, '', { user: 'member' })).status, 403);
+  assert.equal((await call(env, '', { user: 'alex' })).status, 200, 'admin retains implicit access');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM social_vault_members WHERE user_id=? AND role='owner' AND revoked_at IS NULL").bind(DEMO_USERS.danny).first()).n, 1);
+});
+
 test('encrypted credentials preserve exact whitespace, are hidden in lists/audits, and revoke kills a live session', async t => {
   const env = await fixture(t), db = env.HTV_DB, password = '  synthetic test phrase  ';
   let response = await call(env,'/accounts',{method:'POST',body:{label:'Social A',login:'@synthetic',password}});

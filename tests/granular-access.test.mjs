@@ -32,6 +32,8 @@ async function fixture(t) {
 test('scoped organizer updates assigned event and checks in an existing signup, not other events or admin/vault routes', async t => {
   const { db, call } = await fixture(t);
   assert.equal((await call('/api/admin/me')).status, 200);
+  assert.equal((await call('/api/admin/me').then(response => response.json())).capabilities.role_management, false);
+  assert.equal((await call('/api/admin/roles', 'member', 'POST', { email: 'member@example.com', role: 'organizer', action: 'grant' })).status, 403);
   assert.equal((await call('/api/events/synthetic-event', 'member', 'PATCH', { title: 'Synthetic event revised' })).status, 200);
   assert.equal((await call('/api/events/another-event', 'member', 'PATCH', { title: 'Wrong event' })).status, 403);
   assert.equal((await call('/api/events', 'member', 'POST', { title: 'Unauthorized create' })).status, 403);
@@ -69,18 +71,22 @@ test('global admin can read roles and vault while organizer UI remains a separat
   assert.match(sponsorshipUi, /href="\/organizer"/);
 });
 
-test('only a signed-in super admin changes global organizer and admin grants with an audit trail', async t => {
+test('signed-in global admins manage organizers but only super-admins manage admins', async t => {
   const { db, call } = await fixture(t);
-  for (const role of ['admin', 'organizer']) {
-    const denied = await call('/api/admin/roles', 'alex', 'POST', { email: 'member@example.com', role, action: 'grant' });
-    assert.equal(denied.status, 403);
-    assert.equal((await call('/api/admin/roles', 'alex', 'POST', { email: 'member@example.com', role, action: 'revoke' })).status, 403);
+  for (const action of ['grant', 'revoke']) {
+    assert.equal((await call('/api/admin/roles', 'alex', 'POST', { email: 'member@example.com', role: 'admin', action })).status, 403);
+    assert.equal((await call('/api/admin/roles', 'member', 'POST', { email: 'member@example.com', role: 'organizer', action })).status, 403);
   }
-  assert.equal((await call('/api/admin/me', 'alex').then(response => response.json())).capabilities.role_management, false);
+  assert.equal((await call('/api/admin/me', 'alex').then(response => response.json())).capabilities.role_management, true);
   assert.equal((await call('/api/admin/me', 'danny').then(response => response.json())).capabilities.role_management, true);
   const token = new Request(`${origin}/api/admin/roles`, { method: 'POST', headers: { Authorization: 'Bearer recovery', 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'member@example.com', role: 'organizer', action: 'grant' }) });
   assert.equal((await worker.fetch(token, { HTV_DB: db, HTV_ADMIN_TOKEN: 'recovery', HTV_ADMIN_BOOTSTRAP_TOKEN_ENABLED: '1' })).status, 403);
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM roles WHERE user_id=? AND scope_type='global'").bind(DEMO_USERS.member).first()).n, 0);
+  const organizerGrant = await call('/api/admin/roles', 'alex', 'POST', { email: 'member@example.com', role: 'organizer', action: 'grant' });
+  assert.equal(organizerGrant.status, 200, await organizerGrant.clone().text());
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM roles WHERE user_id=? AND role='organizer' AND revoked_at IS NULL").bind(DEMO_USERS.member).first()).n, 2);
+  assert.equal((await call('/api/admin/roles', 'alex', 'POST', { email: 'member@example.com', role: 'organizer', action: 'revoke' })).status, 200);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM roles WHERE user_id=? AND role='organizer' AND scope_type='global' AND revoked_at IS NULL").bind(DEMO_USERS.member).first()).n, 0);
   for (const role of ['organizer', 'admin']) {
     const granted = await call('/api/admin/roles', 'danny', 'POST', { email: 'member@example.com', role, action: 'grant' });
     assert.equal(granted.status, 200, await granted.clone().text());

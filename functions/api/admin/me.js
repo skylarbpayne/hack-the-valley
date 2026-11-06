@@ -54,7 +54,7 @@ export async function onRequestGet(context) {
         admin: isAdmin(roles),
         organizer: roles.some((role) => role.role === "organizer" && !role.revoked_at),
         super_admin: isSuperAdmin(roles),
-        role_management: roles.some(role => role.role === "super_admin" && role.scope_type === "global" && role.scope_id === "*" && !role.revoked_at),
+        role_management: roles.some(role => ['admin', 'super_admin'].includes(role.role) && role.scope_type === "global" && role.scope_id === "*" && !role.revoked_at),
         bootstrap: false
       }
     });

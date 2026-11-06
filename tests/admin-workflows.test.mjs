@@ -111,6 +111,17 @@ test("admin HTML exposes sectioned IA and keeps sensitive access separate", () =
   }
 });
 
+test("admin mobile navigation collapses after section selection and Access tables remain scrollable", () => {
+  const html = readFileSync(new URL("../public/admin.html", import.meta.url), "utf8");
+  assert.match(html, /id="admin-nav-toggle"[^>]*aria-controls="admin-nav-items"[^>]*aria-expanded="false"/);
+  assert.match(html, /#admin-nav-items \{ display: none; max-height:/);
+  assert.match(html, /#admin-section-nav\.is-open #admin-nav-items \{ display: grid; \}/);
+  assert.match(html, /setAdminNavState\(nextSection\);\s*\$\("admin-section-nav"\)\.classList\.remove\("is-open"\);/);
+  assert.match(html, /id="admin-role-list"[^>]*tabindex="0"[^>]*overflow-x-auto/);
+  assert.match(html, /id="social-manager-list"[^>]*tabindex="0"[^>]*overflow-x-auto/);
+  assert.match(html, /Swipe sideways to see all role columns/);
+});
+
 test("workflow endpoint requires an admin session role", async () => {
   const noSession = await getWorkflows({
     request: adminRequest("/api/admin/workflows", {}),

@@ -19,6 +19,15 @@
     .msg-editor:focus { border-color: #06b6d4; }
     .msg-editor[data-empty="true"]::before { content: attr(data-placeholder); position: absolute; inset: 0.75rem 1rem auto; color: #64748b; pointer-events: none; white-space: pre-line; }
     .msg-editor.msg-drop-target { border-color: #06b6d4; background: rgba(6, 182, 212, 0.08); }
+    @media (max-width: 639px) {
+      #admin-section-nav { top: 0.5rem; }
+      #admin-nav-items { display: none; max-height: min(65vh, 32rem); overflow-y: auto; overscroll-behavior: contain; }
+      #admin-section-nav.is-open #admin-nav-items { display: grid; }
+      #role-admin { min-width: 0; padding: 1rem; }
+      #admin-role-list, #social-manager-list { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      #admin-role-list table, #social-manager-list table { width: max-content; min-width: 100%; }
+      #admin-role-list td, #social-manager-list td { overflow-wrap: anywhere; }
+    }
     .msg-editor h2 { margin: 0.5rem 0; font-size: 1.25rem; font-weight: 800; }
     .msg-editor h3 { margin: 0.5rem 0; font-size: 1.05rem; font-weight: 800; }
     .msg-editor a { color: #22d3ee; text-decoration: underline; }
@@ -64,7 +73,8 @@
       </div>
 
       <nav id="admin-section-nav" aria-label="Admin sections" class="sticky top-3 z-20 mb-8 rounded-3xl border border-slate-700 bg-slate-950/90 p-3 shadow-2xl shadow-slate-950/30 backdrop-blur">
-        <div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-2 text-sm font-black">
+        <button id="admin-nav-toggle" type="button" aria-controls="admin-nav-items" aria-expanded="false" class="sm:hidden w-full flex items-center justify-between rounded-2xl border border-slate-700 px-4 py-3 text-left font-black text-white"><span id="admin-nav-current">Dashboard</span><span aria-hidden="true">☰</span><span class="sr-only">Toggle admin sections</span></button>
+        <div id="admin-nav-items" class="grid sm:grid-cols-2 lg:grid-cols-5 gap-2 text-sm font-black mt-2 sm:mt-0">
           <button type="button" data-admin-nav="dashboard" title="Workflow map and links to submissions review and the project workspace." class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Dashboard</button>
           <button type="button" data-admin-nav="live-ops" title="Run the room: cockpit, roster, check-in, emergency contacts, event photos, and follow-up packet." class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Live ops</button>
           <button type="button" data-admin-nav="events" title="Create/update events, page copy, signup config, images, instances, and exports." class="rounded-2xl border border-slate-700 px-4 py-3 text-left text-slate-300 hover:border-bc-cyan">Events</button>
@@ -340,7 +350,8 @@
           <label class="block"><span class="text-sm font-semibold">Action</span><select name="action" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><option value="grant">Grant</option><option value="revoke">Revoke</option></select></label>
           <button class="bg-violet-300 text-bc-dark px-5 py-3 rounded-lg font-black hover:bg-violet-200">Apply</button>
         </form>
-        <div id="admin-role-list" class="overflow-x-auto text-sm text-slate-300"></div>
+        <p class="sm:hidden text-xs text-slate-400 mb-2">Swipe sideways to see all role columns →</p>
+        <div id="admin-role-list" role="region" aria-label="Role grants table, scroll sideways for all columns" tabindex="0" class="overflow-x-auto text-sm text-slate-300"></div>
         <div class="mt-6 border-t border-slate-700 pt-6">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -356,7 +367,8 @@
             <button class="bg-violet-300 text-bc-dark px-5 py-3 rounded-lg font-black hover:bg-violet-200">Grant social manager · reveal only</button>
           </form>
           <p id="social-manager-status" role="status" class="text-sm text-slate-400">Active explicit vault grants are listed below; owner grants are read-only here. The account must sign in once before a member grant.</p>
-          <div id="social-manager-list" class="mt-3 overflow-x-auto text-sm text-slate-300"></div>
+          <p class="sm:hidden text-xs text-slate-400 mt-3">Swipe sideways to see all vault columns →</p>
+          <div id="social-manager-list" role="region" aria-label="Vault grants table, scroll sideways for all columns" tabindex="0" class="mt-3 overflow-x-auto text-sm text-slate-300"></div>
         </div>
       </section>
 
@@ -566,6 +578,7 @@
     }
 
     function setAdminNavState(section) {
+      $("admin-nav-current").textContent = document.querySelector(`[data-admin-nav="${section}"]`)?.textContent.trim() || section.replace(/-/g, " ");
       document.querySelectorAll("[data-admin-nav]").forEach((control) => {
         const selected = control.dataset.adminNav === section;
         control.setAttribute("aria-selected", selected ? "true" : "false");
@@ -590,6 +603,8 @@
         panel.classList.toggle("hidden", !shouldShow);
       });
       setAdminNavState(nextSection);
+      $("admin-section-nav").classList.remove("is-open");
+      $("admin-nav-toggle").setAttribute("aria-expanded", "false");
       const targetId = focusTarget || nextSection;
       if (updateHash && targetId) history.replaceState(null, "", `#${targetId}`);
       const target = focusTarget ? $(focusTarget) : null;
@@ -1829,6 +1844,11 @@
         event.preventDefault();
         showAdminSection(section, { focusTarget, updateHash: true });
       });
+    });
+
+    $("admin-nav-toggle").addEventListener("click", () => {
+      const open = $("admin-section-nav").classList.toggle("is-open");
+      $("admin-nav-toggle").setAttribute("aria-expanded", String(open));
     });
 
     window.addEventListener("hashchange", () => showAdminSection(adminSectionFromHash(), { updateHash: false }));

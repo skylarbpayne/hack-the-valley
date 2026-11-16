@@ -6,7 +6,7 @@ import {
 } from "../../_lib/event-platform.js";
 
 function safeNextPath(value) {
-  const fallback = "/me/";
+  const fallback = "/dashboard/";
   let next = String(value || "").trim();
   if (!next || !next.startsWith("/") || next.startsWith("//")) return fallback;
   for (let i = 0; i < 2; i += 1) {

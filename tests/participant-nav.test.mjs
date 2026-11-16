@@ -86,13 +86,13 @@ test("profile link avoids the login/account chooser interstitial while /me remai
   assert.match(profileHtml, /\/api\/auth\/logout/);
 });
 
-test("signed-in login page redirects to the profile, while unauthenticated users can still request and verify login", () => {
+test("signed-in login page defaults to the dashboard, while explicit next remains intact", () => {
   const loginHtml = pageHtml("../public/login/index.html");
   assert.match(loginHtml, /window\.location\.replace\(signedInProfilePath\(\)\)/);
   assert.match(loginHtml, /function safeNextPath\(value\)/);
   assert.match(loginHtml, /decodeURIComponent\(path\)/);
   assert.match(loginHtml, /\[\\\\\\u0000-\\u001f\\u007f\]/);
-  assert.match(loginHtml, /return nextPath && !nextPath\.startsWith\("\/login"\) \? nextPath : "\/me\/"/);
+  assert.match(loginHtml, /return nextPath \|\| "\/dashboard\/"/);
   assert.match(loginHtml, /id="login-request-form"/);
   assert.match(loginHtml, /id="login-verify-form"/);
   assert.match(loginHtml, /\/api\/auth\/request-code/);

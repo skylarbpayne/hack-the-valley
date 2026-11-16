@@ -971,10 +971,12 @@ test("worker magic login endpoint sets a session cookie and redirects to a safe 
   };
 
   for (const [next, expected] of [
+    ["", "https://hackthevalley.org/dashboard/"],
     ["%2Fprojects%2F", "https://hackthevalley.org/projects/"],
-    ["%2F%5Cevil.com", "https://hackthevalley.org/me/"],
-    ["%2F%255Cevil.com", "https://hackthevalley.org/me/"],
-    ["%2F%2Fevil.com", "https://hackthevalley.org/me/"]
+    ["%2Fshared-logins%2F", "https://hackthevalley.org/shared-logins/"],
+    ["%2F%5Cevil.com", "https://hackthevalley.org/dashboard/"],
+    ["%2F%255Cevil.com", "https://hackthevalley.org/dashboard/"],
+    ["%2F%2Fevil.com", "https://hackthevalley.org/dashboard/"]
   ]) {
     const response = await worker.fetch(new Request(`https://hackthevalley.org/api/auth/magic-login?token=htvl_test_magic_token_123456789&next=${next}`), { HTV_DB: fakeDb }, {});
     assert.equal(response.status, 302);

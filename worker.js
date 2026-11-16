@@ -15,6 +15,7 @@ import * as authVerifyCode from './functions/api/auth/verify-code.js';
 import * as authMagicLogin from './functions/api/auth/magic-login.js';
 import * as authLogout from './functions/api/auth/logout.js';
 import * as me from './functions/api/me.js';
+import * as dashboard from './functions/api/dashboard.js';
 import * as meProjects from './functions/api/me/projects.js';
 import * as eventCheckins from './functions/api/events/[slug]/checkins/index.js';
 import * as eventCockpit from './functions/api/events/[slug]/instances/[instanceId]/cockpit/index.js';
@@ -56,6 +57,7 @@ const API_ROUTES = {
   '/api/leaderboard': leaderboard,
   '/api/leaderboard/': leaderboard,
   '/api/me': me,
+  '/api/dashboard': dashboard,
   '/api/me/projects': meProjects,
   '/api/projects': projectsPublic,
   '/api/register': register,

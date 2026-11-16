@@ -958,7 +958,7 @@ function addDays(date, days) {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
-function safeReturnPath(value, fallback = "/me/") {
+function safeReturnPath(value, fallback = "/dashboard/") {
   let path = String(value || "").trim();
   if (!path || !path.startsWith("/") || path.startsWith("//")) return fallback;
   for (let i = 0; i < 2; i += 1) {
@@ -989,7 +989,7 @@ function publicBaseUrl(env = {}) {
 function buildMagicLoginUrl({ token, next, env = {} }) {
   const url = new URL("/api/auth/magic-login", publicBaseUrl(env));
   url.searchParams.set("token", token);
-  const returnPath = safeReturnPath(next, "/me/");
+  const returnPath = safeReturnPath(next, "/dashboard/");
   if (returnPath) url.searchParams.set("next", returnPath);
   return url.toString();
 }

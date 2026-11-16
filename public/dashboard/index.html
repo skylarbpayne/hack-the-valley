@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Dashboard · Hack the Valley</title>
+  <style>
+    :root{font-family:Inter,system-ui,sans-serif;color:#f3f8fc;background:#0f172a;color-scheme:dark}
+    *{box-sizing:border-box}body{margin:0}a{color:inherit}header{border-bottom:1px solid #334155;background:#111d31}
+    .wrap{width:min(100% - 2rem,1080px);margin:auto}nav{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 0}
+    .brand{font-size:1.1rem;font-weight:900;text-decoration:none}nav a:last-child{color:#67e8f9}
+    main{padding:clamp(2rem,6vw,4rem) 0}h1{font-size:clamp(2rem,5vw,3.4rem);line-height:1.08;margin:.5rem 0}
+    .eyebrow{color:#67e8f9;font-size:.75rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    .muted{color:#bac9d9}.intro{max-width:55ch;line-height:1.6}.account{overflow-wrap:anywhere}
+    #links{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:1rem;margin:2rem 0;list-style:none;padding:0}
+    #links a{display:block;min-height:132px;padding:1.4rem;border:1px solid #3a5067;border-radius:18px;background:#19283e;text-decoration:none;transition:border-color .2s,transform .2s}
+    #links a:hover,#links a:focus-visible{border-color:#67e8f9;transform:translateY(-2px);outline-offset:3px}
+    #links strong{display:block;font-size:1.15rem;margin-bottom:.55rem}#links span{color:#bac9d9;line-height:1.5}
+    #status{min-height:1.5rem}footer{padding:2rem 0;border-top:1px solid #334155;color:#bac9d9;font-size:.9rem}
+    @media(max-width:480px){nav{align-items:flex-start}.wrap{width:min(100% - 1.5rem,1080px)}#links{margin-top:1.5rem}#links a{min-height:110px}}
+  </style>
+</head>
+<body>
+  <header><nav class="wrap" aria-label="Main"><a class="brand" href="/">Hack the Valley</a><a href="/events">Explore events</a></nav></header>
+  <main class="wrap">
+    <p class="eyebrow">Your workspace</p>
+    <h1>Welcome to your dashboard</h1>
+    <p class="intro muted">One place for your Hack the Valley work. Only tools available to this account appear here.</p>
+    <p id="account" class="account muted"></p>
+    <p id="status" role="status" aria-live="polite">Loading your workspace…</p>
+    <ul id="links" aria-label="Your tools"></ul>
+  </main>
+  <footer><div class="wrap">Need a different tool? Ask an HTV administrator to review your access. This page does not grant permissions.</div></footer>
+  <script type="module">
+    async function loadDashboard() {
+      const status = document.getElementById('status');
+      try {
+        const response = await fetch('/api/dashboard', { credentials: 'same-origin', cache: 'no-store' });
+        if (response.status === 401) {
+          window.location.replace('/login/?next=/dashboard/');
+          return;
+        }
+        if (!response.ok) throw new Error('Your workspace could not load. Please refresh and try again.');
+        const data = await response.json();
+        document.getElementById('account').textContent = data.user.name || data.user.email || '';
+        const list = document.getElementById('links');
+        for (const link of data.links) {
+          const item = document.createElement('li');
+          const anchor = document.createElement('a');
+          anchor.href = link.href;
+          const title = document.createElement('strong');
+          title.textContent = link.title;
+          const detail = document.createElement('span');
+          detail.textContent = link.description;
+          anchor.append(title, detail);
+          item.append(anchor);
+          list.append(item);
+        }
+        status.textContent = '';
+      } catch (error) {
+        status.textContent = error.message || 'Your workspace could not load. Please refresh and try again.';
+      }
+    }
+    loadDashboard();
+  </script>
+</body>
+</html>

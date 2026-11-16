@@ -63,13 +63,18 @@ test('explicit vault owner is distinct from member and can manage shared logins'
   assert.deepEqual(ids(body), ['profile', 'my-projects', 'shared-logins']);
 });
 
-test('scoped organizer receives event operations for assigned event, not sponsorships', async t => {
+test('scoped organizer sees only available assigned events, not sponsorships or archived-event tools', async t => {
   const { db, get } = await fixture(t);
+  await db.prepare("INSERT INTO events(slug,title,status,created_at,updated_at) VALUES('hack-hours','Hack Hours','open','2026-01-01','2026-01-01')").run();
   await db.prepare("INSERT INTO roles(id,user_id,role,scope_type,scope_id,created_at) VALUES('scoped',?,'organizer','event','hack-hours','2026-01-01')").bind(DEMO_USERS.member).run();
   const body = (await get('member')).body;
   assert.deepEqual(body.capabilities.organizer, { scope: 'event', events: ['hack-hours'] });
   assert.deepEqual(ids(body), ['profile', 'my-projects', 'event-operations']);
   assert.equal(body.links.at(-1).href, '/organizer');
+  await db.prepare("UPDATE events SET status='archived' WHERE slug='hack-hours'").run();
+  const archived = (await get('member')).body;
+  assert.equal(archived.capabilities.organizer, null);
+  assert.deepEqual(ids(archived), ['profile', 'my-projects']);
 });
 
 test('global organizer sees events and sponsorships but not vault or full admin', async t => {

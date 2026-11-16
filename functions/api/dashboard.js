@@ -14,8 +14,13 @@ export async function onRequestGet({ request, env }) {
     const global = name => roles.some(row => row.role === name && row.scope_type === 'global' && row.scope_id === '*');
     const admin = global('admin') || global('super_admin');
     const globalOrganizer = admin || global('organizer');
-    const events = [...new Set(roles.filter(row => row.role === 'organizer' && row.scope_type === 'event' && row.scope_id).map(row => row.scope_id))].sort();
-    const organizer = globalOrganizer ? { scope: 'global', events: [] } : events.length ? { scope: 'event', events } : null;
+    const assignedEvents = [...new Set(roles.filter(row => row.role === 'organizer' && row.scope_type === 'event' && row.scope_id).map(row => row.scope_id))].sort();
+    // The organizer workspace excludes archived events; do not link to an empty workspace.
+    const availableEvents = assignedEvents.length && !globalOrganizer
+      ? (await db.prepare(`SELECT slug FROM events WHERE slug IN (${assignedEvents.map(() => '?').join(',')}) AND status != 'archived'`).bind(...assignedEvents).all()).results.map(row => row.slug)
+      : [];
+    const organizer = globalOrganizer ? { scope: 'global', events: [] } : availableEvents.length ? { scope: 'event', events: availableEvents } : null;
+    const events = availableEvents;
     const socialVault = admin ? 'admin' : vaultRow?.role || null;
     const links = [
       { id: 'profile', title: 'Update profile', description: 'Your account and event details', href: '/me/' },

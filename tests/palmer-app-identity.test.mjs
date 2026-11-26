@@ -67,6 +67,37 @@ test('provider-disable, wrong host, missing config, invalid JWT and role revocat
   assert.equal((await call('/api/admin/roles')).status, 403);
 });
 
+test('private diagnostic emits only a fixed stage, only for denied named probes', async t => {
+  const { env } = await fixture(t);
+  const logs = [];
+  t.mock.method(console, 'warn', (...args) => logs.push(args));
+  const path = '/api/admin/me';
+  const mixed = req(path); mixed.headers.set('Cookie', 'fixture-sensitive-marker');
+  for (const [stage, request, overrides] of [
+    ['db_binding', req(path), { HTV_DB: null }],
+    ['config', req(path), { HTV_SERVICE_ENABLED: '0' }],
+    ['session_header', mixed, {}],
+    ['missing_assertion', req(path, 'GET', undefined, ''), {}],
+    ['jwt_verification', req(path, 'GET', undefined, 'fixture-sensitive-marker'), {}],
+    ['service_claims', req(path, 'GET', undefined, assertion({ sub: 'fixture-sensitive-marker' })), {}],
+    ['user_lookup', req(path), { HTV_DB: { prepare() { throw Error('fixture-sensitive-marker'); } } }],
+    ['user_match', req(path), { HTV_ACCESS_PRINCIPAL_EMAIL: 'absent@example.com' }],
+  ]) {
+    const res = await worker.fetch(request, { ...env, ...overrides });
+    assert.equal(res.status, 401); assert.equal(await res.text(), 'Unauthorized');
+    assert.deepEqual(logs.splice(0), [[{ htv_palmer_auth_stage: stage }]]);
+  }
+  assert.equal((await worker.fetch(req(path), env)).status, 200);
+  for (const request of [req('/api/admin/roles', 'GET', undefined, ''), req(path, 'POST', undefined, ''), req(path, 'GET', undefined, assertion(), 'https://hackthevalley.org')]) {
+    assert.equal((await worker.fetch(request, env)).status, 401);
+  }
+  assert.deepEqual(logs, []);
+  const goodFetch = globalThis.fetch; let attempts = 0;
+  globalThis.fetch = (...args) => ++attempts === 1 ? goodFetch(...args) : Promise.reject(Error('fixture-sensitive-marker'));
+  assert.equal((await worker.fetch(req(path), env)).status, 401);
+  assert.deepEqual(logs, [[{ htv_palmer_auth_stage: 'route_auth' }]]);
+});
+
 test('operator client uses Access headers on the dedicated API hostname for app RBAC', async t => {
   const { env } = await fixture(t);
   const body = { email: 'mofmofcool@gmail.com', role: 'organizer', scope_type: 'event', scope_id: 'hack-hours', action: 'grant' };

@@ -91,6 +91,15 @@ test('private diagnostic emits only a fixed stage, only for denied named probes'
     sqlite.exec('DELETE FROM palmer_auth_stage_counts');
     assert.deepEqual(logs, []);
   }
+  for (const value of ['', 'mirror', 'CF_Authorization=other', 'htv_session=', 'mixed']) {
+    const request = req(path);
+    const mirror = `CF_Authorization=${request.headers.get('Cf-Access-Jwt-Assertion')}`;
+    request.headers.set('cookie', value === 'mirror' ? mirror : value === 'mixed' ? `${mirror}; htv_session=other` : value);
+    assert.equal((await worker.fetch(request, env)).status, ['', 'mirror'].includes(value) ? 200 : 401);
+  }
+  const mixedHeader = req(path); mixedHeader.headers.set('x-htv-session','');
+  assert.equal((await worker.fetch(mixedHeader, env)).status, 401);
+  sqlite.exec('DELETE FROM palmer_auth_stage_counts');
   assert.equal((await worker.fetch(req(path), env)).status, 200);
   for (const request of [req('/api/admin/roles', 'GET', undefined, ''), req(path, 'POST', undefined, ''), req(path, 'GET', undefined, assertion(), 'https://hackthevalley.org')]) {
     assert.equal((await worker.fetch(request, env)).status, 401);

@@ -509,15 +509,25 @@ function renderPublicProjectPage(request) {
 export default {
   async fetch(request, env = {}, ctx = {}) {
     const url = new URL(request.url);
-    if (env.HTV_ACCESS_HOST && url.hostname === env.HTV_ACCESS_HOST) {
+    const dedicated = env.HTV_ACCESS_HOST && url.hostname === env.HTV_ACCESS_HOST;
+    const diagnose = dedicated && request.method === 'GET' && url.pathname === '/api/admin/me';
+    if (dedicated) {
       if (!url.pathname.startsWith('/api/')) return new Response('Not found', { status: 404 });
-      try { await getAccessServiceUser(getDb(env), request, env); }
-      catch { return new Response('Unauthorized', { status: 401 }); }
+      let stage = 'db_binding';
+      try { await getAccessServiceUser(getDb(env), request, env, value => { stage = value; }); }
+      catch {
+        if (diagnose) {
+          console.warn({ htv_palmer_auth_stage: stage });
+        }
+        return new Response('Unauthorized', { status: 401 });
+      }
     }
     const route = matchApiRoute(url.pathname);
 
     if (route) {
-      return routeApiRequest(request, env, ctx, route.routeModule, route.params);
+      const response = await routeApiRequest(request, env, ctx, route.routeModule, route.params);
+      if (diagnose && response.status === 401) console.warn({ htv_palmer_auth_stage: 'route_auth' });
+      return response;
     }
 
     if (url.pathname === '/demo-hours' || url.pathname === '/demo-hours/') {

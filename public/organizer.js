@@ -10,14 +10,31 @@ async function api(url, options = {}) {
   return data;
 }
 const json = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-const local = iso => iso ? new Date(new Date(iso).getTime() - new Date(iso).getTimezoneOffset() * 60000).toISOString().slice(0,16) : '';
-const instant = value => value ? new Date(value).toISOString() : null;
+const pacific = value => {
+  if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(value)) throw Error('Enter a Pacific date and time.');
+  const wall = Date.parse(`${value}:00Z`);
+  const offset = date => {
+    const zone = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', timeZoneName: 'shortOffset' }).formatToParts(date).find(part => part.type === 'timeZoneName').value;
+    const match = zone.match(/^GMT([+-])(\d{1,2})(?::(\d{2}))?$/);
+    if (!match) throw Error('Pacific timezone could not be resolved.');
+    return (match[1] === '-' ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3] || 0));
+  };
+  let time = wall - offset(new Date(wall)) * 60000;
+  time = wall - offset(new Date(time)) * 60000;
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(time));
+  const part = name => parts.find(item => item.type === name)?.value;
+  if (`${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}` !== value)
+    throw Error('That Pacific time does not exist (daylight-saving change).');
+  return new Date(time).toISOString();
+};
 function eventRecord() { return events.find(event => event.slug === selected()); }
 const instanceId = () => $('instance-select').value;
 async function refreshPhotos() {
   $('roster').replaceChildren(); $('photos').replaceChildren();
   const id = instanceId();
-  $('instance').textContent = id ? 'Check-in and photos apply to the selected event date.' : 'No event instance; check-in and photos need one.';
+  const current = eventRecord()?.instances?.find(instance => instance.id === id);
+  $('instance').textContent = current ? `${current.instance_key} · ${current.status} · Check-in and photos apply to this selected date.` : 'No event instance; check-in and photos need one.';
+  for (const button of $('instance-status').querySelectorAll('button')) button.disabled = !current || current.status === button.value;
   if (!id) return;
   const result = await api(`${path(selected())}/instances/${encodeURIComponent(id)}/photos`);
   for (const photo of result.photos || []) {
@@ -27,8 +44,11 @@ async function refreshPhotos() {
 async function refreshEvent() {
   const event = (await api(path(selected()))).event;
   const form = $('update');
-  for (const key of ['title','description','status','venue_name']) form.elements[key].value = event[key] || '';
-  for (const key of ['starts_at','ends_at']) form.elements[key].value = local(event[key]);
+  for (const key of ['title','description']) form.elements[key].value = event[key] || '';
+  const updated = (await api('/api/events?include_archived=1')).events.find(row => row.slug === selected());
+  if (updated) events = events.map(row => row.slug === updated.slug ? updated : row);
+  const newForm = $('new-instance');
+  for (const key of ['venue_name','venue_address','capacity','description']) newForm.elements[key].value = event[key] ?? '';
   const selector = $('instance-select'), previous = selector.value;
   selector.replaceChildren();
   const instances = eventRecord()?.instances || [];
@@ -55,11 +75,35 @@ async function init() {
 }
 $('event').addEventListener('change', () => refreshEvent().catch(error => status(error.message)));
 $('instance-select').addEventListener('change', () => refreshPhotos().catch(error => status(error.message)));
+$('instance-status').addEventListener('submit', async event => {
+  event.preventDefault();
+  const id = instanceId(), next = event.submitter?.value;
+  if (!id || !['open','closed'].includes(next)) return;
+  const record = eventRecord();
+  if (next === 'open' && record.instances.some(row => row.status === 'open' && row.id !== id)) { status('Close the current open date first.'); return; }
+  if (!confirm(`${next === 'closed' ? 'Close' : 'Open'} ${record.instances.find(row => row.id === id)?.instance_key} for ${record.title}?`)) return;
+  try {
+    await api(`${path(selected())}/instances/${encodeURIComponent(id)}`, json('PATCH', { status: next, image_url: null }));
+    await refreshEvent(); status(`${next === 'closed' ? 'Closed' : 'Opened'} selected date. Check the public page before sharing.`);
+  } catch (error) { status(error.message); }
+});
+$('new-instance').addEventListener('submit', async event => {
+  event.preventDefault(); const form = event.currentTarget;
+  try {
+    const body = Object.fromEntries(new FormData(form).entries());
+    body.starts_at = pacific(body.starts_at); body.ends_at = pacific(body.ends_at);
+    body.capacity = Number(body.capacity); body.image_url = null;
+    if (body.status === 'open' && eventRecord().instances.some(row => row.status === 'open')) throw Error('Close the current open date first.');
+    if (!confirm(`Create ${body.status} date ${body.starts_at} for ${eventRecord().title}? The public URL remains /events/${selected()}/.`)) return;
+    const result = await api(`${path(selected())}/instances`, json('POST', body));
+    await refreshEvent(); $('instance-select').value = result.instance.id; await refreshPhotos();
+    status('Date created. Check the public page and active signup before sharing.');
+  } catch (error) { status(error.message); }
+});
 $('update').addEventListener('submit', async event => {
   event.preventDefault(); const form = event.currentTarget;
-  const body = Object.fromEntries(['title','description','status','venue_name'].map(key => [key, form.elements[key].value]));
-  for (const key of ['starts_at','ends_at']) body[key] = instant(form.elements[key].value);
-  try { await api(path(selected()), json('PATCH', body)); status('Event saved.'); await refreshEvent(); } catch (error) { status(error.message); }
+  const body = Object.fromEntries(['title','description'].map(key => [key, form.elements[key].value]));
+  try { await api(path(selected()), json('PATCH', body)); await refreshEvent(); status('Series copy saved.'); } catch (error) { status(error.message); }
 });
 $('search').addEventListener('submit', async event => {
   event.preventDefault(); const container = $('roster'); container.replaceChildren();

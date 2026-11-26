@@ -3,7 +3,7 @@ import {
   schema,
   stringOrNull
 } from "./shared.js";
-import { appendAuditEvent, buildAuditEvent } from "./audit.js";
+import { appendAuditEvent, auditEventStatement, buildAuditEvent } from "./audit.js";
 import { generateEventInstanceCandidates } from "../recurrence.js";
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -312,6 +312,78 @@ export async function updateEventSeriesFromAdminRoute(db, { slug, input = {}, ac
   });
 }
 
+function organizerError(message, status = 400) {
+  return Object.assign(new Error(message), { status });
+}
+
+function organizerClock(value, label) {
+  if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value) || Number.isNaN(Date.parse(value)))
+    throw organizerError(`${label} must be an ISO date/time with timezone`);
+  return new Date(value).toISOString();
+}
+
+function organizerAudit(db, action, slug, instanceId, access) {
+  return auditEventStatement(db, buildAuditEvent({ action, actorUserId: access.user?.id || null,
+    targetType: 'event_instance', targetId: instanceId, scopeType: 'event', scopeId: slug,
+    metadata: { source: 'organizer-instance-workflow', role: access.role?.role || null, eventSlug: slug } }));
+}
+
+function projectOpenInstance(db, instance, input, now) {
+  return db.prepare(`UPDATE events SET starts_at=?, ends_at=?, venue_name=?, venue_address=?, capacity=?, status='open',
+    image_url=?, description=?, page_content=NULL, updated_at=? WHERE slug=?`).bind(instance.starts_at, instance.ends_at,
+    instance.venue_name, instance.venue_address, instance.capacity,
+    Object.hasOwn(input, 'image_url') ? input.image_url : null,
+    Object.hasOwn(input, 'description') ? input.description : instance.description,
+    now, instance.event_slug);
+}
+
+export async function createOrganizerInstance(db, slug, input = {}, access = {}) {
+  const event = await getEventSeries(db, slug);
+  if (!event || event.status === 'archived') throw organizerError('Event not found', 404);
+  const startsAt = organizerClock(input.starts_at, 'starts_at');
+  const endsAt = organizerClock(input.ends_at, 'ends_at');
+  if (Date.parse(endsAt) <= Date.parse(startsAt)) throw organizerError('ends_at must be after starts_at');
+  const status = input.status;
+  if (!['draft', 'open'].includes(status)) throw organizerError('New instances must be draft or open');
+  const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(startsAt));
+  const existing = await listEventInstances(db, slug);
+  if (existing.some(row => row.instance_key === key)) throw organizerError('This event date already exists; select it instead', 409);
+  if (status === 'open' && existing.some(row => row.status === 'open')) throw organizerError('Close the current open instance before opening another', 409);
+  const { instance, errors } = normalizeEventInstanceInput({ ...input, instance_key: key, starts_at: startsAt, ends_at: endsAt, status,
+    event_slug: slug, id: instanceIdFor(slug, key), metadata: null }, event);
+  if (errors.length) throw organizerError(errors.join('; '));
+  const now = new Date().toISOString();
+  const statements = [db.prepare(`INSERT INTO event_instances
+    (id,event_slug,instance_key,title,starts_at,ends_at,venue_name,venue_address,capacity,status,metadata_json,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(instance.id, slug, key, instance.title, startsAt, endsAt,
+    instance.venue_name, instance.venue_address, instance.capacity, status, null, now, now)];
+  if (status === 'open') statements.push(projectOpenInstance(db, { ...instance, description: event.description }, input, now));
+  statements.push(organizerAudit(db, 'event.instance.create', slug, instance.id, access));
+  await db.batch(statements);
+  return toEventInstance(await db.prepare('SELECT * FROM event_instances WHERE id = ?').bind(instance.id).first());
+}
+
+export async function setOrganizerInstanceStatus(db, slug, instanceId, input = {}, access = {}) {
+  const event = await getEventSeries(db, slug);
+  if (!event || event.status === 'archived') throw organizerError('Event not found', 404);
+  const instance = await db.prepare('SELECT * FROM event_instances WHERE event_slug = ? AND id = ?').bind(slug, instanceId).first();
+  if (!instance) throw organizerError('Event instance not found', 404);
+  if (!['open', 'closed'].includes(input.status)) throw organizerError('Status must be open or closed');
+  if (input.status === 'open' && (!instance.starts_at || !instance.ends_at)) throw organizerError('Instance needs start and end dates before opening');
+  const others = await listEventInstances(db, slug);
+  if (input.status === 'open' && others.some(row => row.status === 'open' && row.id !== instanceId))
+    throw organizerError('Close the current open instance before opening another', 409);
+  if (instance.status === input.status) throw organizerError('Instance already has that status', 409);
+  const now = new Date().toISOString();
+  const statements = [db.prepare('UPDATE event_instances SET status = ?, updated_at = ? WHERE event_slug = ? AND id = ?').bind(input.status, now, slug, instanceId)];
+  if (input.status === 'open') statements.push(projectOpenInstance(db, { ...instance, description: event.description }, input, now));
+  else if (!others.some(row => row.status === 'open' && row.id !== instanceId))
+    statements.push(db.prepare("UPDATE events SET status='closed', updated_at=? WHERE slug=?").bind(now, slug));
+  statements.push(organizerAudit(db, `event.instance.${input.status}`, slug, instanceId, access));
+  await db.batch(statements);
+  return toEventInstance(await db.prepare('SELECT * FROM event_instances WHERE id = ?').bind(instanceId).first());
+}
+
 export async function upsertEventSeries(db, input, existing = {}, { now = new Date().toISOString(), provenance = null, route = null } = {}) {
   const { event, errors } = normalizeEventSeriesInput(input, existing);
   if (errors.length) {
@@ -356,7 +428,8 @@ export async function upsertEventSeries(db, input, existing = {}, { now = new Da
   ).run();
 
   const savedEvent = await getEventSeries(db, event.slug);
-  await upsertEventInstance(db, savedEvent, { now, eventInstanceId: input.event_instance_id ?? input.eventInstanceId });
+  if (!existing?.slug || Object.keys(input).some(key => !['slug', 'title', 'description'].includes(key)))
+    await upsertEventInstance(db, savedEvent, { now, eventInstanceId: input.event_instance_id ?? input.eventInstanceId });
   await appendEventAdminAudit(db, {
     action: existing?.slug ? "event.update" : "event.create",
     event: savedEvent,

@@ -55,14 +55,14 @@ async function requireExistingUser(db, email) {
   return existing;
 }
 
-function roleAuditStatement(db, { action, targetUserId, targetEmail, role, actorUserId }) {
+function roleAuditStatement(db, { action, targetUserId, targetEmail, role, actorUserId, scopeType = 'global', scopeId = '*' }) {
   return auditEventStatement(db, buildAuditEvent({
     action,
     actorUserId,
     targetType: "user",
     targetId: targetUserId,
-    scopeType: "global",
-    scopeId: "*",
+    scopeType,
+    scopeId,
     metadata: {
       source: "admin-role-manager",
       targetEmail,
@@ -71,18 +71,18 @@ function roleAuditStatement(db, { action, targetUserId, targetEmail, role, actor
   }));
 }
 
-async function grantRole(db, email, role, access) {
+async function grantRole(db, email, role, access, scopeType = 'global', scopeId = '*') {
   const user = await requireExistingUser(db, email);
   const now = new Date().toISOString();
   try {
     await db.batch([db.prepare(`
     INSERT INTO roles (id, user_id, role, scope_type, scope_id, granted_by_user_id, created_at, revoked_at)
-    VALUES (?, ?, ?, 'global', '*', ?, ?, NULL)
+    VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
     ON CONFLICT(user_id, role, scope_type, scope_id) DO UPDATE SET
       granted_by_user_id = excluded.granted_by_user_id,
       revoked_at = NULL
-  `).bind(generateId("role"), user.id, role, actorId(access), now),
-    roleAuditStatement(db, { action: `grant_${role}`, targetUserId: user.id, targetEmail: email, role, actorUserId: actorId(access) })]);
+  `).bind(generateId("role"), user.id, role, scopeType, scopeId, actorId(access), now),
+    roleAuditStatement(db, { action: `grant_${role}`, targetUserId: user.id, targetEmail: email, role, actorUserId: actorId(access), scopeType, scopeId })]);
   } catch (error) {
     if (role === "admin" && /Social vault is full \(15 effective people\)/.test(String(error))) {
       throw Object.assign(new Error("All 15 vault-access seats are occupied. Remove an effective seat before granting another admin."), { status: 409 });
@@ -92,7 +92,7 @@ async function grantRole(db, email, role, access) {
   return user;
 }
 
-async function revokeRole(db, email, role, access) {
+async function revokeRole(db, email, role, access, scopeType = 'global', scopeId = '*') {
   const user = await db.prepare("SELECT id, email, name FROM users WHERE lower(email) = ? LIMIT 1").bind(email).first();
   if (!user) throw Object.assign(new Error("No user exists for that email."), { status: 404 });
   const now = new Date().toISOString();
@@ -101,11 +101,11 @@ async function revokeRole(db, email, role, access) {
     SET revoked_at = ?
     WHERE user_id = ?
       AND role = ?
-      AND scope_type = 'global'
-      AND scope_id = '*'
+      AND scope_type = ?
+      AND scope_id = ?
       AND revoked_at IS NULL
-  `).bind(now, user.id, role),
-    roleAuditStatement(db, { action: `revoke_${role}`, targetUserId: user.id, targetEmail: email, role, actorUserId: actorId(access) })]);
+  `).bind(now, user.id, role, scopeType, scopeId),
+    roleAuditStatement(db, { action: `revoke_${role}`, targetUserId: user.id, targetEmail: email, role, actorUserId: actorId(access), scopeType, scopeId })]);
   return user;
 }
 
@@ -128,15 +128,19 @@ export async function onRequestPost(context) {
     const email = assertAdminEmail(input.email);
     const action = String(input.action || "grant").trim().toLowerCase();
     const role = input.role === undefined ? "admin" : input.role;
-    if (!MANAGED_ROLES.has(role) || (input.scope_type && input.scope_type !== "global") || (input.scope_id && input.scope_id !== "*"))
-      throw Object.assign(new Error("Only global admin and organizer grants are supported. Seed super_admin separately."), { status: 400 });
+    const scopeType = input.scope_type ?? 'global';
+    const scopeId = input.scope_id ?? (scopeType === 'global' ? '*' : null);
+    if (!MANAGED_ROLES.has(role) || !((scopeType === 'global' && scopeId === '*') ||
+      (role === 'organizer' && scopeType === 'event' && typeof scopeId === 'string' && scopeId !== '' &&
+        Boolean(await db.prepare("SELECT slug FROM events WHERE slug = ? AND status != 'archived'").bind(scopeId).first()))))
+      throw Object.assign(new Error("Use a global role or an organizer grant for an existing event."), { status: 400 });
     if (role === "admin" && access.role.role !== "super_admin")
       throw Object.assign(new Error("Only a signed-in global super-admin may change admin grants."), { status: 403 });
     let user;
     if (action === "grant") {
-      user = await grantRole(db, email, role, access);
+      user = await grantRole(db, email, role, access, scopeType, scopeId);
     } else if (action === "revoke") {
-      user = await revokeRole(db, email, role, access);
+      user = await revokeRole(db, email, role, access, scopeType, scopeId);
     } else {
       throw Object.assign(new Error("action must be grant or revoke."), { status: 400 });
     }

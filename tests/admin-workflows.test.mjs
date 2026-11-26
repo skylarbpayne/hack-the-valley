@@ -94,7 +94,7 @@ test("admin HTML exposes sectioned IA and keeps sensitive access separate", () =
   assert.match(html, /function showAdminSection/);
   assert.match(html, /ADMIN_SECTION_TARGETS/);
   assert.match(html, /adminSectionFromHash/);
-  assert.match(html, /Signed-in global admins may grant\/revoke organizers; only global super-admins may grant\/revoke admins/);
+  assert.match(html, /Signed-in global admins may assign an organizer to a specific event/);
 
   for (const id of [
     "event-cockpit",

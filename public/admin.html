@@ -339,14 +339,16 @@
         <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5 mb-4">
           <div>
             <p class="text-violet-300 uppercase tracking-[0.2em] text-xs font-black">Admin access</p>
-            <h2 class="text-2xl font-black mt-1">Global role grants</h2>
-            <p id="role-admin-status" class="text-sm text-slate-400 mt-1">Signed-in global admins may grant/revoke organizers; only global super-admins may grant/revoke admins. Super-admin grants remain a separate bootstrap operation.</p>
+            <h2 class="text-2xl font-black mt-1">Organizer and admin role grants</h2>
+            <p id="role-admin-status" class="text-sm text-slate-400 mt-1">Signed-in global admins may assign an organizer to a specific event or grant global organizer access. Only global super-admins may manage global admins. The account must sign in once before a grant.</p>
           </div>
           <button id="load-admin-roles" class="border border-violet-400 text-violet-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-violet-400 hover:text-bc-dark">Refresh roles</button>
         </div>
         <form id="admin-role-form" class="grid lg:grid-cols-[1fr_auto_auto] gap-3 items-end bg-bc-dark border border-slate-700 rounded-2xl p-4 mb-4">
           <label class="block"><span class="text-sm font-semibold">Account email</span><input name="email" type="email" required class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="person@example.com"></label>
           <label class="block"><span class="text-sm font-semibold">Role</span><select name="role" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><option value="organizer">Organizer</option><option value="admin" id="admin-role-option" hidden>Admin</option></select></label>
+          <label class="block"><span class="text-sm font-semibold">Scope</span><select name="scope_type" id="role-scope-type" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><option value="event">One event</option><option value="global">All events (global)</option></select></label>
+          <label class="block"><span class="text-sm font-semibold">Event</span><select name="scope_id" id="role-scope-id" required class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"></select></label>
           <label class="block"><span class="text-sm font-semibold">Action</span><select name="action" class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white"><option value="grant">Grant</option><option value="revoke">Revoke</option></select></label>
           <button class="bg-violet-300 text-bc-dark px-5 py-3 rounded-lg font-black hover:bg-violet-200">Apply</button>
         </form>
@@ -1454,6 +1456,17 @@
         status.className = "text-sm text-slate-400 mt-1";
         status.textContent = "Loading role grants…";
         const data = await api("/api/admin/roles");
+        const eventData = await api('/api/events?include_archived=1');
+        const selector = $('role-scope-id');
+        const previous = selector.value;
+        selector.replaceChildren();
+        const globalOption = new Option('All events', '*');
+        selector.add(globalOption);
+        for (const item of eventData.events || []) {
+          if (item.status !== 'archived') selector.add(new Option(item.title, item.slug));
+        }
+        selector.value = [...selector.options].some(option => option.value === previous) ? previous : (eventData.events || []).find(item => item.status !== 'archived')?.slug || '*';
+        syncRoleScope();
         renderAdminRoles(data.roles || []);
         status.textContent = `Loaded ${data.count ?? (data.roles || []).length} active role grant(s).${currentAdminUser?.capabilities?.role_management ? '' : ' Read-only role list.'}`;
         return data.roles || [];
@@ -1487,11 +1500,24 @@
         </table>`;
     }
 
+    function syncRoleScope() {
+      const form = $('admin-role-form');
+      if (form.elements.role.value === 'admin') form.elements.scope_type.value = 'global';
+      if (form.elements.scope_type.value === 'global') form.elements.scope_id.value = '*';
+      else if (form.elements.scope_id.value === '*') form.elements.scope_id.value = [...form.elements.scope_id.options].find(option => option.value !== '*')?.value || '';
+      form.elements.scope_id.disabled = form.elements.scope_type.value === 'global';
+    }
+
     async function applyAdminRoleChange(event) {
       event.preventDefault();
       const form = event.currentTarget;
       const status = $("role-admin-status");
       const payload = Object.fromEntries(new FormData(form).entries());
+      if (payload.scope_type === 'global') payload.scope_id = '*';
+      if (payload.scope_type === 'event' && (!payload.scope_id || payload.scope_id === '*')) {
+        status.textContent = 'Choose an event for this organizer grant.';
+        return;
+      }
       if (payload.role === "admin" && !isCurrentSuperAdmin()) {
         status.textContent = "Only a global super-admin can change admin grants.";
         status.className = "text-sm text-red-300 mt-1";
@@ -1502,8 +1528,8 @@
       try {
         const data = await api("/api/admin/roles", { method: "POST", body: JSON.stringify(payload) });
         renderAdminRoles(data.roles || []);
-        status.textContent = `${payload.action === "revoke" ? "Revoked" : "Granted"} ${payload.role} for ${payload.email}.`;
-        form.reset();
+        status.textContent = `${payload.action === "revoke" ? "Revoked" : "Granted"} ${payload.role} for ${payload.email} (${payload.scope_type}:${payload.scope_id}).`;
+        form.reset(); syncRoleScope();
       } catch (error) {
         status.textContent = error.message;
         status.className = "text-sm text-red-300 mt-1";
@@ -1955,6 +1981,8 @@
     $("load-admin-roles").addEventListener("click", () => loadAdminRoles().catch(() => {}));
     $("load-social-managers").addEventListener("click", () => loadSocialManagers().catch(() => {}));
     $("social-manager-form").addEventListener("submit", grantSocialManager);
+    $("admin-role-form").elements.scope_type.addEventListener('change', syncRoleScope);
+    $("admin-role-form").elements.role.addEventListener('change', syncRoleScope);
     $("admin-role-form").addEventListener("submit", applyAdminRoleChange);
     $("load-events").addEventListener("click", () => loadEvents().catch(() => {}));
     $("new-event").addEventListener("click", resetForm);

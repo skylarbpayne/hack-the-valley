@@ -18,6 +18,8 @@ import * as me from './functions/api/me.js';
 import * as dashboard from './functions/api/dashboard.js';
 import * as meProjects from './functions/api/me/projects.js';
 import * as eventCheckins from './functions/api/events/[slug]/checkins/index.js';
+import * as eventInstances from './functions/api/events/[slug]/instances/index.js';
+import * as eventInstance from './functions/api/events/[slug]/instances/[instanceId]/index.js';
 import * as eventCockpit from './functions/api/events/[slug]/instances/[instanceId]/cockpit/index.js';
 import * as eventFollowup from './functions/api/events/[slug]/instances/[instanceId]/followup/index.js';
 import * as eventProjects from './functions/api/events/[slug]/instances/[instanceId]/projects/index.js';
@@ -238,6 +240,11 @@ function matchApiRoute(pathname) {
   if (checkinMatch) {
     return { routeModule: eventCheckins, params: { slug: decodeURIComponent(checkinMatch[1]) } };
   }
+
+  const instanceIndexMatch = pathname.match(/^\/api\/events\/([^/]+)\/instances\/?$/);
+  if (instanceIndexMatch) return { routeModule: eventInstances, params: { slug: decodeURIComponent(instanceIndexMatch[1]) } };
+  const instanceMatch = pathname.match(/^\/api\/events\/([^/]+)\/instances\/([^/]+)\/?$/);
+  if (instanceMatch) return { routeModule: eventInstance, params: { slug: decodeURIComponent(instanceMatch[1]), instanceId: decodeURIComponent(instanceMatch[2]) } };
 
   const cockpitMatch = pathname.match(/^\/api\/events\/([^/]+)\/instances\/([^/]+)\/cockpit\/?$/);
   if (cockpitMatch) {

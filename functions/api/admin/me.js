@@ -9,17 +9,17 @@ import {
 } from "../../_lib/event-platform.js";
 
 function isSuperAdmin(roles = []) {
-  return roles.some((role) => role.role === "super_admin" && !role.revoked_at);
+  return roles.some((role) => role.role === "super_admin" && role.scope_type === 'global' && role.scope_id === '*' && !role.revoked_at);
 }
 
 function isAdmin(roles = []) {
-  return roles.some((role) => ["admin", "super_admin"].includes(role.role) && !role.revoked_at);
+  return roles.some((role) => ["admin", "super_admin"].includes(role.role) && role.scope_type === 'global' && role.scope_id === '*' && !role.revoked_at);
 }
 
 export async function onRequestGet(context) {
   return handleErrors(async () => {
     const db = getDb(context.env);
-    const signedIn = await getCurrentUserFromRequest(db, context.request);
+    const signedIn = await getCurrentUserFromRequest(db, context.request, context.env);
     const access = signedIn ? { user: signedIn, bootstrap: false } : await requireAdmin(context.request, context.env);
     if (access.bootstrap) {
       return jsonResponse({

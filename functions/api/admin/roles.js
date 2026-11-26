@@ -11,7 +11,7 @@ import {
 import { auditEventStatement, buildAuditEvent } from "../../_lib/domain/audit.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MANAGED_ROLES = new Set(["admin", "organizer"]);
+const MANAGED_ROLES = new Set(["admin", "super_admin", "organizer"]);
 
 function assertAdminEmail(value) {
   const email = normalizeEmail(value);
@@ -55,7 +55,7 @@ async function requireExistingUser(db, email) {
   return existing;
 }
 
-function roleAuditStatement(db, { action, targetUserId, targetEmail, role, actorUserId, scopeType = 'global', scopeId = '*' }) {
+function roleAuditStatement(db, { action, targetUserId, targetEmail, role, actorUserId, serviceClientId = null, scopeType = 'global', scopeId = '*' }) {
   return auditEventStatement(db, buildAuditEvent({
     action,
     actorUserId,
@@ -66,7 +66,8 @@ function roleAuditStatement(db, { action, targetUserId, targetEmail, role, actor
     metadata: {
       source: "admin-role-manager",
       targetEmail,
-      role
+      role,
+      ...(serviceClientId ? { executor: 'access-service', serviceClientId } : {})
     }
   }));
 }
@@ -82,9 +83,9 @@ async function grantRole(db, email, role, access, scopeType = 'global', scopeId 
       granted_by_user_id = excluded.granted_by_user_id,
       revoked_at = NULL
   `).bind(generateId("role"), user.id, role, scopeType, scopeId, actorId(access), now),
-    roleAuditStatement(db, { action: `grant_${role}`, targetUserId: user.id, targetEmail: email, role, actorUserId: actorId(access), scopeType, scopeId })]);
+    roleAuditStatement(db, { action: `grant_${role}`, targetUserId: user.id, targetEmail: email, role, actorUserId: actorId(access), serviceClientId: access.user?.service_identity, scopeType, scopeId })]);
   } catch (error) {
-    if (role === "admin" && /Social vault is full \(15 effective people\)/.test(String(error))) {
+    if (["admin", "super_admin"].includes(role) && /Social vault is full \(15 effective people\)/.test(String(error))) {
       throw Object.assign(new Error("All 15 vault-access seats are occupied. Remove an effective seat before granting another admin."), { status: 409 });
     }
     throw error;
@@ -105,7 +106,7 @@ async function revokeRole(db, email, role, access, scopeType = 'global', scopeId
       AND scope_id = ?
       AND revoked_at IS NULL
   `).bind(now, user.id, role, scopeType, scopeId),
-    roleAuditStatement(db, { action: `revoke_${role}`, targetUserId: user.id, targetEmail: email, role, actorUserId: actorId(access), scopeType, scopeId })]);
+    roleAuditStatement(db, { action: `revoke_${role}`, targetUserId: user.id, targetEmail: email, role, actorUserId: actorId(access), serviceClientId: access.user?.service_identity, scopeType, scopeId })]);
   return user;
 }
 
@@ -134,8 +135,10 @@ export async function onRequestPost(context) {
       (role === 'organizer' && scopeType === 'event' && typeof scopeId === 'string' && scopeId !== '' &&
         Boolean(await db.prepare("SELECT slug FROM events WHERE slug = ? AND status != 'archived'").bind(scopeId).first()))))
       throw Object.assign(new Error("Use a global role or an organizer grant for an existing event."), { status: 400 });
-    if (role === "admin" && access.role.role !== "super_admin")
-      throw Object.assign(new Error("Only a signed-in global super-admin may change admin grants."), { status: 403 });
+    if (["admin", "super_admin"].includes(role) && access.role.role !== "super_admin")
+      throw Object.assign(new Error("Only a global super-admin may change admin grants."), { status: 403 });
+    if (access.user.service_identity && (await db.prepare('SELECT id FROM users WHERE lower(email)=?').bind(email).first())?.id === access.user.id)
+      throw Object.assign(new Error("Service principals cannot grant or revoke their own roles."), { status: 403 });
     let user;
     if (action === "grant") {
       user = await grantRole(db, email, role, access, scopeType, scopeId);

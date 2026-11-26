@@ -1,3 +1,4 @@
+import { getAccessServiceUser } from './access-service-user.js';
 import {
   getEventSeries as domainGetEventSeries,
   listEventInstances as domainListEventInstances,
@@ -205,12 +206,13 @@ async function findActiveRole(db, userId, allowedRoles, { scopeType = "global", 
 
 async function requireRoleAccess(request, env, allowedRoles, scope = {}) {
   const db = getDb(env);
+  const serviceUser = await getAccessServiceUser(db, request, env);
   const sessionToken = cookieValue(request, "htv_session") || request.headers.get("x-htv-session") || "";
-  const user = await getCurrentUserFromSession(db, sessionToken);
+  const user = serviceUser || await getCurrentUserFromSession(db, sessionToken);
   const role = user ? await findActiveRole(db, user.id, allowedRoles, scope) : null;
   if (role) return { user, role, bootstrap: false };
 
-  if (adminBootstrapTokenEnabled(env) && bootstrapTokenMatches(request, env)) {
+  if (!serviceUser && adminBootstrapTokenEnabled(env) && bootstrapTokenMatches(request, env)) {
     return { user: null, role: { role: "bootstrap", scope_type: "global", scope_id: "*" }, bootstrap: true };
   }
 
@@ -231,7 +233,9 @@ export async function requireSuperAdminAccess(request, env, scope = {}) {
   return await requireRoleAccess(request, env, ["super_admin"], scope);
 }
 
-export async function getCurrentUserFromRequest(db, request) {
+export async function getCurrentUserFromRequest(db, request, env = {}) {
+  const serviceUser = await getAccessServiceUser(db, request, env);
+  if (serviceUser) return serviceUser;
   const token = cookieValue(request, "htv_session") || request.headers.get("x-htv-session") || "";
   return await getCurrentUserFromSession(db, token);
 }

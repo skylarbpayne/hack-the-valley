@@ -1,11 +1,10 @@
 import { runScheduledSponsorshipReminders } from './functions/_lib/domain/sponsorship-reminders.js';
+import { getAccessServiceUser } from './functions/_lib/access-service-user.js';
 import * as adminSponsorships from './functions/api/admin/sponsorships/index.js';
 import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
 import * as adminMe from './functions/api/admin/me.js';
 import * as socialVault from './functions/api/social-vault.js';
 import * as adminRoles from './functions/api/admin/roles.js';
-import * as hackHoursServiceAdmin from './functions/api/admin/hack-hours-service.js';
-import * as hackHoursService from './functions/api/service/hack-hours-organizers.js';
 import * as adminWorkflows from './functions/api/admin/workflows.js';
 import * as adminAudit from './functions/api/admin/audit.js';
 import * as adminPhysicalResources from './functions/api/admin/physical-resources/index.js';
@@ -124,12 +123,7 @@ function matchApiRoute(pathname) {
     return { routeModule: adminMe, params: {} };
   }
 
-  if (pathname === '/api/admin/hack-hours-service') {
-    return { routeModule: hackHoursServiceAdmin, params: {} };
-  }
-  if (pathname === '/api/service/hack-hours-organizers') {
-    return { routeModule: hackHoursService, params: {} };
-  }
+
   if (pathname === '/api/admin/roles') {
     return { routeModule: adminRoles, params: {} };
   }
@@ -511,6 +505,11 @@ function renderPublicProjectPage(request) {
 export default {
   async fetch(request, env = {}, ctx = {}) {
     const url = new URL(request.url);
+    if (env.HTV_ACCESS_HOST && url.hostname === env.HTV_ACCESS_HOST) {
+      if (!url.pathname.startsWith('/api/')) return new Response('Not found', { status: 404 });
+      try { await getAccessServiceUser(getDb(env), request, env); }
+      catch { return new Response('Unauthorized', { status: 401 }); }
+    }
     const route = matchApiRoute(url.pathname);
 
     if (route) {

@@ -506,6 +506,14 @@ function renderPublicProjectPage(request) {
   });
 }
 
+// Only literal verifier stages reach this private aggregate; no request or error input.
+async function countPalmerDenial(env, stage) {
+  try {
+    await getDb(env).prepare(`INSERT INTO palmer_auth_stage_counts(stage,hits) VALUES (?,1)
+      ON CONFLICT(stage) DO UPDATE SET hits=min(hits+1,2147483647)`).bind(stage).run();
+  } catch { /* Telemetry failure must never alter the denial. */ }
+}
+
 export default {
   async fetch(request, env = {}, ctx = {}) {
     const url = new URL(request.url);
@@ -517,7 +525,7 @@ export default {
       try { await getAccessServiceUser(getDb(env), request, env, value => { stage = value; }); }
       catch {
         if (diagnose) {
-          console.warn({ htv_palmer_auth_stage: stage });
+          await countPalmerDenial(env, stage);
         }
         return new Response('Unauthorized', { status: 401 });
       }
@@ -526,7 +534,7 @@ export default {
 
     if (route) {
       const response = await routeApiRequest(request, env, ctx, route.routeModule, route.params);
-      if (diagnose && response.status === 401) console.warn({ htv_palmer_auth_stage: 'route_auth' });
+      if (diagnose && response.status === 401) await countPalmerDenial(env, 'route_auth');
       return response;
     }
 

@@ -79,8 +79,8 @@ export async function onRequest(context) {
   const { request, env, params = {} } = context;
   try {
     const db = getDb(env);
-    // Deliberately use the magic-login session only. A live global admin role grants access; bootstrap tokens do not.
-    const user = await getCurrentUserFromRequest(db, request);
+    // A live global admin role grants access; bootstrap tokens do not.
+    const user = await getCurrentUserFromRequest(db, request, env);
     if (!user) throw failure(401, 'Sign in to access shared logins.');
     const actor = user.id, membership = await roleFor(db, actor);
     if (!membership) throw failure(403, 'No vault grant for this account.');

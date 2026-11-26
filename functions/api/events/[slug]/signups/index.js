@@ -38,7 +38,7 @@ export async function onRequestGet(context) {
 export async function onRequestPost(context) {
   return handleErrors(async () => {
     const db = getDb(context.env);
-    const currentUser = await getCurrentUserFromRequest(db, context.request);
+    const currentUser = await getCurrentUserFromRequest(db, context.request, context.env);
     const rawInput = await readJson(context.request);
     const registration = await registerEventSignup(db, context.env, context.params.slug, rawInput, { currentUser });
     const event = registration.event;

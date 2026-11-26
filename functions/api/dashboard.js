@@ -4,7 +4,7 @@ import { getCurrentUserFromRequest, getDb, handleErrors, jsonResponse, methodNot
 export async function onRequestGet({ request, env }) {
   return handleErrors(async () => {
     const db = getDb(env);
-    const user = await getCurrentUserFromRequest(db, request);
+    const user = await getCurrentUserFromRequest(db, request, env);
     if (!user) return jsonResponse({ ok: false, error: 'Not signed in' }, { status: 401, headers: { 'Cache-Control': 'private, no-store' } });
     const [roleRows, vaultRow] = await Promise.all([
       db.prepare("SELECT role,scope_type,scope_id FROM roles WHERE user_id=? AND revoked_at IS NULL AND role IN ('organizer','admin','super_admin')").bind(user.id).all(),

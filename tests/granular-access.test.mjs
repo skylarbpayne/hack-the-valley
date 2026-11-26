@@ -98,8 +98,9 @@ test('signed-in global admins manage organizers but only super-admins manage adm
       assert.equal((await call('/api/admin/message-drafts/audience')).status, 403);
     }
   }
-  assert.equal((await call('/api/admin/roles', 'danny', 'POST', { email: 'member@example.com', role: 'super_admin', action: 'grant' })).status, 400);
-  assert.equal((await call('/api/admin/roles', 'danny', 'POST', { email: 'member@example.com', role: 'super_admin', action: 'revoke' })).status, 400);
+  assert.equal((await call('/api/admin/roles', 'alex', 'POST', { email: 'member@example.com', role: 'super_admin', action: 'grant' })).status, 403);
+  assert.equal((await call('/api/admin/roles', 'danny', 'POST', { email: 'member@example.com', role: 'super_admin', action: 'grant' })).status, 200);
+  assert.equal((await call('/api/admin/roles', 'danny', 'POST', { email: 'member@example.com', role: 'super_admin', action: 'revoke' })).status, 200);
   assert.equal((await call('/api/admin/roles', 'danny', 'POST', { email: 'member@example.com', role: 'organizer', scope_type: 'event', action: 'grant' })).status, 400);
   for (const role of ['organizer', 'admin']) {
     const revoked = await call('/api/admin/roles', 'danny', 'POST', { email: 'member@example.com', role, action: 'revoke' });

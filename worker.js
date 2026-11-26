@@ -1,4 +1,5 @@
 import { runScheduledSponsorshipReminders } from './functions/_lib/domain/sponsorship-reminders.js';
+import { getAccessServiceUser } from './functions/_lib/access-service-user.js';
 import * as adminSponsorships from './functions/api/admin/sponsorships/index.js';
 import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
 import * as adminMe from './functions/api/admin/me.js';
@@ -121,6 +122,7 @@ function matchApiRoute(pathname) {
   if (pathname === '/api/admin/me') {
     return { routeModule: adminMe, params: {} };
   }
+
 
   if (pathname === '/api/admin/roles') {
     return { routeModule: adminRoles, params: {} };
@@ -503,6 +505,11 @@ function renderPublicProjectPage(request) {
 export default {
   async fetch(request, env = {}, ctx = {}) {
     const url = new URL(request.url);
+    if (env.HTV_ACCESS_HOST && url.hostname === env.HTV_ACCESS_HOST) {
+      if (!url.pathname.startsWith('/api/')) return new Response('Not found', { status: 404 });
+      try { await getAccessServiceUser(getDb(env), request, env); }
+      catch { return new Response('Unauthorized', { status: 401 }); }
+    }
     const route = matchApiRoute(url.pathname);
 
     if (route) {

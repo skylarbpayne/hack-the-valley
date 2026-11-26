@@ -21,9 +21,13 @@ export async function getAccessServiceUser(db, request, env = {}, mark = () => {
       typeof audience !== 'string' || !audience || !clientPattern.test(clientId || '') ||
       typeof email !== 'string' || !emailPattern.test(email) || email !== email.toLowerCase()) throw unauthorized();
   mark('session_header');
-  if (request.headers.has('cookie') || request.headers.has('x-htv-session')) throw unauthorized();
-  mark('missing_assertion');
   const token = request.headers.get('Cf-Access-Jwt-Assertion');
+  const cookie = request.headers.get('cookie');
+  // An empty header carries no session. Access may carry its own application JWT;
+  // permit only an exact copy of the assertion we independently verify below.
+  if (request.headers.has('x-htv-session') ||
+      (cookie && (!token || /[;,\s]/.test(cookie) || cookie !== `CF_Authorization=${token}`))) throw unauthorized();
+  mark('missing_assertion');
   if (!token) throw unauthorized();
   mark('jwt_verification');
   let claims;

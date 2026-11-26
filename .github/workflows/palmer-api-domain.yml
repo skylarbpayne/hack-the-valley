@@ -1,0 +1,38 @@
+name: Attach Palmer HTV API domain
+on: workflow_dispatch
+permissions: {}
+concurrency: palmer-htv-domain
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Verify dedicated Access app, attach only its hostname, read back
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: python
+        run: |
+          import json, os, urllib.request
+          from urllib.error import HTTPError
+          a = os.environ['ACCOUNT']; h = 'palmer.hackthevalley.org'
+          z = '4e4f619bcf8df33371c5805d8bbb923b'; service = 'hack-the-valley'
+          app = '/access/apps/93361360-fbaa-447f-bdcc-7d14f2da2d60'
+          def api(path, body=None):
+              req = urllib.request.Request('https://api.cloudflare.com/client/v4/accounts/'+a+path, headers={'Authorization':'Bearer '+os.environ['CF_TOKEN'],'Content-Type':'application/json'}, method='GET' if body is None else 'PUT', data=None if body is None else json.dumps(body).encode())
+              try:
+                  with urllib.request.urlopen(req) as r: result=json.load(r)
+              except HTTPError as e:
+                  raise SystemExit(f'Cloudflare HTTP {e.code} on {path}') from None
+              if not result['success']: raise SystemExit('Cloudflare rejected '+path)
+              return result['result']
+          access=api(app)
+          if access['domain'] != h or access['type'] != 'self_hosted' or access.get('policies') or api(app+'/policies'): raise SystemExit('Expected empty whole-host Access app')
+          target={'hostname':h,'service':service,'zone_id':z,'environment':'production'}
+          def matches(rows): return len(rows)==1 and all(rows[0].get(k)==v for k,v in target.items()) and rows[0].get('enabled') is not False
+          path='/workers/domains'; rows=api(path+'?hostname='+h)
+          if not rows: api(path,target)
+          elif not matches(rows): raise SystemExit('Existing domain conflicts; not modifying')
+          rows=api(path+'?hostname='+h)
+          if not matches(rows): raise SystemExit('Domain not verified')
+          print('Attached', h, 'to', service, 'domain ID', rows[0]['id'])

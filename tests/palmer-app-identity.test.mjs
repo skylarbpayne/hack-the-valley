@@ -68,7 +68,8 @@ test('provider-disable, wrong host, missing config, invalid JWT and role revocat
 });
 
 test('private diagnostic emits only a fixed stage, only for denied named probes', async t => {
-  const { env } = await fixture(t);
+  const { env, sqlite } = await fixture(t);
+  const counts = () => sqlite.prepare('SELECT stage,hits FROM palmer_auth_stage_counts').all().map(x => [x.stage,x.hits]);
   const logs = [];
   t.mock.method(console, 'warn', (...args) => logs.push(args));
   const path = '/api/admin/me';
@@ -85,7 +86,10 @@ test('private diagnostic emits only a fixed stage, only for denied named probes'
   ]) {
     const res = await worker.fetch(request, { ...env, ...overrides });
     assert.equal(res.status, 401); assert.equal(await res.text(), 'Unauthorized');
-    assert.deepEqual(logs.splice(0), [[{ htv_palmer_auth_stage: stage }]]);
+    const expected = ['db_binding','user_lookup'].includes(stage) ? [] : [[stage,1]];
+    assert.deepEqual(counts(), expected);
+    sqlite.exec('DELETE FROM palmer_auth_stage_counts');
+    assert.deepEqual(logs, []);
   }
   assert.equal((await worker.fetch(req(path), env)).status, 200);
   for (const request of [req('/api/admin/roles', 'GET', undefined, ''), req(path, 'POST', undefined, ''), req(path, 'GET', undefined, assertion(), 'https://hackthevalley.org')]) {
@@ -95,7 +99,8 @@ test('private diagnostic emits only a fixed stage, only for denied named probes'
   const goodFetch = globalThis.fetch; let attempts = 0;
   globalThis.fetch = (...args) => ++attempts === 1 ? goodFetch(...args) : Promise.reject(Error('fixture-sensitive-marker'));
   assert.equal((await worker.fetch(req(path), env)).status, 401);
-  assert.deepEqual(logs, [[{ htv_palmer_auth_stage: 'route_auth' }]]);
+  assert.deepEqual(counts(), [['route_auth', 1]]);
+  assert.deepEqual(logs, []);
 });
 
 test('operator client uses Access headers on the dedicated API hostname for app RBAC', async t => {

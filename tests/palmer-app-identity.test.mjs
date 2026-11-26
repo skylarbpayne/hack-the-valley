@@ -49,6 +49,10 @@ test('named Palmer app principal exercises super-admin, cross-event and Mofe-onl
   assert.equal(sqlite.prepare("SELECT granted_by_user_id FROM roles WHERE user_id='usr_mofe' AND scope_id='hack-hours'").get().granted_by_user_id, 'usr_palmer');
   assert.equal(sqlite.prepare("SELECT count(*) n FROM roles WHERE user_id='usr_mofe' AND scope_type='global' AND revoked_at IS NULL").get().n, 0);
   assert.equal((await call('/api/admin/roles', 'POST', { email: 'palmer@example.com', role: 'admin', action: 'grant' })).status, 403, 'no self-grant');
+  const provision = { email: 'service-created@example.test', name: 'Service Created', expected_user_id: null, confirm_email: 'service-created@example.test' };
+  assert.equal((await call('/api/admin/provision-super-admin')).status, 403, 'service cannot preview');
+  assert.equal((await call('/api/admin/provision-super-admin', 'POST', provision)).status, 403, 'service cannot provision');
+  assert.equal(sqlite.prepare("SELECT count(*) n FROM users WHERE email='service-created@example.test'").get().n, 0);
 });
 
 test('provider-disable, wrong host, missing config, invalid JWT and role revocation deny', async t => {

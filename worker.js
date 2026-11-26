@@ -5,6 +5,7 @@ import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
 import * as adminMe from './functions/api/admin/me.js';
 import * as socialVault from './functions/api/social-vault.js';
 import * as adminRoles from './functions/api/admin/roles.js';
+import * as adminProvisionSuperAdmin from './functions/api/admin/provision-super-admin.js';
 import * as adminWorkflows from './functions/api/admin/workflows.js';
 import * as adminAudit from './functions/api/admin/audit.js';
 import * as adminPhysicalResources from './functions/api/admin/physical-resources/index.js';
@@ -126,6 +127,9 @@ function matchApiRoute(pathname) {
 
   if (pathname === '/api/admin/roles') {
     return { routeModule: adminRoles, params: {} };
+  }
+  if (pathname === '/api/admin/provision-super-admin') {
+    return { routeModule: adminProvisionSuperAdmin, params: {} };
   }
 
   if (pathname === '/api/admin/workflows') {

@@ -340,9 +340,27 @@
           <div>
             <p class="text-violet-300 uppercase tracking-[0.2em] text-xs font-black">Admin access</p>
             <h2 class="text-2xl font-black mt-1">Organizer and admin role grants</h2>
-            <p id="role-admin-status" class="text-sm text-slate-400 mt-1">Signed-in global admins may assign an organizer to a specific event or grant global organizer access. Only global super-admins may manage global admins. The account must sign in once before a grant.</p>
+            <p id="role-admin-status" class="text-sm text-slate-400 mt-1">Signed-in global admins may assign an organizer to a specific event or grant global organizer access. Only global super-admins may manage global admins. Existing role grants below require a prior sign-in; the separate super-admin provisioning flow above can create a named account without one.</p>
           </div>
           <button id="load-admin-roles" class="border border-violet-400 text-violet-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-violet-400 hover:text-bc-dark">Refresh roles</button>
+        </div>
+        <div id="provision-super-admin-panel" class="hidden rounded-2xl border border-violet-400/70 bg-bc-dark p-4 sm:p-5 mb-6 min-w-0">
+          <h3 class="text-xl font-black">Provision a named super-admin</h3>
+          <p class="text-sm text-slate-300 mt-2">A signed-in human global super-admin can create an HTV account without a first login, or use an existing account. This grants global super_admin: full HTV application administration, including implicit access to shared social-login vault credentials (one of 15 effective seats). It does not verify the inbox, send email, sign anyone in, or grant vault ownership.</p>
+          <form id="provision-super-admin-form" class="mt-4 grid gap-3 min-w-0">
+            <label class="block min-w-0"><span class="text-sm font-semibold">Exact HTV account email</span><input name="email" type="email" required autocomplete="off" class="mt-1 block w-full min-w-0 rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="person@example.com"></label>
+            <label class="block min-w-0"><span class="text-sm font-semibold">Name for a new account</span><input name="name" type="text" maxlength="150" autocomplete="off" class="mt-1 block w-full min-w-0 rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="Full name"><span class="block text-xs text-slate-400 mt-1">Existing account names and identity details stay unchanged.</span></label>
+            <button type="submit" class="w-full sm:w-auto justify-self-start border border-violet-400 text-violet-200 px-5 py-3 rounded-lg font-bold">Review account &amp; privilege</button>
+          </form>
+          <p id="provision-super-admin-status" role="status" class="text-sm text-slate-300 mt-3">Review the account before confirming a grant.</p>
+          <div id="provision-super-admin-preview" class="hidden mt-4 p-4 rounded-xl border border-amber-400/60 bg-amber-950/20 min-w-0">
+            <p class="font-black text-amber-200">Confirm this privileged grant</p>
+            <p id="provision-super-admin-target" class="mt-2 text-sm break-all"></p>
+            <p class="mt-2 text-sm">Global super_admin · full HTV admin and implicit shared social-login vault credential access. Uses an effective vault seat. No inbox verification, login session, or email is created.</p>
+            <label class="block mt-4 text-sm font-semibold">Type the exact email to confirm<input id="provision-super-admin-confirm" type="email" autocomplete="off" class="mt-1 block w-full min-w-0 rounded-lg bg-slate-950 border border-amber-400 px-4 py-3 text-white"></label>
+            <button id="provision-super-admin-submit" type="button" disabled class="mt-3 w-full sm:w-auto rounded-lg bg-amber-300 text-bc-dark px-5 py-3 font-black disabled:opacity-40">Confirm &amp; grant global super_admin</button>
+          </div>
+          <div id="provision-super-admin-readback" role="status" class="hidden mt-4 p-4 rounded-xl border border-emerald-400/60 bg-emerald-950/20 text-sm break-all"></div>
         </div>
         <form id="admin-role-form" class="grid lg:grid-cols-[1fr_auto_auto] gap-3 items-end bg-bc-dark border border-slate-700 rounded-2xl p-4 mb-4">
           <label class="block"><span class="text-sm font-semibold">Account email</span><input name="email" type="email" required class="mt-1 w-full rounded-lg bg-slate-950 border border-slate-600 px-4 py-3 text-white" placeholder="person@example.com"></label>
@@ -624,6 +642,7 @@
       const admin = hasAdminRole(me.roles || []);
       $("role-admin").classList.toggle("hidden", !admin);
       $("admin-role-form").classList.toggle("hidden", !me.capabilities?.role_management);
+      $("provision-super-admin-panel").classList.toggle("hidden", !isCurrentSuperAdmin() || !me.user?.session_id);
       $("admin-role-option").hidden = !isCurrentSuperAdmin();
       if (!isCurrentSuperAdmin()) $("admin-role-form").elements.role.value = "organizer";
       $("access-admin-nav").classList.toggle("hidden", !admin);
@@ -1450,6 +1469,65 @@
       await loadPhysicalResources();
     }
 
+    let provisionPreview = null;
+    function resetProvisionPreview() {
+      provisionPreview = null;
+      $("provision-super-admin-preview").classList.add("hidden");
+      $("provision-super-admin-confirm").value = "";
+      $("provision-super-admin-submit").disabled = true;
+      $("provision-super-admin-readback").classList.add("hidden");
+    }
+    async function previewSuperAdmin(event) {
+      event.preventDefault();
+      resetProvisionPreview();
+      const form = event.currentTarget;
+      const email = form.elements.email.value.trim().toLowerCase();
+      const name = form.elements.name.value.trim();
+      const status = $("provision-super-admin-status");
+      status.textContent = `Looking up ${email}…`;
+      try {
+        const data = await api(`/api/admin/provision-super-admin?email=${encodeURIComponent(email)}`);
+        if (form.elements.email.value.trim().toLowerCase() !== email || form.elements.name.value.trim() !== name) return;
+        if (data.role) {
+          status.textContent = `${data.account.email} already has global super_admin. No new grant made.`;
+          return;
+        }
+        if (!data.account && !name) throw new Error("Enter a name for this new HTV account.");
+        provisionPreview = { email: data.email, name, expected_user_id: data.account?.id || null };
+        $("provision-super-admin-target").textContent = data.account
+          ? `Existing account: ${data.account.email} · ${data.account.name || "Name not set"} · ID ${data.account.id}. Identity and verification stay unchanged.`
+          : `New account: ${data.email} · ${name}. No prior sign-in required.`;
+        $("provision-super-admin-preview").classList.remove("hidden");
+        status.textContent = `Review ${data.email} and type the exact email below to grant global super_admin.`;
+      } catch (error) {
+        status.textContent = error.message;
+      }
+    }
+    async function confirmSuperAdmin() {
+      const preview = provisionPreview;
+      if (!preview || $("provision-super-admin-confirm").value !== preview.email) return;
+      const button = $("provision-super-admin-submit");
+      const status = $("provision-super-admin-status");
+      button.disabled = true;
+      status.textContent = `Provisioning ${preview.email}…`;
+      try {
+        await api("/api/admin/provision-super-admin", { method: "POST", body: JSON.stringify({ ...preview, confirm_email: preview.email }) });
+        const readback = await api(`/api/admin/provision-super-admin?email=${encodeURIComponent(preview.email)}`);
+        if (readback.account?.email !== preview.email || readback.role?.role !== "super_admin" || readback.role?.user_id !== readback.account.id) {
+          throw new Error("Grant response received, but authoritative readback failed. Refresh Access before retrying.");
+        }
+        resetProvisionPreview();
+        const result = $("provision-super-admin-readback");
+        result.textContent = `Verified active grant: ${readback.account.email} · ${readback.account.name || "Name not set"} · ID ${readback.account.id} · global super_admin · implicit shared social-login vault credential access. Actor ${readback.role.granted_by_user_id}; granted ${readback.role.created_at}. No inbox verification, session, or email issued.`;
+        result.classList.remove("hidden");
+        status.textContent = `Authoritative account and role readback confirmed for ${preview.email}.`;
+        await Promise.allSettled([loadAdminRoles(), loadSocialManagers()]);
+      } catch (error) {
+        status.textContent = error.message;
+        button.disabled = false;
+      }
+    }
+
     async function loadAdminRoles() {
       const status = $("role-admin-status");
       try {
@@ -1979,6 +2057,12 @@
     $("new-physical-resource").addEventListener("click", () => resetPhysicalResourceForm());
     $("generate-physical-resource-id").addEventListener("click", () => resetPhysicalResourceForm({ resourceId: generatePhysicalResourceId(), createWithId: true, focus: true }));
     $("load-admin-roles").addEventListener("click", () => loadAdminRoles().catch(() => {}));
+    $("provision-super-admin-form").addEventListener("submit", previewSuperAdmin);
+    for (const input of $("provision-super-admin-form").querySelectorAll("input")) input.addEventListener("input", resetProvisionPreview);
+    $("provision-super-admin-confirm").addEventListener("input", (event) => {
+      $("provision-super-admin-submit").disabled = !provisionPreview || event.currentTarget.value !== provisionPreview.email;
+    });
+    $("provision-super-admin-submit").addEventListener("click", confirmSuperAdmin);
     $("load-social-managers").addEventListener("click", () => loadSocialManagers().catch(() => {}));
     $("social-manager-form").addEventListener("submit", grantSocialManager);
     $("admin-role-form").elements.scope_type.addEventListener('change', syncRoleScope);

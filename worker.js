@@ -4,6 +4,8 @@ import * as eventSignups from './functions/api/events/[slug]/signups/index.js';
 import * as adminMe from './functions/api/admin/me.js';
 import * as socialVault from './functions/api/social-vault.js';
 import * as adminRoles from './functions/api/admin/roles.js';
+import * as hackHoursServiceAdmin from './functions/api/admin/hack-hours-service.js';
+import * as hackHoursService from './functions/api/service/hack-hours-organizers.js';
 import * as adminWorkflows from './functions/api/admin/workflows.js';
 import * as adminAudit from './functions/api/admin/audit.js';
 import * as adminPhysicalResources from './functions/api/admin/physical-resources/index.js';
@@ -122,6 +124,12 @@ function matchApiRoute(pathname) {
     return { routeModule: adminMe, params: {} };
   }
 
+  if (pathname === '/api/admin/hack-hours-service') {
+    return { routeModule: hackHoursServiceAdmin, params: {} };
+  }
+  if (pathname === '/api/service/hack-hours-organizers') {
+    return { routeModule: hackHoursService, params: {} };
+  }
   if (pathname === '/api/admin/roles') {
     return { routeModule: adminRoles, params: {} };
   }

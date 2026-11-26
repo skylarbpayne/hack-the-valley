@@ -1,5 +1,11 @@
 name: Attach Palmer HTV API domain
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      identify_only:
+        description: Verify deployment token identity without attaching a hostname
+        type: boolean
+        default: true
 permissions: {}
 concurrency: palmer-htv-domain
 jobs:
@@ -7,7 +13,38 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
+      - name: Identify Cloudflare deployment token (read only)
+        if: inputs.identify_only
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: python
+        run: |
+          import json, os, re, urllib.request
+          from urllib.error import HTTPError
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args): return None
+          opener = urllib.request.build_opener(NoRedirect())
+          account = os.environ['ACCOUNT']
+          if not re.fullmatch('[0-9a-f]{32}', account): raise SystemExit('Invalid account ID')
+          matches = []
+          for owner, scope in [('account', 'accounts/' + account), ('user', 'user')]:
+              req = urllib.request.Request('https://api.cloudflare.com/client/v4/' + scope + '/tokens/verify',
+                                           headers={'Authorization': 'Bearer ' + os.environ['CF_TOKEN']}, method='GET')
+              try:
+                  with opener.open(req, timeout=15) as response: data = json.load(response)
+                  result = data['result']
+                  if (data['success'] is not True or result['status'] != 'active' or
+                      not re.fullmatch('[0-9a-f]{32}', result['id'])): raise ValueError()
+                  matches.append((owner, result['id']))
+              except HTTPError as err:
+                  if err.code not in (401, 403): raise SystemExit('Identity lookup inconclusive') from None
+              except Exception:
+                  raise SystemExit('Identity lookup inconclusive') from None
+          if len(matches) != 1: raise SystemExit('No unique verified token identity')
+          print('owner=%s id=%s' % matches[0])
       - name: Verify dedicated Access app, attach only its hostname, read back
+        if: github.event.inputs.identify_only == 'false'
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
